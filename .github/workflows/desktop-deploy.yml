@@ -1,20 +1,15 @@
 name: DSH HUD Desktop deployment
 
-# One-time, explicitly authorized initial deployment via a dedicated main push.
-# Future installs/uninstalls are workflow_dispatch only; ordinary pushes do not deploy.
+# Manual-only: no commits, PRs or schedules install/upgrade user Desktop.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/desktop-deploy.yml'
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Check current Desktop installation, install HUD, or uninstall HUD'
+        description: 'Inspect, install, upgrade or remove the HUD Bundle in the normal Desktop Profile'
         required: true
         type: choice
         default: check
-        options: [check, install, uninstall]
+        options: [check, install, upgrade, uninstall]
 
 permissions:
   contents: read
@@ -25,21 +20,12 @@ concurrency:
 
 jobs:
   desktop-deployment:
-    if: >-
-      github.repository == 'OttoBlues/dsh-plugins' &&
-      github.ref == 'refs/heads/main' &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        (
-          github.event_name == 'push' &&
-          startsWith(github.event.head_commit.message, 'deploy: install HUD v0.1.0 to Desktop')
-        )
-      )
+    if: github.repository == 'OttoBlues/dsh-plugins' && github.ref == 'refs/heads/main'
     name: Desktop HUD deployment
     runs-on: [self-hosted, windows, x64, dsh-hud-test]
     timeout-minutes: 15
     env:
-      DEPLOY_MODE: ${{ github.event_name == 'push' && 'install' || inputs.mode }}
+      DEPLOY_MODE: ${{ inputs.mode }}
     defaults:
       run:
         shell: powershell
@@ -49,13 +35,13 @@ jobs:
         with:
           persist-credentials: false
           clean: true
-      - name: Set up Node for local bundle build
-        if: env.DEPLOY_MODE == 'install'
+      - name: Set up Node for install/upgrade
+        if: inputs.mode == 'install' || inputs.mode == 'upgrade'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Verify and build the HUD installable bundle
-        if: env.DEPLOY_MODE == 'install'
+        if: inputs.mode == 'install' || inputs.mode == 'upgrade'
         run: |
           npm run check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

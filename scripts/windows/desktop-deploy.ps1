@@ -3,7 +3,7 @@
 # It does not change DSH_HOME, terminate any user process, launch Desktop, or upload raw logs.
 [CmdletBinding()]
 param(
-  [ValidateSet('check', 'install', 'uninstall')]
+  [ValidateSet('check', 'install', 'upgrade', 'uninstall')]
   [string] $Mode = 'check'
 )
 
@@ -132,7 +132,9 @@ try {
     if ($wasInstalled) {
       Record 'install' 'passed' 'HUD Bundle already installed; no existing Desktop configuration modified.'
     } else {
-      $bundle = Join-Path $repositoryRoot 'dist\local-dsh-hud-0.1.0.tgz'
+      $hudPackage = Read-DesktopManifest (Join-Path $repositoryRoot 'plugins\hud\package.json')
+      if ($hudPackage.name -ne '@local/dsh-hud') { throw 'Unexpected HUD manifest name.' }
+      $bundle = Join-Path $repositoryRoot ('dist\local-dsh-hud-' + $hudPackage.version + '.tgz')
       if (-not (Test-Path -LiteralPath $bundle -PathType Leaf)) {
         throw 'The tested HUD installation tarball was not found.'
       }
@@ -146,6 +148,36 @@ try {
     }
     Record 'verify' 'passed' 'Desktop profile now includes @local/dsh-hud.'
     $report.overall = 'installed'
+    $exitCode = 0
+  } elseif ($Mode -eq 'upgrade') {
+    $stage = 'upgrade'
+    if (-not $wasInstalled) {
+      throw 'HUD Bundle is not installed; choose install instead of upgrade.'
+    }
+    $hudPackage = Read-DesktopManifest (Join-Path $repositoryRoot 'plugins\hud\package.json')
+    if ($hudPackage.name -ne '@local/dsh-hud' -or [string]::IsNullOrWhiteSpace($hudPackage.version)) {
+      throw 'Invalid HUD package name or version.'
+    }
+    $targetVersion = [string]$hudPackage.version
+    $bundle = Join-Path $repositoryRoot ('dist\local-dsh-hud-' + $targetVersion + '.tgz')
+    if (-not (Test-Path -LiteralPath $bundle -PathType Leaf)) {
+      throw 'The tested HUD upgrade tarball was not found.'
+    }
+    Invoke-DshQuiet @('plugin', '--profile', 'desktop', 'add', $bundle) 'plugin-upgrade'
+    Record 'upgrade' 'passed' 'Official Desktop CLI accepted the HUD upgrade package.'
+    $stage = 'verify-version'
+    $after = Read-DesktopManifest $manifestPath
+    if (-not (Has-HudBundle $after)) { throw 'The HUD Bundle is missing after upgrade.' }
+    $installedManifestPath = Join-Path (Split-Path -Path $manifestPath -Parent) 'node_modules\@local\dsh-hud\package.json'
+    if (-not (Test-Path -LiteralPath $installedManifestPath -PathType Leaf)) {
+      throw 'Cannot resolve installed HUD package manifest for version verification.'
+    }
+    $installed = Read-DesktopManifest $installedManifestPath
+    if ($installed.name -ne '@local/dsh-hud' -or $installed.version -ne $targetVersion) {
+      throw 'The installed HUD version does not match the tested upgrade.'
+    }
+    Record 'verify-version' 'passed' ('Desktop now resolves @local/dsh-hud v' + $targetVersion + '.')
+    $report.overall = 'upgraded'
     $exitCode = 0
   } elseif ($Mode -eq 'uninstall') {
     $stage = 'uninstall'

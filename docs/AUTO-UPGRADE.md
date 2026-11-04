@@ -1,59 +1,37 @@
-# DSH HUD · 独立组件中心与匿名更新（V0.4 研发版）
+# DSH HUD · 独立组件中心和匿名更新
 
-## 正确的界面结构
+## 界面结构
 
-`HUD` 是一个 DSH 插件，注册到 `sidebar.panellist`（DSH 左侧导航），并使用独立 `main` 键 `dsh-hud` 呈现自己的管理面板。**不再占用 DSH 原生「插件 → 组件」分栏**。
+HUD 是独立 DSH 插件，注册 `sidebar.panellist` 入口和 `main` 页面，不占用 DSH 原生 Plugins 管理分栏。组件中心显示 `plugins/index.json` 中的仓库组件，可安装、查看版本和管理更新策略。
 
-HUD 主界面读取 `plugins/index.json` 作为仓库级组件目录，包含已安装和未安装的组件。每一条组件有版本、已安装状态、是否有可安装的正式版或试验版，及「安装/更新」按钮。
+**规范仓库：** `OttoBlues/dsh-hud-plugin`
 
-## 更新源
+- 组件目录：`https://raw.githubusercontent.com/OttoBlues/dsh-hud-plugin/main/plugins/index.json`
+- 试验版：`https://raw.githubusercontent.com/OttoBlues/dsh-hud-plugin/main/plugins/hud/unstable/index.json`
+- 正式版：`https://raw.githubusercontent.com/OttoBlues/dsh-hud-plugin/main/plugins/hud/released/index.json`
 
-- 仓库级目录：`https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/index.json`
-- 组件稳定版：`plugins/<组件名>/released/index.json`
-- 组件测试版：`plugins/<组件名>/unstable/index.json`
-- 安装包：只允许通道索引明确登记的 `vX.Y.Z/*.tgz`，校验 SHA-256 和来源提交。
-- 新组件必须进入 `plugins/index.json`；`npm run verify:components` 会检查清单与实际目录是否一致。
+更新器只下载上述公开索引登记、版本更高、SHA-256 与来源提交可验证的固定 `.tgz`。GitHub Token、PAT 和本机 Actions Runner 都不是更新前提。源失败时必须提示不可用，不能将未发布的 main HEAD 当成安装包。
 
-**客户端和 Host 均不保存 GitHub Token。** 当前仓库已是 Public；匿名源读取失败时仍应显示明确的「仓库版本源暂不可匿名访问」，不会误报「已是最新」。
+过渡期现有 V0.4.1 Host 具有旧仓库 Raw 地址的保守回退，仅用于历史用户兼容；**新地址始终排在首位**。待新仓库匿名端点和用户升级覆盖核实后才能移除该内部回退。HUD UI 不显示旧名称。
 
-## 更新策略（独立开关）
+## 更新开关
 
-| 开关 | 默认 | 实际行为 |
+| 设置 | 默认 | 行为 |
 | --- | --- | --- |
-| 接收试验版更新 | 关闭 | 开启后显示并允许手动安装 `unstable` 安装包 |
-| 自动更新正式版 | 关闭 | 定期检查并自动更新**已经安装**且有更高 `released` 的组件，不自动安装新组件 |
-| 自动更新试验版 | 关闭且不可选 | 只有同时开启上面两个开关，才可再单独授权自动更新更高版本的 `unstable` |
-| 聊天窗口 HUD 预览 | 关闭 | 避免在窗口标题栏和输入区叠加文字 |
+| 接收试验版更新 | 关闭 | 允许手动查看和安装 Unstable |
+| 自动更新正式版 | 关闭 | 仅对已安装且存在更高 Released 版本的组件自动更新 |
+| 自动更新试验版 | 关闭 | 必须同时启用前两项并独立授权 |
+| 聊天窗口 HUD 预览 | 关闭 | 不在标题栏或输入区叠加信息 |
 
-Host 每 5 分钟刷新一次公开版本目录；只有版本更高、发布清单完整、安装包 SHA-256 校验通过才允许更新。会话内一次自动更新失败后不会无限重试同一包；用户仍可进行人工故障排查。
+Host 每五分钟读取一次公开索引。手动安装需要 UI 明确确认；下载安装包后由 DSH 的 `pluginManager.installBundle` 执行并依据实际版本核验。不会运行 PowerShell、通过远程 Runner 安装、强制结束 DSH 或绕过权限审批。
 
-手动更新必须通过 HUD 独立主界面点击，并再次确认。Host 只调用 DSH 官方 `pluginManager.installBundle`，不会执行 shell 命令、强制退出 DSH 或改写 Session。更新结果需依据官方 DSH 返回状态及实际安装版本核实；某些更新可能需要用户手动重启 DSH。
+## 状态
 
-## 当前阶段和匿名测试步骤
+- V0.4.0：用户已完成公开源匿名更新和侧栏验收，但更新时遇到 DSH 异常（U04-R1）。
+- V0.4.1：Unstable 已发布，用户截图确认安装成功、页面显示最新，仍需记录完整无崩溃热更新验收。
+- V0.4.2：开发源码阶段，修正仓库显示名并删除 Runner 相关工程；**未发布安装包**。
+- Released：尚无用户批准的正式版本。
 
-- Windows 日常 DSH 目前已安装并经过 4 项人工 UI 验收的是 **V0.3.0**（`unstable`）。
-- **V0.4.0** 已通过 CI 并作为 `unstable` 试验包发布；日常 DSH 尚未更新到它。独立侧栏、自动更新策略仍需实机验收。
-- `released/` 仍保持空目录；任何正式发布仍由用户决定。
-- 用户已经将仓库设为 Public，且 `unstable` 新版 V0.4.0 已准备好。下一步测试不带 Token 的 HTTP 访问及应用内点击更新。
-- 匿名检查成功 ≠ 包安装成功；在已安装的 V0.3「插件 → 组件」中主动开启试验版并点击 V0.4 更新，重启后从左侧独立 HUD 入口验收。
-- 日常使用无需 Windows 自托管 Runner；普通 GitHub 云端 CI 仍用于源码和发布归档检查。
+GitHub 云端 Actions 仅运行 CI 测试和源码结构打包，不访问用户机器。安装、更新及回退由用户在 DSH 端负责。
 
-## GitHub 公开路径
-
-仓库：`https://github.com/OttoBlues/dsh-plugins`
-
-进入 `Settings → General → Danger Zone → Change repository visibility → Public`，确认公开后果。GitHub 仓库历史和 Actions 历史/日志也会公开；必须先检查私密凭据、路径和不希望公开的内容。
-
-仓库公开以后访问 `https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/index.json`，应返回 JSON 而不是 404。若返回 404、403 或网络失败，更新器会明确报告不可用，而不是回退到安装最新版源码。
-
-**本次公开状态确认**：2026-11-04，仓库已变为 `Public`，经 GitHub 元数据验证；V0.4 `unstable` 索引和 SHA-256 已提交，最终 CI 通过。我的网页抓取器返回缓存未命中，**不能据此宣称无登录 HTTP 和 DSH 点击更新验收已通过**。用户在无痕窗口与实际 DSH 完成 U04 后，再登记最终结果。
-
-## 2026-11-05：真实 U04 的中断缺陷与修复边界
-
-用户在旧版 V0.3 中实际完成匿名更新 V0.4，并在重启后看到正确版本、独立 HUD 侧栏和仓库组件中心；然而更新过程导致宿主出现启动失败提示（U04-R1）。这证明了**匿名更新的功能链路能走通，但更新期间不中断宿主的质量尚未达到可用标准**。
-
-V0.4.1 仅作为 `unstable` 试验修复包，主要防范 `configEditor.edit` 在本插件自更新时的生命周期冲突、定时回调未捕获拒绝，并在下次启动核对安装状态。尚未通过实机无中断更新验证。
-
-同时准备仓库更名兼容：更新源优先 `OttoBlues/dsh-hud-plugin`，旧版 `OttoBlues/dsh-plugins` 作为过渡回退；只有已安装包含双地址更新代码的版本后才能安全更名。现有 V0.4 **仅认识旧仓库地址**，立即更名会有失去匿名更新入口的风险。
-
-参见 [仓库更名与兼容步骤](REPOSITORY-RENAME.md)。
+如果更名后的新 Raw 地址无法访问，应先检查仓库 URL、公开权限以及 GitHub 应用授权状态，而不是发布指向无效地址的新安装包。

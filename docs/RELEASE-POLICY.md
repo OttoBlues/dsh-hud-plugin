@@ -1,39 +1,24 @@
-# 组件源码与版本发布规则
+# DSH HUD 组件发布规则
 
-## 目录
+## 发布模型
 
-```text
-plugins/
-  hud/
-    package.json           # 最新开发版本，可包含未经人工验收的代码
-    index.js               # 最新 Host 源码
-    client.js              # 最新 Client 源码
-    released/              # 只有用户批准后才发布正式安全版本
-      index.json
-      vX.Y.Z/*.tgz
-    unstable/              # 供实际验证的试验版
-      index.json
-      vX.Y.Z/*.tgz
-```
+每个组件保留两条独立通道：
 
-`released` 与 `unstable` 中的 `index.json` 都使用 `latest` 和 `releases`。版本清单应指向同一通道的不可变 `.tgz`，具有 SHA-256、源提交、版本及验证依据。
+- `plugins/<component>/released/index.json`：已获用户明确批准的正式版本，当前 HUD 为空。
+- `plugins/<component>/unstable/index.json`：可人工验收的试验版本，当前 HUD 最新为 **0.4.1**。
 
-- 正式版需要用户明确做出发布决定；仅 CI 全绿、能安装、曾通过局部界面测试均不足以自动晋升正式版。
-- 试验版需要测试通过和归档 SHA-256，未正式批准也可供用户明确确认后试用。**默认不订阅试验版**。
-- `main` 中最新版源码不会自动生成可安装更新，也不会被 DSH 内置升级器直接执行。
-- 不覆盖已发布的版本归档；发现问题通过新版本修复或撤销索引可见性。
-- 当前稳定通道为空。V0.3.0 依用户的明确请求已制作为 unstable 测试安装包，不能自动升级为正式版。
+两个索引只包含已保存的不可变 `.tgz` 归档；每个版本记录安装包路径、SHA-256、完整源提交、CI 验证和通道依据。版本清单和包体必须一起审查。最新 main 开发源码（当前 V0.4.2）**不会**自动成为可安装版本。
 
-## 无长期 Token
+## 验收与安装
 
-公开仓库的 `raw.githubusercontent.com` 端点允许匿名读取公开发布归档和索引。V0.3 在 DSH Host 中直接查询、校验，再调用官方 `pluginManager.installBundle`。**仓库仍为 Private 时，这条无 Token 路径不可访问**，只能用已连接的 Runner 做一次引导安装，不能声称私有 GitHub 源可以匿名更新。
+- Unstable 需要绿灯 CI、完整安装包校验和显式的试验行为授权，不等于正式稳定。
+- Released 需要用户明确认可的人工验收决定；CI 全绿与局部 UI 正常均不足以自动晋升。
+- 已公开仓库的 Raw 端点支持无 Token 下载；用户的 HUD Host 下载、校验并调用 DSH 官方插件管理 API 安装。
+- GitHub Actions 只保留云端测试与结构打包。不允许 CI、远程 Runner、PR 或 push 自动部署、覆盖或卸载用户的 DSH Desktop。
+- 曾经发布的 `v0.3.0`、`v0.4.0`、`v0.4.1` 归档不可重写。出现问题应新增修复版本或有审计依据地调整通道索引。
 
-这次引导完成以后，可停止 Windows Runner。后续仍可使用 GitHub 云端 Actions 做代码测试和构建，与用户本机 Runner 是两回事。
+## 当前限制
 
-## 仓库级组件总索引
+V0.4.0 曾在自更新时出现 DSH 异常；V0.4.1 已获用户截图确认升级成功，但无中断稳定性仍需单独记录。原生 Windows 全局透明 HUD 尚未实现。正式版仍为空。
 
-从 V0.4 开始新增 `plugins/index.json`，管理仓库有哪些组件可以被独立安装或更新。`npm run verify:components` 校验它与实际 `plugins/<组件>/package.json` 一致。这个索引不代表版本已发布，具体安装权限仍由各组件的 `released/index.json` 和 `unstable/index.json` 决定。
-
-自动更新默认关闭，仅已安装组件可自动更新，正式与试验版分别设定权限；新的仓库组件不能仅因上架就自动安装。
-
-2026-11-04：仓库已设为 Public。测试更新包 `unstable/v0.4.0` 已发布，`released/` 仍为空；公开仓库不代表自动获得正式发布资格。用户仍需在 DSH 内完成匿名更新闭环验收。
+组件目录 `plugins/index.json` 与组件清单由 `npm run verify:components` 检验；安装包完整性由 `npm run verify:channels` 检验。

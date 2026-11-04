@@ -1,29 +1,25 @@
-# Windows 首次设置与组件发布通道
+# Windows 开发与本地验收
 
-仓库：<https://github.com/OttoBlues/dsh-plugins>（目前 Private）。已配置 GitHub App 访问和专用 Windows 自托管 Runner，无需把个人 PAT 写进 HUD 客户端。
+目标仓库：`https://github.com/OttoBlues/dsh-hud-plugin`。GitHub 地址若仍返回 404，请先核对实际更名和连接权限，不要假定下载成功。
 
-## 开发流程
+## 开发校验
 
 ```powershell
-git clone https://github.com/OttoBlues/dsh-plugins.git
-cd dsh-plugins
-npm run verify
-npm run verify:channels
-npm test
+git clone https://github.com/OttoBlues/dsh-hud-plugin.git
+cd dsh-hud-plugin
+npm run check
+npm run pack:hud
+npm run verify:pack
 ```
 
-以上命令只执行静态验证与测试。开发者可以运行 `npm run pack:hud` 在 `dist/` 中打包结构候选，但它**不是已发布安装包，不应在正常 DSH Desktop 中安装**。
+建议 Node.js 22。以上仅进行结构检查，不等于 DSH Desktop 成功安装。工作流 `.github/workflows/ci.yml` 通过 GitHub 托管的 Linux 与 Windows 运行器执行验证，不需要也**不再支持**用户本地 Actions Runner。
 
-## 正式发布与试验安装
+## 日常插件更新
 
-- 正式版来自 `plugins/hud/released/index.json` 所列的不可变 `.tgz`，只有用户明确决定发布才能加入。
-- 试验版来自 `plugins/hud/unstable/index.json`，需要先以测试包形式发布；客户端试验版订阅默认关闭。
-- 组件页点击更新会生成明确请求，Windows Runner 验证版本、校验和和用户允许的通道；DSH 正在运行就推迟。
-- `released/` 和 `unstable/` 当前都为空，因此现阶段**不存在新的可安装版本**。
-- `DSH plugins CI` 仅构建并验证源码候选，不上传最新 HEAD 的安装包，不能通过以前的 `dsh-hud-bundle-*` 产物绕过发布通道。
+在 DSH 左侧 **HUD → 组件中心** 中检查仓库状态与版本，开启“接收试验版更新”后，手动点击有更高 Unstable 版本的组件“更新”，阅读确认提示并完成安装。不要使用源码或临时打包的 `dist/` 目录覆盖当前已安装插件。更新后核对实际版本、日志和是否需要重启。
 
-手动隔离安装验证：使用 [self-hosted smoke 工作流](https://github.com/OttoBlues/dsh-plugins/actions/workflows/self-hosted-smoke.yml) 的 `install-smoke`，并选择已发布通道。它创建临时 Web Profile，不会更改日常 Desktop。
+- 正式版必须存在于 `plugins/hud/released/index.json` 且由用户明确验收批准。
+- 试验版必须登记在 `plugins/hud/unstable/index.json`，包括 SHA-256 和 CI 记录。
+- 无法通过 UI 安装或恢复时，先备份 DSH 设置并退出应用，再根据当前 DSH CLI 官方文档选择对应 Profile 做人工恢复；不再使用 GitHub Runner 远程安装/卸载。
 
-用户日常 Desktop 此前安装了 HUD V0.2，但该版本**尚未被认可为正式发布版**，上述政策不会自动删除或回退现有安装。如需回退或卸载，先安全退出 DSH，再使用 `desktop-deploy.yml` 的手动入口。
-
-发布规则见 [RELEASE-POLICY.md](RELEASE-POLICY.md)，部署与回退见 [DESKTOP-DEPLOY.md](DESKTOP-DEPLOY.md)。
+参见 [发布规则](RELEASE-POLICY.md) 与 [匿名更新机制](AUTO-UPGRADE.md)。

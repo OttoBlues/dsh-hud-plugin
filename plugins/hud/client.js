@@ -380,9 +380,9 @@ window.__ModuleLoader__.load({
           style:{position:'absolute',top:76,right:16,zIndex:31,
             pointerEvents:'auto',fontFamily:'system-ui,sans-serif',fontSize:12,
             fontWeight:650,letterSpacing:'.08em',padding:'9px 13px',
-            borderRadius:999,color:'#c8f7f1',border:'1px solid rgba(118,221,213,.35)',
-            background:'rgba(12,34,45,.82)',boxShadow:'0 5px 14px rgba(0,0,0,.16)',
-            cursor:'pointer'}},'↗ HUD'));
+            borderRadius:0,clipPath:V.cut,color:V.cyan,border:'1px solid '+V.stroke,
+            background:'rgba(4,24,36,.94)',boxShadow:'0 0 18px rgba(69,236,235,.12)',
+            cursor:'pointer'}},'◇ HUD'));
         if (error) children.push(h('div',{key:'error',role:'alert',
           style:{position:'absolute',top:118,right:16,
             color:'#efb2b2',background:'#2f181e',fontSize:12,padding:9,

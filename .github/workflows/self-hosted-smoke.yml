@@ -1,0 +1,63 @@
+name: DSH HUD self-hosted smoke
+
+# Manual-only workflow: never run a pull request or a push on this machine.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'preflight checks only, or temporary DSH Web Profile install/start smoke'
+        required: true
+        type: choice
+        default: preflight
+        options:
+          - preflight
+          - install-smoke
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dsh-hud-self-hosted
+  cancel-in-progress: false
+
+jobs:
+  windows-smoke:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    name: HUD self-hosted (${{ inputs.mode }})
+    runs-on: [self-hosted, windows, x64, dsh-hud-test]
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          clean: true
+      - name: Preflight (no install, no DSH config changes)
+        if: inputs.mode == 'preflight'
+        run: .\scripts\windows\self-hosted-smoke.ps1 -Mode preflight
+      - uses: actions/setup-node@v4
+        if: inputs.mode == 'install-smoke'
+        with:
+          node-version: '22'
+      - name: Check bundle and run unit tests
+        if: inputs.mode == 'install-smoke'
+        run: |
+          npm run check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run pack:hud
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run verify:pack
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install into temporary DSH Web profile and verify startup
+        if: inputs.mode == 'install-smoke'
+        run: .\scripts\windows\self-hosted-smoke.ps1 -Mode install-smoke
+      - name: Publish structured smoke results only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hud-self-hosted-${{ github.run_id }}
+          path: smoke-results/*.json
+          if-no-files-found: warn
+          retention-days: 7

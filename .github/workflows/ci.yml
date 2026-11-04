@@ -4,14 +4,14 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/**'
       - 'package.json'
       - 'plugins/**'
       - 'scripts/**'
   pull_request:
     branches: [main]
     paths:
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/**'
       - 'package.json'
       - 'plugins/**'
       - 'scripts/**'
@@ -56,6 +56,13 @@ jobs:
           node-version: '22'
       - name: Validate DSH bundles
         run: npm run verify
+      - name: Validate PowerShell smoke script syntax
+        shell: powershell
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path './scripts/windows/self-hosted-smoke.ps1').Path, [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count -gt 0) { $parseErrors | ForEach-Object { Write-Error $_.Message }; exit 1 }
       - name: Run Node tests
         run: npm test
       - name: Pack DSH HUD installable tarball

@@ -14,7 +14,7 @@ HUD 主界面读取 `plugins/index.json` 作为仓库级组件目录，包含已
 - 安装包：只允许通道索引明确登记的 `vX.Y.Z/*.tgz`，校验 SHA-256 和来源提交。
 - 新组件必须进入 `plugins/index.json`；`npm run verify:components` 会检查清单与实际目录是否一致。
 
-**客户端和 Host 均不保存 GitHub Token。** 当前仓库仍为 Private，匿名源不可访问时主界面显示明确的「仓库版本源暂不可匿名访问」；不会误报「已是最新」。
+**客户端和 Host 均不保存 GitHub Token。** 当前仓库已是 Public；匿名源读取失败时仍应显示明确的「仓库版本源暂不可匿名访问」，不会误报「已是最新」。
 
 ## 更新策略（独立开关）
 
@@ -32,10 +32,10 @@ Host 每 5 分钟刷新一次公开版本目录；只有版本更高、发布清
 ## 当前阶段和匿名测试步骤
 
 - Windows 日常 DSH 目前已安装并经过 4 项人工 UI 验收的是 **V0.3.0**（`unstable`）。
-- **V0.4.0** 当前仅是源码开发候选，侧栏和自动更新功能仍要经 GitHub CI 与真实 DSH 验收，不得直接称为已安装。
+- **V0.4.0** 已通过 CI 并作为 `unstable` 试验包发布；日常 DSH 尚未更新到它。独立侧栏、自动更新策略仍需实机验收。
 - `released/` 仍保持空目录；任何正式发布仍由用户决定。
-- 要真实测试匿名更新，需要先将仓库 Public（用户自己执行）并有更高的 `unstable` 测试安装包。
-- 公网匿名检查成功 ≠ 包安装成功；待更高版本发布到 `unstable` 后，在已安装的 V0.3「插件 → 组件」中主动开启试验版，并点击更新以验证 V0.4 的引导升级；新 V0.4 再通过左侧 HUD 入口验收。
+- 用户已经将仓库设为 Public，且 `unstable` 新版 V0.4.0 已准备好。下一步测试不带 Token 的 HTTP 访问及应用内点击更新。
+- 匿名检查成功 ≠ 包安装成功；在已安装的 V0.3「插件 → 组件」中主动开启试验版并点击 V0.4 更新，重启后从左侧独立 HUD 入口验收。
 - 日常使用无需 Windows 自托管 Runner；普通 GitHub 云端 CI 仍用于源码和发布归档检查。
 
 ## GitHub 公开路径
@@ -45,3 +45,5 @@ Host 每 5 分钟刷新一次公开版本目录；只有版本更高、发布清
 进入 `Settings → General → Danger Zone → Change repository visibility → Public`，确认公开后果。GitHub 仓库历史和 Actions 历史/日志也会公开；必须先检查私密凭据、路径和不希望公开的内容。
 
 仓库公开以后访问 `https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/index.json`，应返回 JSON 而不是 404。若返回 404、403 或网络失败，更新器会明确报告不可用，而不是回退到安装最新版源码。
+
+**本次公开状态确认**：2026-11-04，仓库已变为 `Public`，经 GitHub 元数据验证；V0.4 `unstable` 索引和 SHA-256 已提交，最终 CI 通过。我的网页抓取器返回缓存未命中，**不能据此宣称无登录 HTTP 和 DSH 点击更新验收已通过**。用户在无痕窗口与实际 DSH 完成 U04 后，再登记最终结果。

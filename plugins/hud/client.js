@@ -452,7 +452,7 @@ window.__ModuleLoader__.load({
           h('div',{style:{padding:'12px 0',opacity:disabled?.55:1}},
             h('label',{style:{display:'flex',gap:11,alignItems:'center',fontSize:14,cursor:'pointer'}},
               h('input',{type:'checkbox',checked:checked===true,disabled,
-                'data-hud-setting': dataName,
+                'data-hud-setting':dataName,style:{accentColor:V.cyan,width:16,height:16},
                 onChange:e=>{void change(e.target.checked);}}),
               label),
             h('div',{style:{...tiny,marginLeft:27,marginTop:5}},help));
@@ -519,13 +519,43 @@ window.__ModuleLoader__.load({
               style:{...actionStyle(false),fontWeight:650,
                 background:'rgba(15,72,88,.74)',color:V.cyan}},t('enterHud'))),
           h('p',{style:{...subtle,margin:0}},t('sub')),
-          h('div',{style:{marginTop:24,fontSize:12,opacity:.7},
-            'data-hud-source':catalog.source,role:'status'},
-            catalog.source === 'public'?t('sourceOK'):
-              catalog.source==='checking'?t('sourceChecking'):t('sourceUnavailable')),
+          vectorFrame('section',{'data-hud-check-panel':true,
+            style:{...surface,padding:'20px 24px',marginTop:24}},
+            h('div',{style:{display:'flex',gap:18,flexWrap:'wrap',
+              alignItems:'center',justifyContent:'space-between'}},
+              h('div',{style:{minWidth:200,flex:'1 1 330px'}},
+                h('div',{style:{fontFamily:'Consolas,monospace',
+                  color:V.cyan,fontSize:11,letterSpacing:'.15em'}},
+                  '02 // RELEASE CHANNEL SCAN'),
+                h('div',{style:{marginTop:7,fontSize:13,color:V.text},
+                  'data-hud-source':catalog.source,role:'status'},
+                  catalog.source === 'public'?t('sourceOK'):
+                    catalog.source==='checking'?t('sourceChecking'):t('sourceUnavailable')),
+                h('div',{'data-hud-check-state':checkState,role:'status',
+                  style:{fontSize:12,marginTop:7,
+                    color:checkState==='failed'||checkState==='partial'?V.amber:V.muted}},
+                  checkLabel,
+                  lastChecked?' · '+t('checkAt')+' '+lastChecked:'',
+                  originLabel?' · '+originLabel:'')),
+              h('button',{type:'button','data-hud-check-button':true,
+                disabled:busyCheck,onClick:()=>{void requestCheck();},
+                style:{...actionStyle(busyCheck),minWidth:152,
+                  background:busyCheck?'rgba(18,53,64,.55)':
+                    'linear-gradient(90deg,rgba(21,110,125,.85),rgba(11,69,90,.83))',
+                  fontWeight:650}},
+                busyCheck?t('checkingNow'):t('checkNow'))),
+            h('div',{style:{...tiny,marginTop:13}},t('checkTip')),
+            (checkState==='failed'||checkState==='partial') && values.checkError
+              ? h('div',{role:'alert','data-hud-check-error':true,
+                  style:{fontSize:12,marginTop:10,color:V.amber,
+                    padding:'10px 12px',background:'rgba(80,56,22,.28)',
+                    borderLeft:'2px solid '+V.amber,
+                    overflowWrap:'anywhere'}},values.checkError)
+              : null),
 
-          h('section',{style:{marginTop:30}},
-            h('h2',{style:{fontSize:18,margin:0}},t('section')),
+          h('section',{style:{marginTop:31}},
+            h('h2',{style:{fontSize:17,margin:'0 0 10px',color:V.cyan,
+              letterSpacing:'.12em'}},t('section')),
             ...known.map(component=>{
               const installed = installedByName.get(component.name);
               const current = installed?.version || null;
@@ -550,13 +580,13 @@ window.__ModuleLoader__.load({
                         btn(t('confirm'),()=>{void queue(component,latest);},saving))
                     : btn(installed?t('update'):t('install'),()=>setConfirm(key),saving)
                   : h('span',{style:tiny},latest?t('latest'):t('unavailable'));
-              return h('div',{key:component.name,style:surface,
+              return vectorFrame('div',{key:component.name,style:surface,
                 'data-hud-component':component.name},
                 h('div',{style:{display:'flex',gap:15,alignItems:'center',
                   justifyContent:'space-between',flexWrap:'wrap'}},
                   h('div',{style:{flex:'1 1 300px',minWidth:175}},
                     h('div',{style:{display:'flex',alignItems:'center',gap:9}},
-                      h('strong',{style:{fontSize:15}},component.title),
+                      h('strong',{style:{fontSize:16,color:V.text,letterSpacing:'.02em'}},component.title),
                       h('span',{style:tiny},installed?t('installed'):t('notInstalled'))),
                     h('p',{style:{...tiny,margin:'5px 0 9px'}},component.description),
                     h('div',{style:tiny},
@@ -574,8 +604,9 @@ window.__ModuleLoader__.load({
           ),
 
           h('section',{style:{marginTop:36}},
-            h('h2',{style:{fontSize:18,margin:'0 0 4px'}},t('options')),
-            h('div',{style:surface},
+            h('h2',{style:{fontSize:17,margin:'0 0 9px',color:V.cyan,
+              letterSpacing:'.12em'}},t('options')),
+            vectorFrame('div',{style:surface},
               toggle(t('allowUnstable'),t('allowUnstableHelp'),values.allowUnstable,
                 async value=>{
                   await form.mutate([{op:'set',path:['allowUnstable'],value},
@@ -594,7 +625,8 @@ window.__ModuleLoader__.load({
           values.updateStatus==='failed'?h('p',{role:'alert',style:{color:'#b84b4b'}},t('failed')):
           values.updateStatus==='restart-required'?h('p',{role:'status'},t('restart')):
           values.updateStatus==='installed'?h('p',{role:'status'},t('succeeded')):null,
-          h('p',{style:{...tiny,marginTop:25}},t('noToken'))
+          h('p',{style:{...tiny,marginTop:25,fontFamily:'Consolas,monospace',
+            letterSpacing:'.03em'}},'// '+t('noToken'))
         ));
       };
     }

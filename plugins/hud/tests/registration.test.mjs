@@ -9,14 +9,17 @@ function setup(valuesOverride={}, runtime={}) {
   let module;
   vm.runInNewContext(client, {window:{__ModuleLoader__:{load(x){module=x;}}}});
   assert.equal(module?.id,'@local/dsh-hud');
-  const hooks=[]; let cursor=0;
+  const hookSets=new Map(); let cursor=0; let currentScope='root';
+  const withHooks=(key,run)=>{currentScope=key;cursor=0;return run();};
   const React={
     Fragment:'fragment',
     createElement(type,props,...children){return {type,props:props||{},children};},
     useState(initial){
+      let values=hookSets.get(currentScope);
+      if(!values){values=[];hookSets.set(currentScope,values);}
       const i=cursor++;
-      if(!(i in hooks))hooks[i]=initial;
-      return [hooks[i],next=>{hooks[i]=typeof next==='function'?next(hooks[i]):next;}];
+      if(!(i in values))values[i]=initial;
+      return [values[i],next=>{values[i]=typeof next==='function'?next(values[i]):next;}];
     },
     useEffect(){},
     useSyncExternalStore(_subscribe,get){return get();},
@@ -57,7 +60,6 @@ function setup(valuesOverride={}, runtime={}) {
   };
   plugin.apply(ctx);
   const render=(slot='main')=>{
-    cursor=0;
     const entry=slots.get(slot);
     if(!entry) throw new Error('Unknown slot '+slot);
     const props={t:k=>dictionary.zh[k]};
@@ -65,9 +67,9 @@ function setup(valuesOverride={}, runtime={}) {
       props.useSessions=f=>f(runtime.sessions || {ids:[],byId:{}});
       props.useSessionStatus=f=>f(runtime.statuses || new Map());
     }
-    return entry.component(props);
+    return withHooks(slot,()=>entry.component(props));
   };
-  return {plugin,values,form,slots,render,updates,navigations};
+  return {plugin,values,form,slots,render,updates,navigations,withHooks};
 }
 function find(tree,when,result=[]) {
   if(tree==null)return result;
@@ -139,13 +141,13 @@ test('Experimental opt-in and all automatic settings default off',()=>{
 });
 
 test('Experimental update requires explicit toggle and manual confirmation',async()=>{
-  const ui=setup({catalog:catalog([own('0.4.1','0.5.0')])});
+  const ui=setup({catalog:catalog([own('0.4.1','0.6.0')])});
   const flag=find(ui.render(),x=>x.type==='input'&&x.props['data-hud-setting']==='unstable')[0];
   flag.props.onChange({target:{checked:true}});
   await Promise.resolve();
   assert.equal(ui.values.allowUnstable,true);
   const first=ui.render();
-  assert.match(JSON.stringify(first),/试验版: 0\.5\.0/);
+  assert.match(JSON.stringify(first),/试验版: 0\.6\.0/);
   const update=find(first,x=>x.type==='button'&&x.children.includes('更新'))[0];
   update.props.onClick();
   const confirmation=ui.render();
@@ -205,9 +207,9 @@ test('component center shows the renamed repository rather than legacy UI copy',
 function renderWorkspace(ui) {
   const entry=ui.render('shell.overlay');
   assert.equal(typeof entry.type,'function');
-  return entry.type(entry.props);
+  return ui.withHooks('HudWorkspace',()=>entry.type(entry.props));
 }
-const flushMode=async()=>{await Promise.resolve();await Promise.resolve();};
+const flushMode=async()=>{await new Promise(resolve=>setImmediate(resolve));};
 
 test('HUD opt-in switch shows an interactive full-frame workspace without losing DSH selection',async()=>{
   const ui=setup();

@@ -25,18 +25,18 @@ plugins/
 
 ## 当前研发与安装
 
-Windows Desktop 已安装的是 **HUD V0.3.0**，在 2026-11-04 由用户确认组件标签、版本显示、试验版开关默认关闭、无布局重叠均通过。V0.4 已通过 GitHub CI，并作为 **`unstable/v0.4.0` 试验安装包**发布；尚未安装到你日常的 Desktop，也未通过其独立侧边栏 UI 验收。
+Windows Desktop 的 HUD V0.3.0 曾通过四项界面验收。用户随后已匿名更新至 V0.4.0，重启后独立左侧 HUD 和组件页正常，但更新过程中出现 DSH 异常退出。V0.4.1 仅作为 U04-R1 风险修复的 unstable 试验候选，尚未经实机不中断更新验收。
 
 本地运行 `npm run check` 可验证源代码、组件总索引、版本通道与单元测试。发布包只放在各组件 `released/` 或 `unstable/`，未经批准不自动升为正式版。
 
 详见 [组件中心更新规则](docs/AUTO-UPGRADE.md)、[人工验收](docs/MANUAL-ACCEPTANCE.md)、[路线图](docs/ROADMAP.md)。
 
-## 匿名更新实测（待用户确认）
+## 匿名更新实测（V0.4 已确认，稳定性待修复）
 
-仓库已变成 Public，当前 `unstable` 目录最新为 `0.4.0`，`released` 仍为空。V0.3.0 之前已安装在 Desktop，且界面可用。请在无痕窗口访问 `https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/index.json` 及 `plugins/hud/unstable/index.json` 以独立确认无 Token 下载，再从 V0.3.0 组件页开启试验版并点击更新到 V0.4。正式的更新闭环验收必须以 DSH 实际安装的版本与截图为准。
+仓库已为 Public。V0.4.0 已被用户从 V0.3 通过匿名下载更新，但存在升级过程中 DSH 崩溃的缺陷。V0.4.1 若经 CI 验证，将在 `unstable` 中供明确授权的人工试验，`released` 仍为空。请先在 HUD 设置里关闭自动更新正式版、自动更新试验版；升级后核对 DSH 重启与无中断效果。
 
 ## 计划更名为 `dsh-hud-plugin`
 
 用户希望未来组件主要服务 HUD，计划将当前 GitHub 仓库 `OttoBlues/dsh-plugins` 更名为 `OttoBlues/dsh-hud-plugin`。本次仅准备客户端更新源双别名、CI/Runner 过渡兼容和文档；**仓库管理员尚未在 GitHub Settings 中执行更名**，请不要把计划地址当成已存在的新仓库。
 
-用户实机 U04 验收说明：V0.4.0 匿名下载安装、独立左侧 HUD 入口和组件中心均已成功，但更新中 DSH 曾异常退出；重启后显示正常。参见 `docs/MANUAL-ACCEPTANCE.md` 与 `docs/REPOSITORY-RENAME.md`。当前 V0.4.1 仅为未发布的修复开发代码。
+用户实机 U04 验收说明：V0.4.0 匿名下载安装、独立左侧 HUD 入口和组件中心均已成功，但更新中 DSH 曾异常退出；重启后显示正常。参见 `docs/MANUAL-ACCEPTANCE.md` 与 `docs/REPOSITORY-RENAME.md`。V0.4.1 已作为 `unstable` 试验安装包列出；正式发布和实机无中断升级验收尚未完成。

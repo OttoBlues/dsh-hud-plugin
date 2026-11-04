@@ -7,8 +7,7 @@ param(
   [string] $Mode = 'check',
   [ValidateSet('released', 'unstable')]
   [string] $Channel = 'released',
-  [string] $TargetVersion = '',
-  [switch] $BootstrapV03
+  [string] $TargetVersion = ''
 )
 
 Set-StrictMode -Version Latest
@@ -61,13 +60,6 @@ function Read-DesktopManifest([string] $ManifestPath) {
 }
 
 function Resolve-VettedHudPackage {
-  $bootstrapAllowed = $BootstrapV03 -and $Mode -eq 'upgrade' -and
-    $Channel -eq 'unstable' -and $TargetVersion -eq '0.3.0' -and
-    $env:GITHUB_ACTIONS -eq 'true' -and
-    $env:GITHUB_WORKFLOW -eq 'DSH HUD v0.3 one-time bootstrap'
-  if ($BootstrapV03 -and -not $bootstrapAllowed) {
-    throw 'Bootstrap mode is only valid for the explicitly authorized HUD v0.3 trial.'
-  }
   $index = Read-DesktopManifest (Join-Path $repositoryRoot ('plugins\hud\' + $Channel + '\index.json'))
   if ($index.schema -ne 1 -or $index.component -ne 'hud' -or
       $index.package -ne '@local/dsh-hud' -or $index.channel -ne $Channel) {
@@ -88,7 +80,7 @@ function Resolve-VettedHudPackage {
     throw 'Reviewed archive SHA-256 mismatch.'
   }
   $base = Join-Path $env:USERPROFILE '.dsh\component-updates'
-  if ($Channel -eq 'unstable' -and -not $bootstrapAllowed) {
+  if ($Channel -eq 'unstable') {
     $prefPath = Join-Path $base 'preferences.json'
     if (-not (Test-Path -LiteralPath $prefPath -PathType Leaf)) {
       throw 'Unstable updates are disabled.'
@@ -98,7 +90,7 @@ function Resolve-VettedHudPackage {
       throw 'Unstable updates are disabled.'
     }
   }
-  if (($TargetVersion -ne '' -or $Channel -eq 'unstable') -and -not $bootstrapAllowed) {
+  if ($TargetVersion -ne '' -or $Channel -eq 'unstable') {
     $requestPath = Join-Path $base 'request.json'
     if (-not (Test-Path -LiteralPath $requestPath -PathType Leaf)) {
       throw 'Explicit update request required.'

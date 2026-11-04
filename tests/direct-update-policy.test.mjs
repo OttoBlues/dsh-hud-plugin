@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync, existsSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 
 const host = readFileSync(new URL('../plugins/hud/index.js', import.meta.url), 'utf8');
@@ -33,10 +33,9 @@ test('real installer is gated on explicit component confirmation, version and sh
   assert.match(client, /path: \['requestNonce'\]/);
 });
 
-test('source-only CI cannot authorize an unstable install automatically', () => {
-  const flow = readFileSync(new URL('../.github/workflows/prepare-unstable-v03.yml', import.meta.url), 'utf8');
-  assert.match(flow, /github\.event\.head_commit\.message == 'build: HUD v0\.3\.0 trial candidate'/);
-  assert.match(flow, /npm run check/);
-  assert.match(flow, /npm run verify:pack/);
-  assert.doesNotMatch(flow, /actions\/upload-artifact|plugin --profile desktop add/);
+test('the completed V0.3 bootstrap workflow cannot run again', () => {
+  assert.equal(existsSync(new URL('../.github/workflows/bootstrap-hud-v03.yml', import.meta.url)), false);
+  assert.equal(existsSync(new URL('../.github/workflows/prepare-unstable-v03.yml', import.meta.url)), false);
+  const installer = readFileSync(new URL('../scripts/windows/desktop-deploy.ps1', import.meta.url), 'utf8');
+  assert.doesNotMatch(installer, /BootstrapV03|bootstrapAllowed/);
 });

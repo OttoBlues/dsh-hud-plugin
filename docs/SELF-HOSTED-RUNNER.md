@@ -17,10 +17,29 @@
 
 | 模式 | 做什么 | 需要真实 DSH |
 | --- | --- | --- |
-| preflight（默认） | 检查 Runner/Node/DSH 可用性，返回报告 | 否；未找到 DSH 会报告 needs-setup |
+| preflight（默认） | 检查 Runner/Node/DSH 可用性，返回报告 | 不需启动 DSH，但若缺少 DSH CLI 会明确失败并报告 needs-setup |
 | install-smoke | 检查和打包 HUD、创建临时 Web Profile、安装 .tgz、检查配置、启动回环地址的 DSH Web 并检测 HTTP 响应 | 是 |
 
 第二种模式使用独立的临时 DSH_HOME。结束后清理测试进程和临时目录，不会主动改写你常用的 DSH Desktop Profile。测试的 JSON 阶段结果上传至对应 Run 的 Artifacts，保留 7 天。**原始 CLI 输出及配置不会上传**。发生故障时仅显示失败阶段；若需要深入诊断，须在本机查看日志并先检查敏感信息。
+
+
+## 若检查提示 DSH CLI not found
+
+这代表 **Runner 运行账户** 的 PATH 没有可执行的 `dsh`，不是 HUD Bundle 构建失败。按顺序处理：
+
+1. 若 DSH Desktop 已安装，在 DSH 应用菜单中选择 **Manage dsh Command… → Install**（已安装过时选 **Repair**）。这是官方 Windows Desktop 注册 CLI 的方法，仅更新当前用户的 PATH。
+2. 在与 Runner **相同的 Windows 账户** 下打开一个新 PowerShell，运行：
+
+```powershell
+whoami
+Get-Command dsh -All | Select-Object Name, Source
+dsh --version
+```
+
+3. 关闭原有 `run.cmd` 并重新打开以刷新 PATH；如果作为 Windows 服务运行，确认服务使用的是哪个账户，并重启服务。只在普通账户下注册了 CLI，并不意味着服务账户也能访问。
+4. 先运行 `preflight`，看到绿色通过后再运行 `install-smoke`。现在 `install-smoke` 会**先执行 CLI 预检**，找不到命令会立即失败，而不是下载 Node 后才报错。
+
+不要向 ChatGPT 或 Actions 日志发送注册 Token、API 密钥、完整系统环境变量。
 
 ## 运行限制与安全规则
 

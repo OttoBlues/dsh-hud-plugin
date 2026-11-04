@@ -37,6 +37,9 @@ jobs:
       - name: Preflight (no install, no DSH config changes)
         if: inputs.mode == 'preflight'
         run: .\scripts\windows\self-hosted-smoke.ps1 -Mode preflight
+      - name: Gate installation on DSH CLI readiness
+        if: inputs.mode == 'install-smoke'
+        run: .\scripts\windows\self-hosted-smoke.ps1 -Mode preflight
       - uses: actions/setup-node@v4
         if: inputs.mode == 'install-smoke'
         with:

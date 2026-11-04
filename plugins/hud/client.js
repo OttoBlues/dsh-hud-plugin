@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.2 development: cockpit panel geometry and DSH-native component manager.
+ * DSH HUD V0.5.3: bounded update checks, flat cockpit, component-center-only entry.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,8 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.2';
+    const VERSION = '0.5.3';
+    const CHECK_WATCHDOG_MS = 45_000;
     const REFRESH_MS = 5 * 60_000;
 
     const dictionaries = {
@@ -30,7 +31,9 @@ window.__ModuleLoader__.load({
         section: '仓库组件', options: '更新策略', sourceOK: '公开仓库已连接',
         sourceUnavailable: '仓库版本源暂不可匿名访问：请将 GitHub 仓库设为 Public。',
         sourceChecking: '正在读取公开组件清单…', noComponents: '当前没有可用的仓库组件',
-        sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkIdle:'手动触发云端版本扫描',
+        sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkQueued:'排队等待 Host 检查…',
+        checkTimeout:'检查超时：DSH 更新服务未响应，可以点击重试并查看日志',checkIdle:'手动触发云端版本扫描',
+        automaticScan:'后台检查',
         checkSuccess:'版本检查完成',checkPartial:'部分通道检查不完整',checkFailed:'版本检查失败',
         checkAt:'检查时间',checkCanonical:'当前源：dsh-hud-plugin',checkLegacy:'当前源：旧地址兼容',
         checkTip:'仅重新读取公开组件索引与发布清单，不安装任何版本。',
@@ -64,7 +67,9 @@ window.__ModuleLoader__.load({
         section: 'Repository components', options: 'Update policy', sourceOK: 'Public repository connected',
         sourceUnavailable: 'Anonymous update source unavailable. Make the GitHub repository Public to enable direct updates.',
         sourceChecking: 'Checking the public component index…', noComponents: 'No repository components are available',
-        sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkIdle:'Check public channels now',
+        sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkQueued:'Waiting for DSH Host…',
+        checkTimeout:'Check timed out: DSH update service did not respond. Retry or inspect logs.',checkIdle:'Check public channels now',
+        automaticScan:'Background check',
         checkSuccess:'Update check completed',checkPartial:'Some release channels could not be checked',
         checkFailed:'Update check failed',checkAt:'Checked at',checkCanonical:'Source: dsh-hud-plugin',
         checkLegacy:'Source: legacy compatibility',checkTip:'Read public release manifests now; no installation is triggered.',
@@ -362,20 +367,9 @@ window.__ModuleLoader__.load({
             h(OverlayLabel,{title:'DSH',body:t('noToken'),
               side:{right:32,bottom:128,textAlign:'right'}})));
         }
-        children.push(h('button',{key:'switcher',type:'button',
-          'data-dsh-hud-switcher':true,'aria-label':t('enterHud'),
-          onClick:()=>{void setMode(true);},
-          style:{position:'absolute',top:76,right:16,zIndex:31,
-            pointerEvents:'auto',fontFamily:'system-ui,sans-serif',fontSize:12,
-            fontWeight:650,letterSpacing:'.08em',padding:'9px 13px',
-            borderRadius:0,clipPath:V.cut,color:V.cyan,border:'1px solid '+V.stroke,
-            background:'rgba(4,24,36,.94)',boxShadow:'0 0 18px rgba(69,236,235,.12)',
-            cursor:'pointer'}},'◇ HUD'));
-        if (error) children.push(h('div',{key:'error',role:'alert',
-          style:{position:'absolute',top:118,right:16,
-            color:'#efb2b2',background:'#2f181e',fontSize:12,padding:9,
-            borderRadius:8,pointerEvents:'auto'}},error));
-        return h(React.Fragment,null,...children);
+        // No floating HUD launcher inside native DSH; the Component Center
+        // is the sole entry point. Optional read-only preview remains safe.
+        return children.length ? h(React.Fragment,null,...children) : null;
       };
     }
 
@@ -398,6 +392,11 @@ window.__ModuleLoader__.load({
         const [saving, setSaving] = React.useState(false);
         const [error, setError] = React.useState('');
         const [requestingCheck, setRequestingCheck] = React.useState(false);
+        const [watchNow, setWatchNow] = React.useState(Date.now());
+        React.useEffect(() => {
+          const tick=setInterval(()=>setWatchNow(Date.now()),1000);
+          return ()=>clearInterval(tick);
+        },[]);
         React.useEffect(() => {
           let alive = true;
           async function refreshInstalled() {
@@ -466,17 +465,31 @@ window.__ModuleLoader__.load({
 
 
         const checkState = values.checkState || 'idle';
-        const busyCheck = requestingCheck || !!values.checkNonce || checkState === 'checking';
-        const lastChecked = typeof values.checkAt === 'string' && !Number.isNaN(Date.parse(values.checkAt))
+        const queuedTime = Date.parse(values.checkQueuedAt || '');
+        const pendingCheck = !!values.checkNonce ||
+          checkState === 'queued' || checkState === 'checking';
+        // Old hung requests lack checkQueuedAt, so they can be retried too.
+        const checkTimedOut = pendingCheck &&
+          (!Number.isFinite(queuedTime) ||
+            watchNow - queuedTime >= CHECK_WATCHDOG_MS);
+        const busyCheck = requestingCheck || (pendingCheck && !checkTimedOut);
+        const checkDisplayState = checkTimedOut ? 'timeout' : checkState;
+        const lastChecked = typeof values.checkAt === 'string' &&
+          !Number.isNaN(Date.parse(values.checkAt))
           ? new Date(values.checkAt).toLocaleTimeString(undefined,
               {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+        const lastBackgroundCheck = typeof values.scanAt === 'string' &&
+          !Number.isNaN(Date.parse(values.scanAt))
+          ? new Date(values.scanAt).toLocaleTimeString(undefined,
+              {hour:'2-digit',minute:'2-digit'}) : '';
         const requestCheck = async () => {
           if (busyCheck) return;
           setRequestingCheck(true);setError('');
           try {
             const accepted = await form.mutate([
               {op:'set',path:['checkNonce'],value:String(Date.now())+'-'+Math.random().toString(36).slice(2)},
-              {op:'set',path:['checkState'],value:'checking'},
+              {op:'set',path:['checkQueuedAt'],value:new Date().toISOString()},
+              {op:'set',path:['checkState'],value:'queued'},
               {op:'set',path:['checkError'],value:''},
             ]);
             if (accepted === false) throw new Error('The update check request was rejected.');
@@ -486,7 +499,9 @@ window.__ModuleLoader__.load({
             setRequestingCheck(false);
           }
         };
-        const checkLabel = checkState === 'checking' ? t('checkingNow')
+        const checkLabel = checkTimedOut ? t('checkTimeout')
+          : checkState === 'queued' ? t('checkQueued')
+          : checkState === 'checking' ? t('checkingNow')
           : checkState === 'success' ? t('checkSuccess')
           : checkState === 'partial' ? t('checkPartial')
           : checkState === 'failed' ? t('checkFailed') : t('checkIdle');
@@ -520,23 +535,24 @@ window.__ModuleLoader__.load({
                   'data-hud-source':catalog.source,role:'status'},
                   catalog.source === 'public'?t('sourceOK'):
                     catalog.source==='checking'?t('sourceChecking'):t('sourceUnavailable')),
-                h('div',{'data-hud-check-state':checkState,role:'status',
+                h('div',{'data-hud-check-state':checkDisplayState,role:'status',
                   style:{fontSize:12,marginTop:7,
-                    color:checkState==='failed'||checkState==='partial'?'#ad722a':'var(--text-secondary,#777)'}},
+                    color:checkTimedOut||checkState==='failed'||checkState==='partial'?'#ad722a':'var(--text-secondary,#777)'}},
                   checkLabel,
                   lastChecked?' · '+t('checkAt')+' '+lastChecked:'',
-                  originLabel?' · '+originLabel:'')),
+                  originLabel?' · '+originLabel:'',
+                   lastBackgroundCheck?' · '+t('automaticScan')+' '+lastBackgroundCheck:'')),
               h('button',{type:'button','data-hud-check-button':true,
                 disabled:busyCheck,onClick:()=>{void requestCheck();},
                 style:{...actionStyle(busyCheck),minWidth:140,fontWeight:600}},
                 busyCheck?t('checkingNow'):t('checkNow'))),
             h('div',{style:{...tiny,marginTop:13}},t('checkTip')),
-            (checkState==='failed'||checkState==='partial') && values.checkError
+            (checkTimedOut || checkState==='failed'||checkState==='partial') && (checkTimedOut || values.checkError)
               ? h('div',{role:'alert','data-hud-check-error':true,
                   style:{fontSize:12,marginTop:10,color:'#a06e34',
                     padding:'10px 12px',background:'rgba(165,118,54,.065)',
                     borderLeft:'2px solid #c09b5f',
-                    overflowWrap:'anywhere'}},values.checkError)
+                    overflowWrap:'anywhere'}},checkTimedOut?t('checkTimeout'):values.checkError)
               : null),
 
           h('section',{style:{marginTop:31}},

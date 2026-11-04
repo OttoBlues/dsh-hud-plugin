@@ -3,7 +3,8 @@
 param(
   [ValidateSet('preflight', 'install-smoke')]
   [string] $Mode = 'preflight',
-  [string] $BundlePath = 'dist\local-dsh-hud-0.1.0.tgz',
+  [ValidateSet('released', 'unstable')]
+  [string] $Channel = 'unstable',
   [ValidateRange(10, 180)]
   [int] $StartupTimeoutSeconds = 60
 )
@@ -19,6 +20,7 @@ $checks = New-Object 'System.Collections.Generic.List[object]'
 $report = [ordered]@{
   schema = 1
   mode = $Mode
+  channel = $Channel
   created_utc = (Get-Date).ToUniversalTime().ToString('o')
   run_id = $env:GITHUB_RUN_ID
   overall = 'pending'
@@ -108,12 +110,32 @@ try {
   } else {
     if (-not $dshReady) { throw 'DSH CLI is required for install-smoke.' }
 
-    $activeStage = 'bundle'
-    $fullBundle = [IO.Path]::GetFullPath((Join-Path $root $BundlePath))
-    if (-not (Test-Path -LiteralPath $fullBundle -PathType Leaf)) {
-      throw 'HUD Bundle tarball missing. Run npm run pack:hud first.'
+    $activeStage = 'reviewed-channel-bundle'
+    $channelIndexPath = Join-Path $root ('plugins\hud\' + $Channel + '\index.json')
+    $index = Get-Content -LiteralPath $channelIndexPath -Raw | ConvertFrom-Json
+    if ($index.schema -ne 1 -or $index.component -ne 'hud' -or
+        $index.channel -ne $Channel -or $index.package -ne '@local/dsh-hud') {
+      throw 'Invalid trusted channel index.'
     }
-    Record-Check 'bundle' 'passed' 'HUD .tgz exists; source test/build ran in workflow.'
+    $version = [string]$index.latest
+    if ($version -notmatch '^\d+\.\d+\.\d+$') {
+      throw 'No vetted installer is published in the selected channel.'
+    }
+    $selected = @($index.releases | Where-Object { $_.version -eq $version })
+    if ($selected.Count -ne 1) { throw 'Vetted installer is not uniquely listed.' }
+    $entry = $selected[0]
+    $expectedFile = 'v' + $version + '/local-dsh-hud-' + $version + '.tgz'
+    if ($entry.file -ne $expectedFile -or
+        [string]$entry.sha256 -notmatch '^[0-9a-f]{64}$') {
+      throw 'Vetted installer descriptor invalid.'
+    }
+    $fullBundle = [IO.Path]::GetFullPath((Join-Path $root ('plugins\hud\' + $Channel + '\' + $entry.file.Replace('/', '\'))))
+    if (-not (Test-Path -LiteralPath $fullBundle -PathType Leaf)) {
+      throw 'A reviewed .tgz is missing from the channel.'
+    }
+    $actualHash = (Get-FileHash -LiteralPath $fullBundle -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualHash -ne [string]$entry.sha256) { throw 'Vetted installer SHA-256 mismatch.' }
+    Record-Check 'reviewed-channel-bundle' 'passed' ('Verified ' + $Channel + ' HUD v' + $version + ' without using HEAD source.')
 
     $runnerTemp = $env:RUNNER_TEMP
     if ([string]::IsNullOrWhiteSpace($runnerTemp)) {

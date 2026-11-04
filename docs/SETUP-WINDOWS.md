@@ -1,57 +1,29 @@
-# Windows 首次设置 / GitHub 操作
+# Windows 首次设置与组件发布通道
 
-## 0. 远程私有仓库
+仓库：<https://github.com/OttoBlues/dsh-plugins>（目前 Private）。已配置 GitHub App 访问和专用 Windows 自托管 Runner，无需把个人 PAT 写进 HUD 客户端。
 
-GitHub 账户：`OttoBlues`。已创建私有仓库：`https://github.com/OttoBlues/dsh-plugins`；ChatGPT GitHub App 已获该仓库访问授权。
-
-首次初始化由 Chat 通过 GitHub 连接提交，不需要另行创建仓库或手工推送 ZIP 文件。后续修改建议用 GitHub 分支和 PR 审查，通过后合并到 `main`。
-
-## 1. 本机获取仓库
+## 开发流程
 
 ```powershell
 git clone https://github.com/OttoBlues/dsh-plugins.git
 cd dsh-plugins
-```
-
-如果 Windows 上没有 Git，先安装 Git for Windows。私有仓库 clone 需登录 GitHub；不要把 GitHub Token 粘贴给 ChatGPT 或写入仓库。
-
-## 2. 本机验证
-
-```powershell
-node --version           # >=22
 npm run verify
+npm run verify:channels
 npm test
-npm run pack:hud
-npm run verify:pack
 ```
 
-不需要 `npm install`；第一个 HUD Bundle 无第三方依赖。
+以上命令只执行静态验证与测试。开发者可以运行 `npm run pack:hud` 在 `dist/` 中打包结构候选，但它**不是已发布安装包，不应在正常 DSH Desktop 中安装**。
 
-## 3. GitHub Actions
+## 正式发布与试验安装
 
-- 仓库 → Actions → `DSH plugins CI`。
-- 推送到 `main` 会自动运行 Linux 验证 + Windows 测试/打包；也可以手动选择 `Run workflow`。
-- Windows Job 成功后，进入对应 Workflow Run 的 `Artifacts` 区域下载 `.tgz` 打包产物。
-- Workflow 使用默认只读 `GITHUB_TOKEN` 权限，不写入 Secrets、不自动发布 Release、不部署你的本机 DSH。
-- 私有仓库的标准运行器会占用 Actions 免费计算额度。初始 Windows job 只在 main 推送和手动触发时运行，不在 PR 时运行，避免重复消耗额度。
+- 正式版来自 `plugins/hud/released/index.json` 所列的不可变 `.tgz`，只有用户明确决定发布才能加入。
+- 试验版来自 `plugins/hud/unstable/index.json`，需要先以测试包形式发布；客户端试验版订阅默认关闭。
+- 组件页点击更新会生成明确请求，Windows Runner 验证版本、校验和和用户允许的通道；DSH 正在运行就推迟。
+- `released/` 和 `unstable/` 当前都为空，因此现阶段**不存在新的可安装版本**。
+- `DSH plugins CI` 仅构建并验证源码候选，不上传最新 HEAD 的安装包，不能通过以前的 `dsh-hud-bundle-*` 产物绕过发布通道。
 
-## 4. DSH 安装与回退
+手动隔离安装验证：使用 [self-hosted smoke 工作流](https://github.com/OttoBlues/dsh-plugins/actions/workflows/self-hosted-smoke.yml) 的 `install-smoke`，并选择已发布通道。它创建临时 Web Profile，不会更改日常 Desktop。
 
-优先阅读 https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md
+用户日常 Desktop 此前安装了 HUD V0.2，但该版本**尚未被认可为正式发布版**，上述政策不会自动删除或回退现有安装。如需回退或卸载，先安全退出 DSH，再使用 `desktop-deploy.yml` 的手动入口。
 
-在已准备好的完整 DSH Web 测试 Profile 上安装（**不要直接覆盖默认 Desktop Profile**）：
-
-```powershell
-dsh plugin --profile hud-test add .\dist\local-dsh-hud-0.1.0.tgz
-dsh --profile hud-test --dump-config
-```
-
-初次 `dsh plugin --profile hud-test` 可能只创建基础 Profile。请依当前安装版本官方 CLI Profile 文档选择 Web 模板，再安装 Bundle。不要依赖这些命令自动补齐 UI 系统。
-
-回退示例：
-
-```powershell
-dsh plugin --profile hud-test remove @local/dsh-hud
-```
-
-未执行真实 DSH 安装时，只能声称本仓库生成了可供 DSH 安装的离线 Bundle，不能声称已成功安装。
+发布规则见 [RELEASE-POLICY.md](RELEASE-POLICY.md)，部署与回退见 [DESKTOP-DEPLOY.md](DESKTOP-DEPLOY.md)。

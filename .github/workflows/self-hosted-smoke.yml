@@ -12,6 +12,14 @@ on:
         options:
           - preflight
           - install-smoke
+      channel:
+        description: 'Choose only a vetted release channel for install-smoke'
+        required: true
+        type: choice
+        default: unstable
+        options:
+          - unstable
+          - released
 
 permissions:
   contents: read
@@ -44,18 +52,14 @@ jobs:
         if: inputs.mode == 'install-smoke'
         with:
           node-version: '22'
-      - name: Check bundle and run unit tests
+      - name: Validate reviewed channel archives and unit tests (never pack latest source)
         if: inputs.mode == 'install-smoke'
-        run: |
-          npm run check
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run pack:hud
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run verify:pack
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Install into temporary DSH Web profile and verify startup
+        run: npm run check
+      - name: Install only selected vetted .tgz into isolated DSH Web profile
         if: inputs.mode == 'install-smoke'
-        run: .\scripts\windows\self-hosted-smoke.ps1 -Mode install-smoke
+        env:
+          REVIEWED_CHANNEL: ${{ inputs.channel }}
+        run: .\scripts\windows\self-hosted-smoke.ps1 -Mode install-smoke -Channel $env:REVIEWED_CHANNEL
       - name: Publish structured smoke results only
         if: always()
         uses: actions/upload-artifact@v4

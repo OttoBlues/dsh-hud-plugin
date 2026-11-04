@@ -176,19 +176,45 @@ try {
       $report.overall = 'already-current'
       $exitCode = 0
     } else {
-      # Backup the prior Bundle without executing its lifecycle scripts.
-      # A failed backup stops deployment before any mutation of Desktop.
+      # Repackage a strict allowlist of prior installed HUD files into an npm-compatible
+      # package/ tarball. This avoids npm pack lifecycle hooks, symlink traversal,
+      # and PowerShell 5.1 interpreting npm notice stderr as a terminating error.
+      # A failed rollback archive stops deployment before any Desktop mutation.
       $stage = 'backup'
+      $tarCommand = Get-Command tar.exe -ErrorAction SilentlyContinue
+      if ($null -eq $tarCommand) { throw 'Windows tar.exe unavailable; upgrade cancelled.' }
       $backupDir = Join-Path $scratch 'rollback'
+      $stageRoot = Join-Path $scratch 'rollback-stage'
+      $stagePackage = Join-Path $stageRoot 'package'
       New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+      New-Item -ItemType Directory -Path $stagePackage -Force | Out-Null
       $installedRoot = Split-Path -Path $installedManifestPath -Parent
-      $packLog = Join-Path $scratch 'rollback-pack.log'
-      & npm.cmd pack $installedRoot --pack-destination $backupDir --ignore-scripts *> $packLog
-      if ($LASTEXITCODE -ne 0) { throw 'Cannot create a rollback package; upgrade cancelled.' }
-      $archives = @(Get-ChildItem -LiteralPath $backupDir -File -Filter '*.tgz')
-      if ($archives.Count -ne 1) { throw 'Rollback package count is not one; upgrade cancelled.' }
-      $rollback = $archives[0].FullName
-      Record 'backup' 'passed' 'Original HUD Bundle packed locally for same-run rollback.'
+      foreach ($entry in @('package.json', 'client.js', 'index.js', 'cordis.patch.yml', 'icon.svg')) {
+        $from = Join-Path $installedRoot $entry
+        if (-not (Test-Path -LiteralPath $from -PathType Leaf)) {
+          throw ('Prior HUD required file missing: ' + $entry)
+        }
+        Copy-Item -LiteralPath $from -Destination (Join-Path $stagePackage $entry) -Force
+      }
+      $locale = Join-Path $installedRoot 'locale'
+      if (-not (Test-Path -LiteralPath $locale -PathType Container)) {
+        throw 'Prior HUD locale directory missing.'
+      }
+      Copy-Item -LiteralPath $locale -Destination $stagePackage -Recurse -Force
+      $oldReadme = Join-Path $installedRoot 'README.md'
+      if (Test-Path -LiteralPath $oldReadme -PathType Leaf) {
+        Copy-Item -LiteralPath $oldReadme -Destination (Join-Path $stagePackage 'README.md') -Force
+      }
+      $rollback = Join-Path $backupDir 'dsh-hud-prior-rollback.tgz'
+      & $tarCommand.Source -czf $rollback -C $stageRoot package 2>$null
+      if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $rollback -PathType Leaf)) {
+        throw 'Cannot archive the previous HUD version; upgrade cancelled.'
+      }
+      $tarEntries = @(& $tarCommand.Source -tzf $rollback 2>$null)
+      if ($LASTEXITCODE -ne 0 -or -not ($tarEntries -contains 'package/package.json')) {
+        throw 'Rollback archive structure is invalid; upgrade cancelled.'
+      }
+      Record 'backup' 'passed' 'Original HUD package archived locally for same-run rollback.'
 
       $stage = 'upgrade'
       try {

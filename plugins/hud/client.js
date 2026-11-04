@@ -1,8 +1,8 @@
 /**
  * DSH HUD v0.3.0: safe, opt-in preview plus a per-component Updates tab.
  * The browser never sees GitHub credentials or executes installers. The
- * self-hosted Runner stages CI-verified updates, and the Host relays metadata
- * through the officially supported ConfigForms/ConfigEditor settings bridge.
+ * Host anonymously verifies approved public GitHub archives and installs via
+ * the official DSH pluginManager; a private repository remains unavailable.
  */
 window.__ModuleLoader__.load({
   id: '@local/dsh-hud',
@@ -27,8 +27,9 @@ window.__ModuleLoader__.load({
         currentVersion: '当前版本', latestVersion: '可用版本',
         alreadyLatest: '已是最新', unavailable: '尚未取得可信版本清单',
         needsSetup: '更新源尚未就绪', update: '更新', cancel: '取消',
-        confirm: '确认更新', confirmText: '更新不会立即中断 DSH；关闭程序后由 Windows Runner 自动安装。',
-        queued: '已请求更新，退出 DSH 后自动安装',
+        confirm: '确认更新', confirmText: '确认后由 DSH 安装经过校验的发布包；更新可能需要重启 DSH。',
+        restartRequired: '已安装，重启 DSH 生效', installedOK: '更新已安装', failedUpdate: '更新未完成，请检查仓库是否公开及 DSH 日志',
+        queued: '已确认更新，正在交给 DSH 安装',
         requesting: '提交更新请求中…', requestFailed: '请求未保存，请重试',
         preview: '聊天窗口 HUD 预览', previewDesc: '关闭后不会在聊天内容和标题栏上叠加状态文字。',
         noBundles: '未找到对应的 DSH 组件', installed: '已安装',
@@ -50,8 +51,9 @@ window.__ModuleLoader__.load({
         alreadyLatest: 'Up to date', unavailable: 'Trusted update catalog unavailable',
         needsSetup: 'Update source not ready', update: 'Update', cancel: 'Cancel',
         confirm: 'Confirm update',
-        confirmText: 'Updating will not interrupt DSH. The Windows Runner installs it after DSH exits.',
-        queued: 'Update queued; it will install after DSH exits',
+        confirmText: 'DSH installs the verified release after confirmation; a restart may be required.',
+        restartRequired: 'Installed; restart DSH', installedOK: 'Update installed', failedUpdate: 'Update failed; check public repository access and DSH logs',
+        queued: 'Update request confirmed and being processed by DSH',
         requesting: 'Saving update request…', requestFailed: 'Could not save request; retry',
         preview: 'Chat-window HUD preview',
         previewDesc: 'Off means no floating HUD text overlaps chats or window chrome.',
@@ -213,6 +215,8 @@ window.__ModuleLoader__.load({
               { op: 'set', path: ['requestComponent'], value: item.name },
               { op: 'set', path: ['requestVersion'], value: item.version },
               { op: 'set', path: ['requestChannel'], value: item.channel },
+              { op: 'set', path: ['requestNonce'], value: String(Date.now()) },
+              { op: 'set', path: ['updateStatus'], value: '' },
             ]);
             if (!success) setError(t('requestFailed'));
             else setConfirm(null);
@@ -259,6 +263,12 @@ window.__ModuleLoader__.load({
             ));
         }),
         error ? h('div', { role: 'alert', style: { marginTop: 12, color: '#c65b5b' } }, error) : null,
+        value.updateStatus === 'failed'
+          ? h('p', { role: 'alert', style: { color: '#c65b5b', fontSize: 12 } }, t('failedUpdate'))
+          : value.updateStatus === 'restart-required'
+            ? h('p', { role: 'status', style: { fontSize: 12 } }, t('restartRequired'))
+            : value.updateStatus === 'installed'
+              ? h('p', { role: 'status', style: { fontSize: 12 } }, t('installedOK')) : null,
         h('div', { style: { marginTop: 18, paddingTop: 12, borderTop: '1px solid rgba(128,128,128,.22)' } },
           h('label', { style: { display: 'flex', alignItems: 'center', gap: 9, fontSize: 13 } },
             h('input', { type: 'checkbox', checked: value.allowUnstable === true,

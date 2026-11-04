@@ -7,8 +7,8 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.1 开发源码**（新增一键版本检查和增强线框 HUD，尚未发布）。
-- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.0**。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.1 试验源码**（已发布 Unstable，尚未确定最终 HUD 风格）。
+- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.1**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
 
@@ -47,3 +47,5 @@ V0.5.1 的设计候选为 **矢量线框/驾驶舱式 HUD**：切角边框、角
 组件中心增加 **「检查更新」** 按钮，通过 Host 即时检查公开仓库的 `plugins/index.json`、`released` 与 `unstable` 发布索引，并显示成功、部分通道失败或网络失败、最近检查时间和使用的源。仅检查版本，不会执行安装或替代用户的明确升级确认。
 
 **视觉风格尚未定稿**：这是供用户在 DSH V0.5.1 Unstable 实机体验后提出修改的候选版，不晋升 Released，也不撤销 HUD/DSH 切换与安全退出行为。详见 [视觉规范和验收](docs/HUD-VECTOR-STYLE-051.md)。
+
+**试验版发布状态：** V0.5.1 已依据绿色 GitHub 托管 CI 制作固定安装包并加入 Unstable。用户需主动在 HUD 组件中心手动更新，实际检查更新按钮及科幻风格的验收尚未完成。

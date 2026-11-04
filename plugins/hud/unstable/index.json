@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.5.0",
+  "latest": "0.5.1",
   "releases": [
     {
       "version": "0.3.0",
@@ -59,6 +59,17 @@
         "result": "success"
       },
       "note": "Experimental HUD full-frame workspace and reversible HUD/DSH switch with read-only live session status; explicit U05 manual UI acceptance required."
+    },
+    {
+      "version": "0.5.1",
+      "file": "v0.5.1/local-dsh-hud-0.5.1.tgz",
+      "sha256": "d58656154359a0b1fcb29fcf395a0997e67ac0f2e830c15e6d25abf230308a72",
+      "sourceCommit": "07f8c9fb6dcac36d57dc2c21b711ec8cbf5a8481",
+      "test": {
+        "ciRun": "41902936221",
+        "result": "success"
+      },
+      "note": "Experimental vector HUD cockpit, redesigned component center and user-triggered release checks with explicit diagnostics; awaiting user V051 visual approval."
     }
   ]
 }

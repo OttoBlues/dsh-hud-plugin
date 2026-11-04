@@ -41,6 +41,23 @@ jobs:
       - name: Run Node tests
         run: npm test
 
+  windows-syntax:
+    name: Parse self-hosted PowerShell (Windows)
+    if: github.event_name == 'pull_request'
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate PowerShell syntax
+        shell: powershell
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path './scripts/windows/self-hosted-smoke.ps1').Path, [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count -gt 0) { $parseErrors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+
   windows-build:
     name: Test and pack HUD (Windows)
     if: github.event_name != 'pull_request'

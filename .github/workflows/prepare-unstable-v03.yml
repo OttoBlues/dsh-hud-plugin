@@ -1,0 +1,53 @@
+name: Prepare explicitly requested HUD v0.3 unstable candidate
+
+# Single-purpose preparation: only a specially titled main push containing
+# this workflow can print a candidate archive for review. This job never
+# publishes a stable release or changes the user's Desktop.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/prepare-unstable-v03.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-candidate:
+    if: >-
+      github.repository == 'OttoBlues/dsh-plugins' &&
+      github.ref == 'refs/heads/main' &&
+      (
+        (github.event_name == 'push' &&
+         github.event.head_commit.message == 'build: HUD v0.3.0 trial candidate')
+        || github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate latest component source and package structure
+        run: |
+          npm run check
+          npm run pack:hud
+          npm run verify:pack
+      - name: Emit reviewed archive bytes for immutable unstable channel staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="dist/local-dsh-hud-0.3.0.tgz"
+          test -s "$file"
+          echo "HUD_ARCHIVE_VERSION:0.3.0"
+          echo "HUD_ARCHIVE_SOURCE_SHA:${{ github.sha }}"
+          echo "HUD_ARCHIVE_CI_RUN:${{ github.run_id }}"
+          echo "HUD_ARCHIVE_SHA256:$(sha256sum "$file" | cut -d' ' -f1)"
+          echo "HUD_ARCHIVE_BASE64_START"
+          base64 -w 96 "$file"
+          echo
+          echo "HUD_ARCHIVE_BASE64_END"

@@ -34,6 +34,8 @@ function setup(initial = {}) {
     allowUnstable: false,
     requestComponent: '',
     requestVersion: '',
+    requestNonce: '',
+    updateStatus: '',
     overlayVisible: false,
     ...initial,
   };
@@ -140,8 +142,9 @@ test('click requires confirmation then stores a scoped update request', async ()
   assert.equal(harness.value.requestComponent, '@local/dsh-hud');
   assert.equal(harness.value.requestVersion, '0.4.0');
   assert.equal(harness.value.requestChannel, 'released');
+  assert.match(harness.value.requestNonce, /^\d+$/);
   const queued = harness.render('plugins.tab');
-  assert.match(JSON.stringify(queued), /已请求更新/);
+  assert.match(JSON.stringify(queued), /已确认更新/);
 });
 
 test('matching versions never present an update action', () => {
@@ -189,9 +192,15 @@ test('experimental opt-in setting starts disabled and can be toggled', () => {
   assert.equal(h.value.allowUnstable, true);
 });
 
-test('Host declares a volatile Schemastery preference with experimental channel off by default', () => {
+test('Host exposes experimental preferences and performs only consented direct updates', () => {
   const host = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
   assert.match(host, /allowUnstable: Schema\.boolean\(\)\.default\(false\)\.volatile\(\)/);
   assert.match(host, /requestChannel: Schema\.string/);
-  assert.match(host, /requestedChannel === 'released' \|\| allowUnstable/);
+  assert.match(host, /requestNonce: Schema\.string/);
+  assert.match(host, /channel === 'unstable' && config\.allowUnstable\.get\(\) !== true/);
+  assert.match(host, /ctx\.pluginManager\.installBundle\(archive, \{ enabled: true \}\)/);
+  assert.match(host, /createHash\('sha256'\)/);
+  assert.match(host, /raw\.githubusercontent\.com\/OttoBlues\/dsh-plugins\/main\/plugins\/hud/);
+  assert.doesNotMatch(host, /GITHUB_TOKEN|child_process|exec\(/);
 });
+

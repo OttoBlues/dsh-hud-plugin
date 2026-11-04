@@ -1,24 +1,37 @@
-# DSH 双通道组件检查与用户确认更新
+# DSH HUD V0.3 更新方式
 
-**功能政策**：`plugins/<组件>/released/` 只存用户批准的正式版本；`unstable/` 只存试验包。源码文件始终是最新研发状态，不允许作为直接安装源。
+## 首次试验版引导
 
-## 组件页
+用户明确要求将 V0.3 作为 `plugins/hud/unstable/` 试验包，通过 Windows Actions Runner **安装一次**。这是引导操作，不是正式发布；`released/` 继续保持空目录。
 
-- 每次打开「插件 → 组件」时读取可信 Host 清单；插件运行期间 Host 每 20 秒读取一次 Runner 的本地版本清单，Windows Runner 每 15 分钟安排一次检查（GitHub Actions 可能延迟）。
-- 默认不接受试验版：只把 `released` 版本作为可更新候选。
-- 用户可打开「允许试验版更新」使 `unstable` 可见；**仍必须点击「更新」并再次确认**。
-- 只接受具体组件、通道、版本、提交及 SHA-256 的一项更新请求，且需现有版本更低。
-- 关闭开关后，任何排队中的 `unstable` 请求也会被 Runner 拒绝。
-- DSH 正在运行时不强制结束进程；保留更新请求，正常退出后才升级。
-- 升级前备份已安装插件；如果升级或版本核验失败，尝试回退；不自动改变会话与权限。
+该版本的 HUD 窗口内叠加层默认隐藏，避免覆盖 DSH 标题栏和聊天输入区。组件管理页面新增试验版开关，默认关闭。
 
-## 私有仓库和 Token
+## 后续在 DSH 内更新（不再依赖 Actions Runner）
 
-当前仓库是 Private，公开匿名下载不可用。已授权的 GitHub Runner 能通过 Actions 的短期凭据获取代码并暂存**仅属于已登记通道**的包，插件本身不存储 Token 或直接访问 GitHub 私有仓库。将仓库转为 Public 后，可以改用匿名 HTTP 检查，不需要个人 Access Token。这个工作流不负责改变仓库可见性。
+V0.3 Host 更新器使用 **HTTPS 匿名读取公开 GitHub 仓库**：
 
-## 当前状态
+- `https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/hud/released/index.json`
+- `https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/hud/unstable/index.json`（只有用户主动开启试验版才允许安装）
 
-- `released/index.json`: `latest: null`, `releases: []`。
-- `unstable/index.json`: `latest: null`, `releases: []`。
-- Windows DSH Desktop 之前已安装 HUD V0.2（不因改变发布政策自动卸载/回退）。
-- 下一步需要用户明确选择是否为 V0.3 创建试验版包后，才能把新组件管理界面部署到 Windows 进行实际验收。
+每 5 分钟检查一次。只读取索引登记的最高版本，不直接从仓库最新源码打包更新。用户打开「插件 → 组件」，点击更新并确认时，Host 再次读取目标版本清单，并严格检查组件名、通道、版本、源码提交及归档 SHA-256，确认一致后下载固定路径的 `.tgz`，将其交给 **DSH 官方 `pluginManager.installBundle`**。DSH 可能提示需要重启，但更新器不会自行关闭主程序或停止 Agent。
+
+**必要前提：仓库必须变成 Public，公开索引与 .tgz 归档必须能匿名下载。** 当前仓库仍为 Private，没有给浏览器或插件保存任何 GitHub Token，所以未来直连更新在仓库公开前不可用。本次引导安装由已经授权的 Windows Runner 完成，之后公开仓库即可不再需要 Runner 进行安装。
+
+## 当前通道规则
+
+- `released/`：只有用户明确批准正式发布才加入不可变安装包。
+- `unstable/`：可供测试的已打包版本，必须通过 CI、带 SHA-256，并且由用户确认升级。
+- 试验版开关默认关闭，打开后**也不会自动安装**。
+- 任何新 `main` 提交都不是正式发布，CI 的短期候选构建也不是安装来源。
+
+## 角色边界
+
+- GitHub Actions：继续自动测试、构建和严格校验发布产物；不要求长期连接用户本机。
+- DSH Host：用户点击后调用官方插件管理服务进行更新；不执行 PowerShell、`cmd.exe`、`git clone` 或不可信脚本。
+- Windows Runner：本次 V0.3 引导安装及必要的原生集成验证；引导成功后可以关闭 Runner。
+
+## 验收
+
+- V0.2 安装过，但截图存在文字与标题栏/输入区重叠；并未进入正式发布。
+- V0.3 需要分别验证：`unstable` 归档的 CI、Windows 临时安装、Desktop 持久安装、组件选项卡显示、试验版开关默认关闭及无重叠。
+- 当仓库正式公开且有更高版本加入发布通道时，再验证无需 Runner 的匿名检查和点击更新。这一最后步骤当前无法在私有仓库中做端到端证明。

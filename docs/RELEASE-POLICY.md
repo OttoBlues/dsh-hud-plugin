@@ -1,54 +1,31 @@
-# DSH 组件版本管理（发布权限由用户决定）
+# 组件源码与版本发布规则
 
-## 双目录
+## 目录
 
-仓库采用 Monorepo，每个组件以独立目录管理。HUD 现为 `plugins/hud/`：
-
-```
+```text
 plugins/
   hud/
-    package.json           # 开发版本；可以不稳定
-    index.js               # Host 最新源码
-    client.js              # Client 最新源码
-    tests/                 # 研发与回归测试
-    released/              # 仅由用户批准的安全安装版本
-      README.md
+    package.json           # 最新开发版本，可包含未经人工验收的代码
+    index.js               # 最新 Host 源码
+    client.js              # 最新 Client 源码
+    released/              # 只有用户批准后才发布正式安全版本
       index.json
-      # 未来经批准才新增 vX.Y.Z/*.tgz
-    unstable/              # 试验版安装包，需明确点击更新
-      README.md
+      vX.Y.Z/*.tgz
+    unstable/              # 供实际验证的试验版
       index.json
-      # 未来按需增加 vX.Y.Z/*.tgz
+      vX.Y.Z/*.tgz
 ```
 
-**当前两条发布通道均为空：没有已经正式发布的版本，也没有待试验安装包。**
+`released` 与 `unstable` 中的 `index.json` 都使用 `latest` 和 `releases`。版本清单应指向同一通道的不可变 `.tgz`，具有 SHA-256、源提交、版本及验证依据。
 
-请勿将之前实际显示的 V0.1.0 或后来安装的 V0.2.0 自动视作发布版本。V0.1 已通过特定的静态预览显示验收；V0.2 截图表明其 HUD 文字覆盖标题栏和输入区，尚不符合正式发布标准。开发源码当前可继续推进 V0.3，**仅最新版源码不构成发布理由**。
+- 正式版需要用户明确做出发布决定；仅 CI 全绿、能安装、曾通过局部界面测试均不足以自动晋升正式版。
+- 试验版需要测试通过和归档 SHA-256，未正式批准也可供用户明确确认后试用。**默认不订阅试验版**。
+- `main` 中最新版源码不会自动生成可安装更新，也不会被 DSH 内置升级器直接执行。
+- 不覆盖已发布的版本归档；发现问题通过新版本修复或撤销索引可见性。
+- 当前稳定通道为空。V0.3.0 是用户指定的临时测试版本，不能自动升级为正式版。
 
-## 发布行为
+## 无长期 Token
 
-- **released**：必须由用户明确说出「发布正式版 X.Y.Z」；提供人工验收依据、准确源码提交、打包后的哈希和安装包，然后把 `manifest.json` 和 `index.json` 纳入发布提交。
-- **unstable**：仅在需要真实机器测试并确认创建试验包时将 CI 产物放入 `unstable/vX.Y.Z/`；标记 `test.ciRun` 与 `test.result = success`，允许不通过完整人工验收，但必须告知风险。
-- 两者 `index.json` 的 `latest` 只指向**本通道已登记的最高版本**；为空时必须为 `null`。
-- 版本包只能来自经 CI 验证的固定构建，存储 `.tgz`、`manifest.json` 和 SHA-256。每个发布包按版本不可变，不覆盖同版本安装包。
-- 稳定包未来可通过公开 GitHub 仓库匿名读取；**当前 Private 仓库不允许浏览器匿名读取**。当前开发阶段通过已授权 Windows Runner 的 GitHub Actions Checkout 暂存安装包，不将 GitHub PAT 写入插件。
-- 不允许客户端直接下载 `plugins/hud/client.js`、`index.js` 或 Git HEAD 源代码作为正式更新。
+公开仓库的 `raw.githubusercontent.com` 端点允许匿名读取公开发布归档和索引。V0.3 在 DSH Host 中直接查询、校验，再调用官方 `pluginManager.installBundle`。**仓库仍为 Private 时，这条无 Token 路径不可访问**，只能用已连接的 Runner 做一次引导安装，不能声称私有 GitHub 源可以匿名更新。
 
-## 安装入口
-
-1. Windows Runner 从经验证的 `released` / `unstable` 索引中暂存目标包，客户端组件页定期读取 Host 转发的本地只读清单。
-2. 组件页**默认仅显示正式版**；「允许试验版更新」默认关闭。
-3. 开启后可显示 `unstable`，但用户仍须点击具体组件的「更新」并确认，不因打开开关或仓库推送就安装。
-4. Host 将本次请求写入本机仅包含组件、版本、通道、SHA 和提交的更新队列，不涉及用户 GitHub 凭据。
-5. Windows Runner 再次检查索引、文件 SHA、Opt-in 状态和请求字段；仅在 DSH 已完全退出后调用官方 `desktop` Profile CLI，失败时尝试回退。
-6. 用户打开 DSH 验证效果；单元测试和安装成功不能替代 UI 验收。
-
-## 未来扩展
-
-任何新组件均沿用 `plugins/<组件名>/released/` 与 `plugins/<组件名>/unstable/`，但本次更新执行器首先只支持 HUD；对其他组件的界面展示不能视为自动安装能力已完成。
-
-## 对开发构建与隔离测试的额外约束
-
-- `DSH plugins CI` 可以编译、打包并检查最新的研发源码，但**不上传 `dist/*.tgz` 安装候选供用户下载**，也不会因为 CI 通过而自动生成正式或试验版。
-- `install-smoke` 必须明确选择 `unstable` 或 `released`；仅从相应 `index.json` 选出已登记的安装包并检查 SHA-256。**通道为空时测试应安全停止**，不可回退到 `npm pack` 最新源码。
-- `tests/channel-release-policy.test.mjs` 不应永久要求通道为空，未来用户批准首次发布后仍须能通过；是否有可发布包由实际索引与签名/哈希核验决定。
+这次引导完成以后，可停止 Windows Runner。后续仍可使用 GitHub 云端 Actions 做代码测试和构建，与用户本机 Runner 是两回事。

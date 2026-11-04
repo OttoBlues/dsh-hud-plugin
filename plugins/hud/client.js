@@ -254,7 +254,7 @@ window.__ModuleLoader__.load({
                     rightAction)
                 )
               );
-            })),
+            }),
             known.length===0?h('p',{style:tiny},t('noComponents')):null
           ),
 

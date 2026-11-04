@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.5.0 development source parse successfully',()=>{
+test('Host and Client v0.5.1 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -80,4 +80,26 @@ test('full-frame HUD is opt-in, safe to exit, and leaves native DSH root intact'
   assert.match(client,/useSessions\(x => x\)/);
   assert.match(client,/useSessionStatus\(x => x\)/);
   assert.doesNotMatch(client,/ctx\.slots\.inject\('root'/);
+});
+
+
+test('one-click checks use the Host allowlisted source and cannot auto-install',()=>{
+  assert.match(host,/checkNonce: Schema\.string\(\)\.default\(''\)\.volatile\(\)/);
+  assert.match(host,/checkState: Schema\.string\(\)\.default\('idle'\)\.volatile\(\)/);
+  assert.match(host,/async function processCheckRequest\(\)/);
+  assert.match(host,/await discover\(true\)/);
+  assert.match(host,/if \(!manual && config\.autoUpdateEnabled\.get\(\) === true/);
+  assert.match(client,/data-hud-check-button/);
+  assert.match(client,/data-hud-check-state/);
+  assert.match(client,/data-hud-check-error/);
+  assert.doesNotMatch(client,/fetch\(/);
+});
+
+test('vector controls replace thick rounded dashboard cards',()=>{
+  assert.match(client,/function vectorFrame\(/);
+  assert.match(client,/data-hud-vector-frame/);
+  assert.match(client,/data-hud-traces/);
+  assert.match(client,/data-hud-scope/);
+  assert.match(client,/backgroundSize:V\.backgroundSize/);
+  assert.match(client,/data-hud-visual':'vector-051/);
 });

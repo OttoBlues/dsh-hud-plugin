@@ -7,7 +7,7 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.0 源码**（已根据明确要求发布 Unstable 试验安装包）。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.1 开发源码**（新增一键版本检查和增强线框 HUD，尚未发布）。
 - `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.0**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
@@ -39,3 +39,11 @@ npm run verify:pack
 - 展示真实 Session 标题、运行状态与数量，不伪造 Agent 输出；本轮输入与高风险批准操作仍在 DSH 原生界面完成。
 - HUD 工作区默认不启用；不覆盖 root Slot，不触碰 Electron 原生窗口或 Windows 系统层透明/穿透能力。
 - V0.5.0 已作为 Unstable 试验包发布，用户需在 HUD 组件中心手动升级并完成 [U05 实机验收](docs/HUD-WORKSPACE-V050.md)；CI 通过不代表实际 Desktop 已运行成功。
+
+## HUD V0.5.1 · 增强科幻线框视觉候选
+
+V0.5.1 的设计候选为 **矢量线框/驾驶舱式 HUD**：切角边框、角部描边、深海军蓝底、淡网格、青色读数线、局部准星、控制台式信息层级。HUD 工作区与组件中心共享视觉风格，但仍展示真实 DSH 会话/组件数据，不伪造运行指标。
+
+组件中心增加 **「检查更新」** 按钮，通过 Host 即时检查公开仓库的 `plugins/index.json`、`released` 与 `unstable` 发布索引，并显示成功、部分通道失败或网络失败、最近检查时间和使用的源。仅检查版本，不会执行安装或替代用户的明确升级确认。
+
+**视觉风格尚未定稿**：这是供用户在 DSH V0.5.1 Unstable 实机体验后提出修改的候选版，不晋升 Released，也不撤销 HUD/DSH 切换与安全退出行为。详见 [视觉规范和验收](docs/HUD-VECTOR-STYLE-051.md)。

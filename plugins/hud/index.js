@@ -1,265 +1,306 @@
 /**
- * DSH HUD v0.3.1 development Host (not published).
+ * DSH component center (development v0.4.0).
+ *  - repository catalog and release channels are read anonymously from HTTPS
+ *  - only channel-listed, integrity-checked .tgz packages are installable
+ *  - manual installs require a one-time UI confirmation
+ *  - auto-update is OFF by default, stable-only unless separately opted in
+ *  - no GitHub token, Windows Runner or shell command needed by the app
  *
- * A public repository can be checked anonymously; a private repository returns
- * "unavailable", not a made-up latest version. This plugin does not store a
- * GitHub token and does not rely on any local Windows Runner catalog.
- *
- * Installation is triggered ONLY by an explicit in-app confirmation and uses
- * the DSH Host pluginManager service. Never unpack Git HEAD source.
+ * This is a *development* source, not an accepted released/ build.
  */
 import Schema from '@deepseek-ai/schemastery';
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 
 export const inject = ['pluginManager'];
-
-const CURRENT_VERSION = '0.3.1';
-const PACKAGE = '@local/dsh-hud';
-const ROOT = 'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/hud';
-const REGULAR = /^\d+\.\d+\.\d+$/;
-const COMMIT = /^[a-f0-9]{40}$/i;
-const HASH = /^[a-f0-9]{64}$/i;
-const EMPTY = '{"schema":2,"components":[]}';
-const MAX_BYTES = 25_000_000;
+const ROOT = 'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins';
+const CURRENT_NAME = '@local/dsh-hud';
+const CATALOG_EMPTY = '{"schema":3,"source":"checking","components":[]}';
+const SEMVER = /^\d+\.\d+\.\d+$/;
+const HEX40 = /^[a-f0-9]{40}$/i;
+const HEX64 = /^[a-f0-9]{64}$/i;
+const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const PACKAGE = /^@local\/[a-z0-9][a-z0-9-]{0,63}$/;
+const MAX_ARCHIVE_BYTES = 25_000_000;
 const CHECK_MS = 5 * 60_000;
-const REQUEST_POLL_MS = 3000;
-const DOWNLOAD_TIMEOUT_MS = 30_000;
+const REQUEST_MS = 2000;
+const TIMEOUT_MS = 20_000;
 
 export const Config = Schema.object({
-  catalog: Schema.string().default(EMPTY).volatile(),
+  catalog: Schema.string().default(CATALOG_EMPTY).volatile(),
+  allowUnstable: Schema.boolean().default(false).volatile(),
+  autoUpdateEnabled: Schema.boolean().default(false).volatile(),
+  autoUpdateUnstable: Schema.boolean().default(false).volatile(),
+  autoAttemptKey: Schema.string().default('').volatile(),
+  overlayVisible: Schema.boolean().default(false).volatile(),
   requestComponent: Schema.string().default('').volatile(),
   requestVersion: Schema.string().default('').volatile(),
   requestChannel: Schema.string().default('released').volatile(),
   requestNonce: Schema.string().default('').volatile(),
-  allowUnstable: Schema.boolean().default(false).volatile(),
-  overlayVisible: Schema.boolean().default(false).volatile(),
   updateStatus: Schema.string().default('').volatile(),
 });
 
-function newer(a, b) {
-  if (!REGULAR.test(a) || !REGULAR.test(b)) return false;
-  const x = a.split('.').map(Number), y = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if (x[i] !== y[i]) return x[i] > y[i];
-  }
+function newer(version, oldVersion) {
+  if (!SEMVER.test(version)) return false;
+  if (oldVersion === undefined || oldVersion === null || oldVersion === '') return true;
+  if (!SEMVER.test(oldVersion)) return false;
+  const a = version.split('.').map(Number);
+  const b = oldVersion.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
   return false;
 }
-function approvedEntry(index, channel) {
-  if (index?.schema !== 1 || index.component !== 'hud' ||
-      index.package !== PACKAGE || index.channel !== channel ||
-      !Array.isArray(index.releases) || index.releases.length > 128) {
-    throw new Error('Untrusted release index.');
-  }
-  if (index.latest === null && index.releases.length === 0) return null;
-  if (typeof index.latest !== 'string' || !REGULAR.test(index.latest)) {
-    throw new Error('Invalid channel release version.');
-  }
-  const found = index.releases.filter(row => row?.version === index.latest);
-  if (found.length !== 1) throw new Error('Ambiguous release.');
-  const row = found[0];
-  if (row.file !== 'v' + row.version + '/local-dsh-hud-' + row.version + '.tgz' ||
-      !COMMIT.test(row.sourceCommit) || !HASH.test(row.sha256)) {
-    throw new Error('Untrusted release package identifier.');
-  }
-  if (channel === 'released' && (row.acceptance?.decision !== 'approved' ||
-      !/^U\d{2,3}$/.test(row.acceptance?.check))) {
-    throw new Error('Missing explicit stable acceptance.');
-  }
-  if (channel === 'unstable' &&
-      (row.test?.result !== 'success' || !/^\d+$/.test(row.test?.ciRun))) {
-    throw new Error('Test package has no accepted CI evidence.');
-  }
-  return {
-    name: PACKAGE, version: row.version, channel,
-    commit: row.sourceCommit.toLowerCase(),
-    sha256: row.sha256.toLowerCase(), file: row.file,
-  };
-}
 
-async function getBytes(url, maxBytes, signal) {
-  // Hardcoded trusted origin, no redirects to untrusted destinations.
+async function getBytes(url, maximum, signal) {
+  if (!url.startsWith(ROOT + '/')) throw new Error('Untrusted update URL.');
   const response = await fetch(url, {
-    redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)]),
+    redirect: 'error',
+    signal: AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]),
     headers: { accept: 'application/octet-stream' },
   });
-  if (!response.ok) throw new Error('Release source HTTP ' + response.status);
-  const indicated = Number(response.headers.get('content-length'));
-  if (indicated > maxBytes) throw new Error('Release response exceeds limit.');
+  if (!response.ok) throw new Error('Update source returned HTTP ' + response.status);
+  const length = Number(response.headers.get('content-length'));
+  if (Number.isFinite(length) && length > maximum) throw new Error('Response too large.');
   const reader = response.body?.getReader();
-  if (!reader) throw new Error('No release response body.');
-  const chunks = [];
+  if (!reader) throw new Error('No response body.');
+  const blocks = [];
   let size = 0;
   while (true) {
-    const item = await reader.read();
-    if (item.done) break;
-    size += item.value.byteLength;
-    if (size > maxBytes) {
+    const data = await reader.read();
+    if (data.done) break;
+    size += data.value.byteLength;
+    if (size > maximum) {
       await reader.cancel();
-      throw new Error('Release response exceeds limit.');
+      throw new Error('Response too large.');
     }
-    chunks.push(item.value);
+    blocks.push(data.value);
   }
-  const output = Buffer.alloc(size);
+  const result = Buffer.alloc(size);
   let offset = 0;
-  for (const part of chunks) {
-    output.set(part, offset);
-    offset += part.byteLength;
-  }
-  return output;
+  for (const block of blocks) { result.set(block, offset); offset += block.byteLength; }
+  return result;
 }
-
-async function readPublicChannel(channel, signal) {
-  const bytes = await getBytes(ROOT + '/' + channel + '/index.json', 100_000, signal);
-  return approvedEntry(JSON.parse(bytes.toString('utf8')), channel);
+async function readJSON(path, signal) {
+  return JSON.parse((await getBytes(ROOT + '/' + path, 100_000, signal)).toString('utf8'));
 }
-
-function normalizeLocal(raw) {
-  if (raw.length > 65536) throw new Error('Oversized local catalog.');
-  const data = JSON.parse(raw);
-  if (data?.schema !== 2 || !Array.isArray(data.components) || data.components.length > 64) {
-    throw new Error('Invalid local catalog.');
+function checkRepositoryIndex(value) {
+  if (value?.schema !== 1 || !Array.isArray(value.components) ||
+      value.components.length > 32) throw new Error('Invalid component registry.');
+  const names = new Set(), ids = new Set();
+  return value.components.map(item => {
+    if (!SLUG.test(item?.id || '') || !PACKAGE.test(item?.name || '') ||
+        typeof item.title !== 'string' || item.title.length < 1 || item.title.length > 90 ||
+        typeof item.description !== 'string' || item.description.length > 300 ||
+        names.has(item.name) || ids.has(item.id)) {
+      throw new Error('Component manifest is invalid.');
+    }
+    names.add(item.name); ids.add(item.id);
+    return { id:item.id, name:item.name, title:item.title, description:item.description };
+  });
+}
+function parseRelease(index, component, channel) {
+  if (index?.schema !== 1 || index.component !== component.id ||
+      index.package !== component.name || index.channel !== channel ||
+      !Array.isArray(index.releases) || index.releases.length > 128) {
+    throw new Error('Invalid channel index.');
   }
-  return data.components.filter(item =>
-    item?.name === PACKAGE && REGULAR.test(item.version) &&
-    (item.channel === 'released' || item.channel === 'unstable') &&
-    COMMIT.test(item.commit) && HASH.test(item.sha256)
-  ).map(item => ({
-    name: PACKAGE, channel: item.channel, version: item.version,
-    commit: item.commit.toLowerCase(), sha256: item.sha256.toLowerCase(),
-    file: 'v' + item.version + '/local-dsh-hud-' + item.version + '.tgz',
-  }));
+  if (index.latest === null && index.releases.length === 0) return null;
+  if (typeof index.latest !== 'string' || !SEMVER.test(index.latest)) {
+    throw new Error('Invalid advertised version.');
+  }
+  const rows = index.releases.filter(item => item?.version === index.latest);
+  if (rows.length !== 1) throw new Error('Ambiguous version.');
+  const item = rows[0];
+  const file = 'v' + item.version + '/local-dsh-' + component.id + '-' + item.version + '.tgz';
+  if (item.file !== file || !HEX64.test(item.sha256 || '') ||
+      !HEX40.test(item.sourceCommit || '')) throw new Error('Invalid release archive facts.');
+  if (channel === 'released' &&
+      (item.acceptance?.decision !== 'approved' || !/^U\d{2,3}$/.test(item.acceptance?.check || ''))) {
+    throw new Error('Stable version lacks user acceptance.');
+  }
+  if (channel === 'unstable' &&
+      (item.test?.result !== 'success' || !/^\d+$/.test(item.test?.ciRun || ''))) {
+    throw new Error('Experimental build lacks green CI.');
+  }
+  return {
+    channel, version: item.version, file,
+    sha256: item.sha256.toLowerCase(),
+    commit: item.sourceCommit.toLowerCase(),
+  };
+}
+async function readChannel(component, channel, signal) {
+  return parseRelease(await readJSON(component.id + '/' + channel + '/index.json', signal), component, channel);
+}
+function selectRelease(entry, acceptUnstable) {
+  let best = entry.released;
+  if (acceptUnstable && entry.unstable &&
+      (!best || newer(entry.unstable.version, best.version))) {
+    best = entry.unstable;
+  }
+  return best || null;
 }
 
 export function apply(ctx, config) {
-  let disposed = false;
-  let checking = false;
-  let updating = false;
-  let lastRequest = '';
+  let disposed = false, checking = false, updating = false;
+  let lastNonce = '';
   const controller = new AbortController();
-  const editor = ctx.get('configEditor');
-  const entry = ctx.fiber?.entry;
+  const editor = ctx.get('configEditor'), entry = ctx.fiber?.entry;
+  const cacheRoot = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'approved-component-packages');
 
-  async function setFields(patch) {
+  async function writeSettings(patch) {
     if (disposed || !editor || !entry) return false;
-    await editor.edit(entry, old => ({ ...old, ...patch }));
+    await editor.edit(entry, current => ({ ...current, ...patch }));
     return true;
   }
 
-  async function checkUpdates() {
-    if (checking || disposed) return;
+  async function installedRows() {
+    const rows = await ctx.pluginManager.listBundles();
+    if (!Array.isArray(rows)) throw new Error('DSH plugin inventory unavailable.');
+    return rows;
+  }
+
+  async function installComponent(component, approved, origin) {
+    if (updating || disposed || !approved) return false;
+    updating = true;
+    let wasApplied = false;
+    try {
+      const current = (await installedRows()).find(row => row.name === component.name && row.installed);
+      if (!newer(approved.version, current?.version)) throw new Error('No newer reviewed version.');
+      if (approved.channel === 'unstable' && config.allowUnstable.get() !== true) {
+        throw new Error('Experimental update option is disabled.');
+      }
+
+      // Re-fetch the channel just before use; a stale or revoked version is
+      // never installed even when it was displayed in an earlier UI snapshot.
+      const latest = await readChannel(component, approved.channel, controller.signal);
+      if (!latest || latest.version !== approved.version ||
+          latest.sha256 !== approved.sha256 || latest.commit !== approved.commit) {
+        throw new Error('Update was revoked or changed; refresh its listing.');
+      }
+      const bytes = await getBytes(ROOT + '/' + component.id + '/' +
+        approved.channel + '/' + approved.file, MAX_ARCHIVE_BYTES, controller.signal);
+      if (createHash('sha256').update(bytes).digest('hex') !== approved.sha256) {
+        throw new Error('SHA-256 mismatch; refusing package.');
+      }
+
+      // pnpm may pin the tarball path. Keep an immutable, hash-addressed local
+      // copy instead of deleting the only path after pluginManager returns.
+      const directory = join(cacheRoot, component.id, approved.version);
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      const target = join(directory, approved.sha256 + '.tgz');
+      const temporary = target + '.' + process.pid + '.tmp';
+      await writeFile(temporary, bytes, { mode: 0o600 });
+      await rename(temporary, target);
+
+      const result = await ctx.pluginManager.installBundle(target, {
+        enabled: true, saveExact: true,
+      });
+      if (!result || !['applied', 'restart-required'].includes(result.application) ||
+          (result.bundle !== undefined && result.bundle !== component.name) ||
+          (result.version !== undefined && result.version !== approved.version)) {
+        throw new Error('DSH did not accept the exact component version.');
+      }
+      const after = (await installedRows()).find(row => row.name === component.name && row.installed);
+      if (!after || after.version !== approved.version) {
+        throw new Error('Installed DSH version does not match the update manifest.');
+      }
+      wasApplied = true;
+      await writeSettings({ updateStatus: result.application === 'restart-required' ?
+        'restart-required' : 'installed' });
+      return true;
+    } catch (error) {
+      if (!disposed) {
+        await writeSettings({ updateStatus: 'failed' }).catch(() => {});
+        ctx.logger?.warn?.('Component %s update from %s failed: %s',
+          component.name, origin, String(error?.message || 'unavailable'));
+      }
+      return false;
+    } finally {
+      updating = false;
+      if (wasApplied) ctx.logger?.info?.('Approved component updated: %s', component.name);
+    }
+  }
+
+  async function discover() {
+    if (disposed || checking) return;
     checking = true;
     try {
-      const found = [];
-      // Only anonymous public channel indexes are eligible; no stale Runner
-      // cache can make the UI advertise an un-installable private package.
-      for (const channel of ['released', 'unstable']) {
-        try {
-          const item = await readPublicChannel(channel, controller.signal);
-          if (item) found.push(item);
-        } catch {
-          // Private GitHub repositories cannot be read anonymously.
-          // The Runner's local channel catalog is only a bootstrap fallback.
+      // Repository-wide manifest makes uninstalled components visible.
+      // A Private repo is not treated as an empty-but-current release source.
+      const components = checkRepositoryIndex(await readJSON('index.json', controller.signal));
+      const rows = await Promise.all(components.map(async component => {
+        const channels = await Promise.all(['released','unstable'].map(async channel => {
+          try { return await readChannel(component, channel, controller.signal); }
+          catch { return null; }
+        }));
+        return { ...component, released:channels[0], unstable:channels[1] };
+      }));
+      const catalog = { schema:3, source:'public', components:rows };
+      if (JSON.stringify(catalog) !== config.catalog.get()) {
+        await writeSettings({ catalog: JSON.stringify(catalog) });
+      }
+      if (config.autoUpdateEnabled.get() === true && !disposed && !updating) {
+        const installed = await installedRows();
+        for (const component of rows) {
+          const row = installed.find(x => x.name === component.name && x.installed);
+          if (!row) continue; // Never silently install a new component.
+          const includeExperimental = config.allowUnstable.get() === true &&
+            config.autoUpdateUnstable.get() === true;
+          const approved = selectRelease(component, includeExperimental);
+          if (!approved || !newer(approved.version, row.version)) continue;
+          const key = component.name + ':' + approved.channel + ':' + approved.version + ':' + approved.sha256;
+          if (config.autoAttemptKey.get() === key) continue;
+          // Persist the single-attempt record before mutating the package.
+          // A failed update needs manual retry; avoid continuous retry loops.
+          if (!(await writeSettings({ autoAttemptKey:key, updateStatus:'installing' }))) break;
+          await installComponent(component, approved, 'automatic');
+          break; // One package change per periodic update check.
         }
       }
-      const catalog = JSON.stringify({
-        schema: 2, components: found.map(item => ({
-          name: item.name, version: item.version, channel: item.channel,
-          commit: item.commit, sha256: item.sha256,
-        })),
-      });
-      if (catalog !== config.catalog.get()) await setFields({ catalog });
     } catch {
-      // An unavailable update service must never prevent DSH from loading.
+      // Public discovery unavailable, including the pre-public Private phase.
+      const offline = '{"schema":3,"source":"unavailable","components":[]}';
+      if (!disposed && config.catalog.get() !== offline) {
+        await writeSettings({ catalog: offline }).catch(() => {});
+      }
     } finally {
       checking = false;
     }
   }
 
-  async function installRequested() {
-    if (updating || disposed) return;
+  async function processManualRequest() {
+    if (disposed || updating) return;
     const nonce = config.requestNonce.get();
-    if (typeof nonce !== 'string' || !nonce || nonce === lastRequest) return;
-    lastRequest = nonce;
-    const name = config.requestComponent.get();
-    const version = config.requestVersion.get();
+    if (!nonce || typeof nonce !== 'string' || nonce === lastNonce) return;
+    lastNonce = nonce;
+    const name = config.requestComponent.get(), version = config.requestVersion.get();
     const channel = config.requestChannel.get();
-    if (name !== PACKAGE || !REGULAR.test(version) ||
+    if (!PACKAGE.test(name || '') || !SEMVER.test(version || '') ||
         (channel !== 'released' && channel !== 'unstable') ||
-        (channel === 'unstable' && config.allowUnstable.get() !== true) ||
-        !newer(version, CURRENT_VERSION)) return;
-    updating = true;
-    let temporary = null;
-    try {
-      // Consume consent before any network call or file change. Clearing the
-      // nonce avoids an old persisted request executing again after DSH restarts.
-      // If persistence is unavailable, refuse rather than updating secretly.
-      const accepted = await setFields({ requestNonce: '', updateStatus: 'installing' });
-      if (!accepted) throw new Error('Cannot persist the update request admission.');
-      const item = await readPublicChannel(channel, controller.signal);
-      if (!item || item.version !== version) {
-        throw new Error('Requested version is not in an anonymously accessible approved channel.');
-      }
-      const listed = normalizeLocal(config.catalog.get()).find(row =>
-        row.channel === channel && row.version === version);
-      if (!listed || listed.sha256 !== item.sha256 || listed.commit !== item.commit) {
-        throw new Error('The version has changed since confirmation; refresh before updating.');
-      }
+        (channel === 'unstable' && config.allowUnstable.get() !== true)) return;
 
-      const content = await getBytes(ROOT + '/' + channel + '/' + item.file, MAX_BYTES, controller.signal);
-      if (createHash('sha256').update(content).digest('hex') !== item.sha256) {
-        throw new Error('Installer hash differs from accepted manifest.');
-      }
-      temporary = await mkdtemp(join(tmpdir(), 'dsh-hud-update-'));
-      const archive = join(temporary, 'local-dsh-hud-' + version + '.tgz');
-      await writeFile(archive, content, { mode: 0o600 });
-      // DSH's own manager enforces package policy; no shell commands or direct
-      // writes to a profile and no restart/termination of the whole application.
-      const result = await ctx.pluginManager.installBundle(archive, {
-        enabled: true, saveExact: true,
-      });
-      // "overridden" is not an activated update; "failed" and "cancelled"
-      // must never be reported as successful either.
-      if (!result || !['applied', 'restart-required'].includes(result.application)) {
-        throw new Error('DSH did not apply the package: ' + (result?.application || 'unknown'));
-      }
-      if ((result.bundle !== undefined && result.bundle !== PACKAGE) ||
-          (result.version !== undefined && result.version !== version)) {
-        throw new Error('DSH reported an unexpected package identity or version.');
-      }
-      // The manager owns the profile; read back its installed facts rather
-      // than trusting only an exit status from the package manager.
-      const installed = (await ctx.pluginManager.listBundles()).find(row =>
-        row.name === PACKAGE && row.installed === true);
-      if (!installed || installed.version !== version) {
-        throw new Error('Installed DSH bundle does not match the approved version.');
-      }
-      await setFields({
-        updateStatus: result.application === 'restart-required' ? 'restart-required' : 'installed',
-      });
-    } catch (error) {
-      if (!disposed) {
-        // The status is intentionally terse; it contains no local paths/tokens.
-        await setFields({ updateStatus: 'failed' }).catch(() => {});
-        ctx.logger?.warn?.('DSH HUD update declined: %s', String(error?.message || 'unavailable'));
-      }
-    } finally {
-      updating = false;
-      if (temporary) await rm(temporary, { recursive: true, force: true }).catch(() => {});
+    // Consume consent before any network action so restart cannot replay it.
+    if (!(await writeSettings({ requestNonce:'', updateStatus:'installing' }))) return;
+    const catalog = JSON.parse(config.catalog.get() || '{}');
+    const component = catalog.components?.find(x => x.name === name);
+    const approved = component?.[channel];
+    if (!component || !approved || approved.version !== version) {
+      await writeSettings({ updateStatus:'failed' });
+      return;
     }
+    await installComponent(component, approved, 'manual');
   }
 
   ctx.effect(() => {
-    void checkUpdates();
-    const check = setInterval(() => { void checkUpdates(); }, CHECK_MS);
-    const request = setInterval(() => { void installRequested(); }, REQUEST_POLL_MS);
+    void discover();
+    const poll = setInterval(() => { void discover(); }, CHECK_MS);
+    const requests = setInterval(() => { void processManualRequest(); }, REQUEST_MS);
     return () => {
       disposed = true;
       controller.abort();
-      clearInterval(check);
-      clearInterval(request);
+      clearInterval(poll);
+      clearInterval(requests);
     };
-  }, 'dsh-hud: anonymous update catalog and consented installer');
+  }, 'dsh-components: anonymous manifest + update service');
 }

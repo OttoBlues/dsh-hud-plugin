@@ -13,9 +13,10 @@
   "scripts": {
     "verify": "node scripts/verify.mjs",
     "test": "node --test",
-    "check": "npm run verify && npm run verify:channels && npm test",
+    "check": "npm run verify && npm run verify:components && npm run verify:channels && npm test",
     "pack:hud": "node scripts/pack-hud.mjs",
     "verify:pack": "node scripts/verify-pack.mjs",
-    "verify:channels": "node scripts/verify-channels.mjs"
+    "verify:channels": "node scripts/verify-channels.mjs",
+    "verify:components": "node scripts/verify-components-index.mjs"
   }
 }

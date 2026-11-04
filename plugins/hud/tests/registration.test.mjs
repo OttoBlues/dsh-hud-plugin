@@ -3,206 +3,188 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8');
+const client = readFileSync(new URL('../client.js', import.meta.url), 'utf8');
 
-function setup(initial = {}) {
-  let entry;
-  vm.runInNewContext(source, {
-    window: { __ModuleLoader__: { load(value) { entry = value; } } },
-  });
-  assert.equal(entry.id, '@local/dsh-hud');
-  const hooks = [];
-  let cursor = 0;
-  const React = {
-    createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
-    Fragment: 'fragment',
-    useSyncExternalStore: (_subscribe, get) => get(),
-    useEffect: () => undefined,
-    useState: value => {
-      const slot = cursor++;
-      if (!(slot in hooks)) hooks[slot] = value;
-      return [hooks[slot], next => { hooks[slot] = next; }];
+function setup(valuesOverride={}) {
+  let module;
+  vm.runInNewContext(client, {window:{__ModuleLoader__:{load(x){module=x;}}}});
+  assert.equal(module?.id,'@local/dsh-hud');
+  const hooks=[]; let cursor=0;
+  const React={
+    Fragment:'fragment',
+    createElement(type,props,...children){return {type,props:props||{},children};},
+    useState(initial){
+      const i=cursor++;
+      if(!(i in hooks))hooks[i]=initial;
+      return [hooks[i],next=>{hooks[i]=typeof next==='function'?next(hooks[i]):next;}];
     },
+    useEffect(){},
+    useSyncExternalStore(_subscribe,get){return get();},
   };
-  const plugin = entry.factory(name => {
-    assert.equal(name, 'react');
-    return React;
-  });
-  const value = {
-    catalog: '{"schema":2,"components":[]}',
-    requestChannel: 'released',
-    allowUnstable: false,
-    requestComponent: '',
-    requestVersion: '',
-    requestNonce: '',
-    updateStatus: '',
-    overlayVisible: false,
-    ...initial,
+  const plugin=module.factory(name=>{assert.equal(name,'react');return React;});
+  const values={
+    catalog:'{"schema":3,"source":"unavailable","components":[]}',
+    requestComponent:'',requestVersion:'',requestChannel:'released',
+    requestNonce:'',updateStatus:'',allowUnstable:false,
+    autoUpdateEnabled:false,autoUpdateUnstable:false,autoAttemptKey:'',
+    overlayVisible:false,
+    ...valuesOverride,
   };
-  const form = {
-    getSnapshot: () => ({ status: 'ready', value, writable: true }),
-    subscribe: () => () => {},
-    mutate: async ops => {
-      for (const op of ops) value[op.path[0]] = op.value;
-      return true;
+  const updates=[];
+  const form={
+    getSnapshot(){return {value:values,writable:true,status:'ready'};},
+    subscribe(){return ()=>{};},
+    async set(key,value){values[key]=value;updates.push({key,value});return true;},
+    async mutate(ops){for(const op of ops){values[op.path[0]]=op.value;}updates.push({ops});return true;},
+  };
+  const slots=new Map();let dictionary;
+  const ctx={
+    locale:{
+      register(ns,dict){dictionary=dict;assert.equal(ns,'dsh.hud');return ()=>{};},
+      bind(ns){assert.equal(ns,'dsh.hud');return k=>dictionary.zh[k];},
     },
-    set: async (field, next) => { value[field] = next; return true; },
-  };
-  const records = new Map();
-  const dicts = {};
-  const ctx = {
-    locale: {
-      register: (key, vals) => {
-        dicts[key] = vals;
-        return () => {};
-      },
-      bind: key => text => dicts[key].zh[text],
-    },
-    effect: init => { init(); },
-    configForms: { get: key => {
-      assert.equal(key, 'dsh-hud');
-      return form;
-    } },
-    slots: {
-      inject: (name, fn) => { fn(); },
-      register: (options, component) => {
-        records.set(options.name, { options, component });
-        return () => {};
+    effect(setup){setup();},
+    configForms:{get(key){assert.equal(key,'dsh-hud');return form;}},
+    slots:{
+      inject(_seat,fn){fn();},
+      register(options,component){
+        slots.set(options.name,{options,component});
+        return ()=>{};
       },
     },
-    remote: { pluginManager: { listBundles: async () => ({ ok: true, value: [] }) } },
+    remote:{pluginManager:{async listBundles(){return {ok:true,value:[]};}}},
   };
   plugin.apply(ctx);
-  return {
-    plugin, records, value, form,
-    render: name => {
-      cursor = 0;
-      const item = records.get(name);
-      if (name === 'plugins.tab') return item.component({ t: ctx.locale.bind('dsh.hud') });
-      if (name === 'shell.overlay') return item.component({
-        t: ctx.locale.bind('dsh.hud'),
-        useSessions: select => select({ ids: [], byId: {} }),
-        useSessionStatus: select => select(new Map()),
-      });
-      throw new Error(name);
-    },
+  const render=(slot='main')=>{
+    cursor=0;
+    const entry=slots.get(slot);
+    if(!entry) throw new Error('Unknown slot '+slot);
+    const props={t:k=>dictionary.zh[k]};
+    if(slot==='shell.overlay'){
+      props.useSessions=f=>f({ids:[],byId:{}});
+      props.useSessionStatus=f=>f(new Map());
+    }
+    return entry.component(props);
   };
+  return {plugin,values,form,slots,render,updates};
 }
-function findNodes(node, pred, found = []) {
-  if (node == null) return found;
-  if (Array.isArray(node)) {
-    for (const child of node) findNodes(child, pred, found);
-  } else if (typeof node === 'object') {
-    if (pred(node)) found.push(node);
-    findNodes(node.children, pred, found);
+function find(tree,when,result=[]) {
+  if(tree==null)return result;
+  if(Array.isArray(tree)){for(const part of tree)find(part,when,result);}
+  else if(typeof tree==='object'){
+    if(when(tree))result.push(tree);
+    find(tree.children,when,result);
   }
-  return found;
+  return result;
 }
-const catalog = version => JSON.stringify({
-  schema: 2, components: [{
-    name: '@local/dsh-hud', channel: 'released', version,
-    commit: 'a'.repeat(40), sha256: 'f'.repeat(64),
-  }],
+const released=(v,channel='released')=>({
+  channel,version:v,sha256:'f'.repeat(64),commit:'a'.repeat(40),
+  file:'v'+v+'/local-dsh-hud-'+v+'.tgz',
+});
+const catalog=(components,source='public')=>JSON.stringify({
+  schema:3,source,components,
+});
+const own=(releasedVersion='0.4.1',experimental=null)=>({
+  id:'hud',name:'@local/dsh-hud',title:'DSH HUD',
+  description:'HUD with component center',
+  released:releasedVersion?released(releasedVersion):null,
+  unstable:experimental?released(experimental,'unstable'):null,
 });
 
-test('HUD is registered as optional overlay plus Plugins Components tab', () => {
-  const harness = setup();
-  assert.deepEqual(Array.from(harness.plugin.inject),
-    ['slots', 'locale', 'uiSession', 'configForms', 'remote', 'remote.pluginManager']);
-  assert.equal(harness.records.get('plugins.tab').options.id, 'dsh-hud.components');
-  assert.equal(harness.records.get('plugins.tab').options.label(), '组件');
-  assert.equal(harness.records.get('shell.overlay').options.id, 'dsh-hud.preview');
-  assert.equal(harness.render('shell.overlay'), null, 'preview disabled by default');
-  const tab = harness.render('plugins.tab');
-  assert.equal(tab.props['data-dsh-hud-components'], 'true');
+test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs',()=>{
+  const ui=setup();
+  assert.deepEqual(Array.from(ui.plugin.inject),
+    ['slots','locale','layout','uiSession','configForms','remote','remote.pluginManager']);
+  assert.equal(ui.slots.get('sidebar.panellist').options.id,'dsh-hud');
+  assert.equal(ui.slots.get('sidebar.panellist').options.label(),'HUD');
+  assert.equal(ui.slots.get('main').options.key,'dsh-hud');
+  assert.equal(ui.slots.has('plugins.tab'),false);
+  const icon=ui.slots.get('sidebar.panellist').component({size:20,active:true});
+  assert.equal(icon.type,'svg');
+  const main=ui.render();
+  assert.equal(main.type,'main');
+  assert.equal(main.props['data-dsh-hud-main'],true);
 });
 
-test('new version renders a real update button on the right of its component row', () => {
-  const harness = setup({ catalog: catalog('0.4.0') });
-  const tab = harness.render('plugins.tab');
-  const buttons = findNodes(tab, node => node.type === 'button');
-  assert.ok(buttons.some(btn => btn.children.includes('↑ 更新')));
-  const text = JSON.stringify(tab);
-  assert.match(text, /0\.3\.1/);
-  assert.match(text, /0\.4\.0/);
+test('components page distinguishes the repository component from DSH Plugins',()=>{
+  const ui=setup({catalog:catalog([own('0.4.1')])});
+  const tree=ui.render();
+  assert.match(JSON.stringify(tree),/仓库组件/);
+  assert.match(JSON.stringify(tree),/DSH HUD/);
+  assert.match(JSON.stringify(tree),/当前/);
+  assert.ok(find(tree,x=>x.type==='button'&&x.children.includes('更新')).length===1);
 });
 
-test('click requires confirmation then stores a scoped update request', async () => {
-  const harness = setup({ catalog: catalog('0.4.0') });
-  const initial = harness.render('plugins.tab');
-  const update = findNodes(initial, node => node.type === 'button')
-    .find(btn => btn.children.includes('↑ 更新'));
-  update.props.onClick();
-  const confirmation = harness.render('plugins.tab');
-  const confirm = findNodes(confirmation, node => node.type === 'button')
-    .find(btn => btn.children.includes('确认更新'));
-  assert.ok(confirm);
-  confirm.props.onClick();
+test('repository catalog lists uninstalled components and offers install',()=>{
+  const ui=setup({catalog:catalog([own(null),{
+    id:'companion',name:'@local/companion',title:'Companion',
+    description:'Another component',released:released('1.2.0'),unstable:null,
+  }])});
+  const tree=ui.render();
+  assert.match(JSON.stringify(tree),/Companion/);
+  assert.ok(find(tree,x=>x.type==='button'&&x.children.includes('安装')).length===1);
+});
+
+test('Experimental opt-in and all automatic settings default off',()=>{
+  const ui=setup({catalog:catalog([own('0.4.0','0.5.0')])});
+  const tree=ui.render();
+  for(const flag of ['unstable','auto','auto-unstable']){
+    const node=find(tree,x=>x.type==='input'&&x.props['data-hud-setting']===flag)[0];
+    assert.ok(node,flag);
+    assert.equal(node.props.checked,false);
+    if(flag==='auto-unstable')assert.equal(node.props.disabled,true);
+  }
+  assert.doesNotMatch(JSON.stringify(tree),/试验版: 0\.5\.0/);
+});
+
+test('Experimental update requires explicit toggle and manual confirmation',async()=>{
+  const ui=setup({catalog:catalog([own('0.4.0','0.5.0')])});
+  const flag=find(ui.render(),x=>x.type==='input'&&x.props['data-hud-setting']==='unstable')[0];
+  flag.props.onChange({target:{checked:true}});
   await Promise.resolve();
-  assert.equal(harness.value.requestComponent, '@local/dsh-hud');
-  assert.equal(harness.value.requestVersion, '0.4.0');
-  assert.equal(harness.value.requestChannel, 'released');
-  assert.match(harness.value.requestNonce, /^\d+$/);
-  const queued = harness.render('plugins.tab');
-  assert.match(JSON.stringify(queued), /已确认更新/);
+  assert.equal(ui.values.allowUnstable,true);
+  const first=ui.render();
+  assert.match(JSON.stringify(first),/试验版: 0\.5\.0/);
+  const update=find(first,x=>x.type==='button'&&x.children.includes('更新'))[0];
+  update.props.onClick();
+  const confirmation=ui.render();
+  const submit=find(confirmation,x=>x.type==='button'&&x.children.includes('确认'))[0];
+  assert.ok(submit);
+  submit.props.onClick();
+  await Promise.resolve();
+  assert.equal(ui.values.requestComponent,'@local/dsh-hud');
+  assert.equal(ui.values.requestChannel,'unstable');
+  assert.equal(ui.values.requestVersion,'0.5.0');
+  assert.match(ui.values.requestNonce,/^\d+$/);
 });
 
-test('matching versions never present an update action', () => {
-  const harness = setup({ catalog: catalog('0.3.1') });
-  const tab = harness.render('plugins.tab');
-  assert.equal(findNodes(tab, node => node.type === 'button' &&
-    node.children.includes('↑ 更新')).length, 0);
-  assert.match(JSON.stringify(tab), /已是最新/);
+test('Automatic experimental updates require separate explicit double opt-in',async()=>{
+  const ui=setup();
+  let tree=ui.render();
+  const auto=find(tree,x=>x.type==='input'&&x.props['data-hud-setting']==='auto')[0];
+  auto.props.onChange({target:{checked:true}});
+  await Promise.resolve();
+  tree=ui.render();
+  assert.equal(find(tree,x=>x.props?.['data-hud-setting']==='auto-unstable')[0].props.disabled,true);
+  const experimental=find(tree,x=>x.props?.['data-hud-setting']==='unstable')[0];
+  experimental.props.onChange({target:{checked:true}});
+  await Promise.resolve();
+  tree=ui.render();
+  const autoUnstable=find(tree,x=>x.props?.['data-hud-setting']==='auto-unstable')[0];
+  assert.equal(autoUnstable.props.disabled,false);
+  autoUnstable.props.onChange({target:{checked:true}});
+  await Promise.resolve();
+  assert.equal(ui.values.autoUpdateUnstable,true);
+  experimental.props.onChange({target:{checked:false}});
+  await Promise.resolve();
+  assert.equal(ui.values.autoUpdateUnstable,false);
 });
 
-test('preview may be deliberately enabled without stealing pointer events', () => {
-  const harness = setup({ overlayVisible: true });
-  const overlay = harness.render('shell.overlay');
-  assert.equal(overlay.props.style.pointerEvents, 'none');
-  assert.equal(overlay.props['data-dsh-hud-version'], '0.3.1');
-  assert.equal(overlay.children.length, 4);
+test('overlay preview remains off and does not intercept mouse events',()=>{
+  const ui=setup();
+  assert.equal(ui.render('shell.overlay'),null);
+  ui.values.overlayVisible=true;
+  const overlay=ui.render('shell.overlay');
+  assert.equal(overlay.props.style.pointerEvents,'none');
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.4.0');
 });
-
-
-test('unstable releases are hidden unless the user opts in; stable wins ties', () => {
-  const version = v => ({ name: '@local/dsh-hud', channel: v.channel, version: v.version,
-    commit: 'a'.repeat(40), sha256: 'f'.repeat(64) });
-  const catalog = JSON.stringify({ schema: 2, components: [
-    version({channel:'released',version:'0.3.0'}),
-    version({channel:'unstable',version:'0.4.0'})
-  ] });
-  const h = setup({catalog});
-  const initial = h.render('plugins.tab');
-  assert.equal(findNodes(initial, node => node.type === 'button'
-    && node.children.includes('↑ 更新')).length, 0);
-  h.value.allowUnstable = true;
-  const opted = h.render('plugins.tab');
-  assert.ok(findNodes(opted, node => node.type === 'button'
-    && node.children.includes('↑ 更新')).length === 1);
-  assert.match(JSON.stringify(opted), /试验版/);
-});
-
-test('experimental opt-in setting starts disabled and can be toggled', () => {
-  const h = setup();
-  const tab = h.render('plugins.tab');
-  const toggle = findNodes(tab, node => node.type === 'input'
-    && node.props['data-hud-unstable-opt-in'] === 'true')[0];
-  assert.equal(toggle.props.checked, false);
-  toggle.props.onChange({target:{checked:true}});
-  assert.equal(h.value.allowUnstable, true);
-});
-
-test('Host exposes experimental preferences and performs only consented direct updates', () => {
-  const host = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
-  assert.match(host, /allowUnstable: Schema\.boolean\(\)\.default\(false\)\.volatile\(\)/);
-  assert.match(host, /requestChannel: Schema\.string/);
-  assert.match(host, /requestNonce: Schema\.string/);
-  assert.match(host, /channel === 'unstable' && config\.allowUnstable\.get\(\) !== true/);
-  assert.match(host, /ctx\.pluginManager\.installBundle\(archive, \{/);
-  assert.match(host, /saveExact: true/);
-  assert.match(host, /ctx\.pluginManager\.listBundles\(\)/);
-  assert.match(host, /createHash\('sha256'\)/);
-  assert.match(host, /raw\.githubusercontent\.com\/OttoBlues\/dsh-plugins\/main\/plugins\/hud/);
-  assert.doesNotMatch(host, /GITHUB_TOKEN|child_process|exec\(/);
-});
-

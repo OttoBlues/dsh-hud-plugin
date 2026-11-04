@@ -1,23 +1,22 @@
 /**
- * DSH HUD v0.3 development Host.
+ * DSH HUD v0.3.1 development Host (not published).
  *
  * A public repository can be checked anonymously; a private repository returns
  * "unavailable", not a made-up latest version. This plugin does not store a
- * GitHub token. The legacy Windows Runner catalog is a temporary bootstrap
- * fallback, and is not needed once the approved releases are public.
+ * GitHub token and does not rely on any local Windows Runner catalog.
  *
  * Installation is triggered ONLY by an explicit in-app confirmation and uses
  * the DSH Host pluginManager service. Never unpack Git HEAD source.
  */
 import Schema from '@deepseek-ai/schemastery';
 import { createHash } from 'node:crypto';
-import { readFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 
 export const inject = ['pluginManager'];
 
-const CURRENT_VERSION = '0.3.0';
+const CURRENT_VERSION = '0.3.1';
 const PACKAGE = '@local/dsh-hud';
 const ROOT = 'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/hud';
 const REGULAR = /^\d+\.\d+\.\d+$/;
@@ -27,6 +26,7 @@ const EMPTY = '{"schema":2,"components":[]}';
 const MAX_BYTES = 25_000_000;
 const CHECK_MS = 5 * 60_000;
 const REQUEST_POLL_MS = 3000;
+const DOWNLOAD_TIMEOUT_MS = 30_000;
 
 export const Config = Schema.object({
   catalog: Schema.string().default(EMPTY).volatile(),
@@ -82,7 +82,7 @@ function approvedEntry(index, channel) {
 async function getBytes(url, maxBytes, signal) {
   // Hardcoded trusted origin, no redirects to untrusted destinations.
   const response = await fetch(url, {
-    redirect: 'error', signal,
+    redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)]),
     headers: { accept: 'application/octet-stream' },
   });
   if (!response.ok) throw new Error('Release source HTTP ' + response.status);
@@ -139,7 +139,6 @@ export function apply(ctx, config) {
   let updating = false;
   let lastRequest = '';
   const controller = new AbortController();
-  const base = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'component-updates');
   const editor = ctx.get('configEditor');
   const entry = ctx.fiber?.entry;
 
@@ -154,7 +153,8 @@ export function apply(ctx, config) {
     checking = true;
     try {
       const found = [];
-      // Do not send any authentication data to GitHub.
+      // Only anonymous public channel indexes are eligible; no stale Runner
+      // cache can make the UI advertise an un-installable private package.
       for (const channel of ['released', 'unstable']) {
         try {
           const item = await readPublicChannel(channel, controller.signal);
@@ -163,14 +163,6 @@ export function apply(ctx, config) {
           // Private GitHub repositories cannot be read anonymously.
           // The Runner's local channel catalog is only a bootstrap fallback.
         }
-      }
-      try {
-        const local = normalizeLocal(await readFile(join(base, 'catalog.json'), 'utf8'));
-        for (const item of local) {
-          if (!found.some(existing => existing.channel === item.channel)) found.push(item);
-        }
-      } catch {
-        // No local bootstrap cache is normal once running independently.
       }
       const catalog = JSON.stringify({
         schema: 2, components: found.map(item => ({
@@ -201,6 +193,11 @@ export function apply(ctx, config) {
     updating = true;
     let temporary = null;
     try {
+      // Consume consent before any network call or file change. Clearing the
+      // nonce avoids an old persisted request executing again after DSH restarts.
+      // If persistence is unavailable, refuse rather than updating secretly.
+      const accepted = await setFields({ requestNonce: '', updateStatus: 'installing' });
+      if (!accepted) throw new Error('Cannot persist the update request admission.');
       const item = await readPublicChannel(channel, controller.signal);
       if (!item || item.version !== version) {
         throw new Error('Requested version is not in an anonymously accessible approved channel.');
@@ -220,9 +217,24 @@ export function apply(ctx, config) {
       await writeFile(archive, content, { mode: 0o600 });
       // DSH's own manager enforces package policy; no shell commands or direct
       // writes to a profile and no restart/termination of the whole application.
-      const result = await ctx.pluginManager.installBundle(archive, { enabled: true });
-      if (result.application === 'failed' || result.application === 'cancelled') {
-        throw new Error('DSH rejected the version: ' + (result.error?.code || result.application));
+      const result = await ctx.pluginManager.installBundle(archive, {
+        enabled: true, saveExact: true,
+      });
+      // "overridden" is not an activated update; "failed" and "cancelled"
+      // must never be reported as successful either.
+      if (!result || !['applied', 'restart-required'].includes(result.application)) {
+        throw new Error('DSH did not apply the package: ' + (result?.application || 'unknown'));
+      }
+      if ((result.bundle !== undefined && result.bundle !== PACKAGE) ||
+          (result.version !== undefined && result.version !== version)) {
+        throw new Error('DSH reported an unexpected package identity or version.');
+      }
+      // The manager owns the profile; read back its installed facts rather
+      // than trusting only an exit status from the package manager.
+      const installed = (await ctx.pluginManager.listBundles()).find(row =>
+        row.name === PACKAGE && row.installed === true);
+      if (!installed || installed.version !== version) {
+        throw new Error('Installed DSH bundle does not match the approved version.');
       }
       await setFields({
         updateStatus: result.application === 'restart-required' ? 'restart-required' : 'installed',

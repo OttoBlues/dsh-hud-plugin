@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.3.0: safe, opt-in preview plus a per-component Updates tab.
+ * DSH HUD v0.3.1 development: safer in-app update confirmation and lifecycle.
  * The browser never sees GitHub credentials or executes installers. The
  * Host anonymously verifies approved public GitHub archives and installs via
  * the official DSH pluginManager; a private repository remains unavailable.
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
     const NS = 'dsh.hud';
-    const CURRENT_VERSION = '0.3.0';
+    const CURRENT_VERSION = '0.3.1';
     const RETRY_BUNDLES_MS = 5 * 60_000;
     const dictionaries = {
       zh: {
@@ -31,6 +31,7 @@ window.__ModuleLoader__.load({
         restartRequired: '已安装，重启 DSH 生效', installedOK: '更新已安装', failedUpdate: '更新未完成，请检查仓库是否公开及 DSH 日志',
         queued: '已确认更新，正在交给 DSH 安装',
         requesting: '提交更新请求中…', requestFailed: '请求未保存，请重试',
+        installing: '正在校验和安装…',
         preview: '聊天窗口 HUD 预览', previewDesc: '关闭后不会在聊天内容和标题栏上叠加状态文字。',
         noBundles: '未找到对应的 DSH 组件', installed: '已安装',
       },
@@ -55,6 +56,7 @@ window.__ModuleLoader__.load({
         restartRequired: 'Installed; restart DSH', installedOK: 'Update installed', failedUpdate: 'Update failed; check public repository access and DSH logs',
         queued: 'Update request confirmed and being processed by DSH',
         requesting: 'Saving update request…', requestFailed: 'Could not save request; retry',
+        installing: 'Verifying and installing…',
         preview: 'Chat-window HUD preview',
         previewDesc: 'Off means no floating HUD text overlaps chats or window chrome.',
         noBundles: 'No matching DSH components found', installed: 'Installed',
@@ -239,7 +241,9 @@ window.__ModuleLoader__.load({
           const canUpdate = latest !== undefined && newer(latest.version, current);
           const pending = canUpdate &&
             value.requestComponent === row.name && value.requestVersion === latest.version &&
-            value.requestChannel === latest.channel;
+            value.requestChannel === latest.channel &&
+            (value.updateStatus === 'installing' ||
+              (value.updateStatus === '' && !!value.requestNonce));
           const name = row.name === '@local/dsh-hud' ? 'DSH HUD' : row.name;
           return h('div', { key: row.name, style: itemStyle },
             h('div', { style: { minWidth: 190, flex: '1 1 240px' } },
@@ -250,7 +254,8 @@ window.__ModuleLoader__.load({
                 (latest ? ' (' + (latest.channel === 'unstable' ? t('unstableVersion') : t('stableVersion')) + ')' : ''))),
             h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
               pending
-                ? h('span', { role: 'status', style: { fontSize: 12, opacity: .75 } }, t('queued'))
+                ? h('span', { role: 'status', style: { fontSize: 12, opacity: .75 } },
+                    t(value.updateStatus === 'installing' ? 'installing' : 'queued'))
                 : !canUpdate
                   ? h('span', { style: { fontSize: 12, opacity: .7 } },
                       latest === undefined ? t('unavailable') : t('alreadyLatest'))

@@ -9,12 +9,12 @@
 **关键风险**：已安装的 HUD V0.4.0 Host 把下载源写死为
 `https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins`。GitHub 保证多数 Git 网页和 Git clone/fetch/push 地址重定向，但没有保证旧 `raw.githubusercontent.com` URL 永远可用。直接重命名有可能让 V0.4.0 无法发现下一个安装包。
 
-本次研发修复准备 V0.4.1：优先读取 `dsh-hud-plugin`，过渡回退 `dsh-plugins`；同时对 Host 自更新的旧实例配置写入进行了崩溃风险防护。**V0.4.1 还未完成实机不中断验收，也未发布到 `unstable`。**
+本次研发修复准备 V0.4.1：优先读取 `dsh-hud-plugin`，过渡回退 `dsh-plugins`；同时对 Host 自更新的旧实例配置写入进行了崩溃风险防护。**V0.4.1 仅作为 `unstable` 试验更新包，尚未完成实机不中断验收；不可进入 `released`。**
 
 ## 推荐迁移顺序
 
 1. **现在先关闭 HUD → 更新策略中的「自动更新正式版」和「自动更新试验版」**。保留「接收试验版更新」是否开启由用户决定；这样后续发布测试包也不会立即触发已安装 V0.4 的自动热更新。确认设置已经保存。
-2. 通过 CI 审查 V0.4.1 修复源码；仅在用户允许且具备回退手段后制作 `unstable` 试验安装包。不擅自放入 `released`。
+2. V0.4.1 源码已通过 CI 并在 `unstable` 备有试验归档；发布前必须关闭已有 Desktop 的自动更新开关、通过归档校验，并准备回退。不要将试验包放入 `released`。
 3. 让旧名仍然存在期间，验证过渡版安装到日常 DSH、应用能正常启动、两套地址在测试中均可访问。在升级本插件自身时必须重点验收是否再次出现 DSH 崩溃。
 4. **确认已安装带新旧地址支持的版本之后**，由 GitHub 管理员进入 `https://github.com/OttoBlues/dsh-plugins/settings` → **General** → Repository name，填写 `dsh-hud-plugin` 并点击 **Rename**。
 5. 更名后检查以下无登录 URL（此处是预期新地址，未更名前不应视为真实可用）：

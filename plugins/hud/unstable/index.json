@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.4.0",
+  "latest": "0.4.1",
   "releases": [
     {
       "version": "0.3.0",
@@ -26,6 +26,17 @@
         "result": "success"
       },
       "note": "An explicitly requested unstable version for anonymous in-app update verification after repository becomes Public"
+    },
+    {
+      "version": "0.4.1",
+      "file": "v0.4.1/local-dsh-hud-0.4.1.tgz",
+      "sha256": "bc364e64ddccdab547481777b51f9ac5d85b10d3b566312a42cec94e12b7523b",
+      "sourceCommit": "531617c07e75b4d7eb92a1e9feeddbfc9b8508a0",
+      "test": {
+        "ciRun": "41879522300",
+        "result": "success"
+      },
+      "note": "Experimental U04-R1 self-update safety fix and dual-name repository bridge. Disable V0.4.0 automatic update before publishing. Not approved as stable."
     }
   ]
 }

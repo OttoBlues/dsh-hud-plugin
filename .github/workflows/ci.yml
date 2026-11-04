@@ -1,4 +1,4 @@
-name: DSH plugins CI
+name: DSH HUD CI
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
       - 'package.json'
       - 'plugins/**'
       - 'scripts/**'
+      - 'tests/**'
       - 'docs/**'
       - 'README.md'
   pull_request:
@@ -17,6 +18,7 @@ on:
       - 'package.json'
       - 'plugins/**'
       - 'scripts/**'
+      - 'tests/**'
       - 'docs/**'
       - 'README.md'
   workflow_dispatch:
@@ -25,14 +27,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: dsh-plugins-${{ github.workflow }}-${{ github.ref }}
+  group: dsh-hud-plugin-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   linux-check:
-    name: Verify and test (Linux)
+    name: Verify source, components, channels and tests (GitHub-hosted Linux)
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,38 +42,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Validate DSH bundles
-        run: npm run verify
-      - name: Validate released and unstable installable archives
-        run: npm run verify:channels
-      - name: Run Node tests
-        run: npm test
-
-  windows-syntax:
-    name: Parse self-hosted PowerShell (Windows)
-    if: github.event_name == 'pull_request'
-    runs-on: windows-2025
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Validate PowerShell syntax
-        shell: powershell
-        run: |
-          foreach ($file in @('./scripts/windows/self-hosted-smoke.ps1', './scripts/windows/desktop-deploy.ps1', './scripts/windows/auto-upgrade-probe.ps1', './scripts/windows/stage-channels.ps1', './scripts/windows/auto-upgrade-probe.ps1')) {
-            $tokens = $null
-            $parseErrors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$parseErrors)
-            if ($parseErrors.Count -gt 0) { $parseErrors | ForEach-Object { Write-Error "$file : $($_.Message)" }; exit 1 }
-          }
+      - name: Validate source, archive manifests, registry and unit tests
+        run: npm run check
 
   windows-build:
-    name: Validate candidate HUD package (Windows)
-    if: github.event_name != 'pull_request'
+    name: Test and structurally pack HUD (GitHub-hosted Windows)
     needs: linux-check
     runs-on: windows-2025
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,22 +57,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Validate DSH bundles
-        run: npm run verify
-      - name: Validate released and unstable installable archives
-        run: npm run verify:channels
-      - name: Validate PowerShell smoke script syntax
-        shell: powershell
-        run: |
-          foreach ($file in @('./scripts/windows/self-hosted-smoke.ps1', './scripts/windows/desktop-deploy.ps1', './scripts/windows/auto-upgrade-probe.ps1', './scripts/windows/stage-channels.ps1', './scripts/windows/auto-upgrade-probe.ps1')) {
-            $tokens = $null
-            $parseErrors = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$parseErrors)
-            if ($parseErrors.Count -gt 0) { $parseErrors | ForEach-Object { Write-Error "$file : $($_.Message)" }; exit 1 }
-          }
-      - name: Run Node tests
-        run: npm test
-      - name: Pack source candidate for structural validation only (not published)
+      - name: Validate source, archive manifests, registry and unit tests
+        run: npm run check
+      - name: Pack candidate source for structural checks only
         run: npm run pack:hud
-      - name: Inspect package contents
+      - name: Verify candidate package structure
         run: npm run verify:pack

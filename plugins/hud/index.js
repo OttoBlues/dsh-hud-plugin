@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.4.1 development: safe self-update lifecycle and dual-name repo migration.
+ * DSH HUD v0.4.2 development: safe self-update lifecycle and dual-name repo migration.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation

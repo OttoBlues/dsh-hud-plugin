@@ -186,5 +186,12 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   ui.values.overlayVisible=true;
   const overlay=ui.render('shell.overlay');
   assert.equal(overlay.props.style.pointerEvents,'none');
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.4.1');
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.4.2');
+});
+
+test('component center shows the renamed repository rather than legacy UI copy',()=>{
+  const ui=setup();
+  const rendered=JSON.stringify(ui.render());
+  assert.match(rendered,/OttoBlues\/dsh-hud-plugin/);
+  assert.doesNotMatch(rendered,/OttoBlues\/dsh-plugins/);
 });

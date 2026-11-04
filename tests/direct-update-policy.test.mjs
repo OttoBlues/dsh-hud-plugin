@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.4.1 development source parse successfully',()=>{
+test('Host and Client v0.4.2 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -50,9 +50,20 @@ test('auto updates default off and experimental auto needs 3 explicit opt-ins',(
   assert.match(host,/if \(!row\) continue; \/\/ Never silently install a new component/);
   assert.match(host,/autoAttemptKey:key/);
 });
-test('No prior Windows bootstrap or unapproved source auto-installs remain',()=>{
-  assert.equal(existsSync(new URL('../.github/workflows/bootstrap-hud-v03.yml',import.meta.url)),false);
-  assert.equal(existsSync(new URL('../.github/workflows/prepare-unstable-v03.yml',import.meta.url)),false);
-  const installer=readFileSync(new URL('../scripts/windows/desktop-deploy.ps1',import.meta.url),'utf8');
-  assert.doesNotMatch(installer,/BootstrapV03|bootstrapAllowed/);
+test('retired Windows Runner deployment workflows cannot be triggered',()=>{
+  for(const file of [
+    '../.github/workflows/bootstrap-hud-v03.yml',
+    '../.github/workflows/prepare-unstable-v03.yml',
+    '../.github/workflows/auto-upgrade.yml',
+    '../.github/workflows/desktop-deploy.yml',
+    '../.github/workflows/self-hosted-smoke.yml',
+    '../scripts/windows/desktop-deploy.ps1',
+    '../scripts/windows/stage-channels.ps1',
+    '../scripts/windows/auto-upgrade-probe.ps1',
+    '../scripts/windows/self-hosted-smoke.ps1',
+  ]) assert.equal(existsSync(new URL(file,import.meta.url)),false,file);
+  const ci=readFileSync(new URL('../.github/workflows/ci.yml',import.meta.url),'utf8');
+  assert.match(ci,/runs-on: ubuntu-24\.04/);
+  assert.match(ci,/runs-on: windows-2025/);
+  assert.doesNotMatch(ci,/self-hosted|scripts\\/windows|desktop-deploy|upload-artifact/);
 });

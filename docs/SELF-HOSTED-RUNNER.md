@@ -1,56 +1,29 @@
-# DSH HUD Windows 自托管 Runner 使用说明
+# Windows 自托管 Runner 与 HUD 安装冒烟测试
 
-此功能只测试 **Windows 上的非点击行为**，不授予 ChatGPT 任意远程桌面访问权限，也不自动安装到日常 DSH Profile。
+这份说明只针对隔离 Profile 的**非点击式测试**。Windows Runner 已经在用户机器上搭建并验证过基本安装能力，但当前正式版和试验版都尚未发布，因此无法选择任何包执行新的安装冒烟测试。
 
-## 一次性的本机准备
+## Runner 注册与要求
 
-1. 建议使用 **独立 Windows VM / 备用电脑**；若使用日常电脑，请创建无管理员权限的独立账户，不在账户内保存私人凭据。自托管 Runner 运行仓库工作流代码，本身不提供快照级隔离。
-2. 打开 [私有仓库 Runner 设置](https://github.com/OttoBlues/dsh-plugins/settings/actions/runners)，点击 **New self-hosted runner**，选择 **Windows x64**。
-3. 在目标 Windows 终端按 **GitHub 当前页面**提供的命令下载、解压和运行 config.cmd。初次请使用独立目录如 C:\actions-runner-dsh-hud。注册 token 有效期有限，**不要把 token、私钥或 GitHub PAT 发送到 ChatGPT**。
-4. 注册到本仓库，设置自定义 Runner 标签 **dsh-hud-test**；若配置时没有填写，可在 GitHub Runner 设置里添加。默认标签 Windows、X64、self-hosted 也必须存在。
-5. 建议初次使用 run.cmd 在交互终端运行，看到 Listening for Jobs 且 GitHub 状态为 Online / Idle。跑通后再决定是否转为 Windows 服务。
-6. 要执行 DSH 安装冒烟测试，请使 *Runner 运行账户* 的 PATH 能找到 dsh；在该账户的终端运行 dsh --version 应可成功。Windows 服务账户不一定继承当前登录账户的 PATH。
+使用仓库级自托管 Runner（标签 `self-hosted, windows, x64, dsh-hud-test`），推荐普通权限的独立账户或可重置 Windows VM。详情：<https://github.com/OttoBlues/dsh-plugins/settings/actions/runners>。
 
-## 如何运行两档非点击测试
+- Runner 应能运行 `dsh --version`，使用 DSH Desktop 官方 CLI。Windows 服务账户不一定共享登录账户的 PATH。
+- 不向 ChatGPT、仓库代码或 Actions 日志发送 GitHub PAT、Runner 注册 Token 或 DSH 凭据。
+- 自托管 Runner 执行仓库工作流具有本地代码执行权限；只允许可信主分支和必要标签，不对 PR 自动执行。
+- CLI 修复：在 DSH Desktop 菜单选择 **Manage dsh Command… → Install/Repair**，然后重启 Runner 以刷新 PATH。
 
-在 [Actions → DSH HUD self-hosted smoke](https://github.com/OttoBlues/dsh-plugins/actions/workflows/self-hosted-smoke.yml) 选择 **Run workflow**，选择 main 分支及测试模式。
+## 两档测试
 
-| 模式 | 做什么 | 需要真实 DSH |
+打开 [DSH HUD self-hosted smoke](https://github.com/OttoBlues/dsh-plugins/actions/workflows/self-hosted-smoke.yml)，选择 `main` 分支。
+
+| 模式 | 结果 | 改动范围 |
 | --- | --- | --- |
-| preflight（默认） | 检查 Runner/Node/DSH 可用性，返回报告 | 不需启动 DSH，但若缺少 DSH CLI 会明确失败并报告 needs-setup |
-| install-smoke | 检查和打包 HUD、创建临时 Web Profile、安装 .tgz、检查配置、启动回环地址的 DSH Web 并检测 HTTP 响应 | 是 |
+| `preflight`（默认） | 检查 Runner、Node 和 DSH CLI | 不安装插件 |
+| `install-smoke` | 选择 `unstable` 或 `released`，核对 `index.json`、.tgz 与 SHA-256，在临时 Web Profile 中安装并检查本地 HTTP 启动 | 仅临时测试目录，结束后清理 |
 
-第二种模式使用独立的临时 DSH_HOME。结束后清理测试进程和临时目录，不会主动改写你常用的 DSH Desktop Profile。测试的 JSON 阶段结果上传至对应 Run 的 Artifacts，保留 7 天。**原始 CLI 输出及配置不会上传**。发生故障时仅显示失败阶段；若需要深入诊断，须在本机查看日志并先检查敏感信息。
+**没有已发布包时，`install-smoke` 会报告未找到可安装版本而停止；不会退回去下载或打包最新源码。**
 
+普通 CI 可以打包最新源代码进行结构性校验，但**不向 GitHub Artifacts 上传未获认可的候选安装包**。通过人工批准的版本，才会以不可变的归档存入 `released/` 或 `unstable/`。如果将来需要测试 V0.3，先有明确的试验版发布决定，再从 `unstable/` 运行隔离测试。
 
-## 若检查提示 DSH CLI not found
+本测试脚本保留阶段名、版本摘要和无敏感信息的 JSON 结果，**不上传 DSH 的原始配置和 CLI 日志**。Windows 原生透明置顶、鼠标穿透、热键和游戏覆盖仍需用户人工验证。
 
-这代表 **Runner 运行账户** 的 PATH 没有可执行的 `dsh`，不是 HUD Bundle 构建失败。按顺序处理：
-
-1. 若 DSH Desktop 已安装，在 DSH 应用菜单中选择 **Manage dsh Command… → Install**（已安装过时选 **Repair**）。这是官方 Windows Desktop 注册 CLI 的方法，仅更新当前用户的 PATH。
-2. 在与 Runner **相同的 Windows 账户** 下打开一个新 PowerShell，运行：
-
-```powershell
-whoami
-Get-Command dsh -All | Select-Object Name, Source
-dsh --version
-```
-
-3. 关闭原有 `run.cmd` 并重新打开以刷新 PATH；如果作为 Windows 服务运行，确认服务使用的是哪个账户，并重启服务。只在普通账户下注册了 CLI，并不意味着服务账户也能访问。
-4. 先运行 `preflight`，看到绿色通过后再运行 `install-smoke`。现在 `install-smoke` 会**先执行 CLI 预检**，找不到命令会立即失败，而不是下载 Node 后才报错。
-
-不要向 ChatGPT 或 Actions 日志发送注册 Token、API 密钥、完整系统环境变量。
-
-## 运行限制与安全规则
-
-- 此工作流只有 workflow_dispatch，**不会**被 push、PR 或定时任务触发；并只允许 main 分支。
-- 专用标签：self-hosted、windows、x64、dsh-hud-test；读权限 GITHUB_TOKEN；checkout 不持久化凭据。
-- runner 不承担 Windows GUI 交互或原生覆盖层验证。Windows 服务通常运行在非交互 Session，不能视为普通桌面。
-- 自托管 Runner 对正在执行的代码没有强制沙盒隔离。只从可信主分支手动运行、限制仓库写权限、尽可能使用可重置的 Windows VM；不用时停止 Runner。
-- GitHub 安装说明：https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/add-runners
-- 官方安全建议：https://docs.github.com/en/actions/reference/security/secure-use
-- DSH Profile/Bundle 文档：https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md
-
-## 注意
-
-当前 HUD v0.1.0 仍只是 **DSH 窗口内的静态预览插件**。即便 HTTP 启动检测成功，也不等于实际页面渲染、透明置顶、鼠标穿透或唤醒按键已经被验证。
+参考 [发布政策](RELEASE-POLICY.md) 及 [DSH 官方插件安装说明](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md)。

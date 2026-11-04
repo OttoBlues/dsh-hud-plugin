@@ -67,7 +67,7 @@ jobs:
           }
 
   windows-build:
-    name: Test and pack HUD (Windows)
+    name: Validate candidate HUD package (Windows)
     if: github.event_name != 'pull_request'
     needs: linux-check
     runs-on: windows-2025
@@ -94,13 +94,7 @@ jobs:
           }
       - name: Run Node tests
         run: npm test
-      - name: Pack DSH HUD installable tarball
+      - name: Pack source candidate for structural validation only (not published)
         run: npm run pack:hud
       - name: Inspect package contents
         run: npm run verify:pack
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dsh-hud-bundle-${{ github.run_number }}
-          path: dist/*.tgz
-          if-no-files-found: error
-          retention-days: 7

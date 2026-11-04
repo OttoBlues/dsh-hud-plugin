@@ -46,3 +46,9 @@ plugins/
 ## 未来扩展
 
 任何新组件均沿用 `plugins/<组件名>/released/` 与 `plugins/<组件名>/unstable/`，但本次更新执行器首先只支持 HUD；对其他组件的界面展示不能视为自动安装能力已完成。
+
+## 对开发构建与隔离测试的额外约束
+
+- `DSH plugins CI` 可以编译、打包并检查最新的研发源码，但**不上传 `dist/*.tgz` 安装候选供用户下载**，也不会因为 CI 通过而自动生成正式或试验版。
+- `install-smoke` 必须明确选择 `unstable` 或 `released`；仅从相应 `index.json` 选出已登记的安装包并检查 SHA-256。**通道为空时测试应安全停止**，不可回退到 `npm pack` 最新源码。
+- `tests/channel-release-policy.test.mjs` 不应永久要求通道为空，未来用户批准首次发布后仍须能通过；是否有可发布包由实际索引与签名/哈希核验决定。

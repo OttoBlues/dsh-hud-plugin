@@ -31,6 +31,7 @@ function setup(valuesOverride={}, runtime={}) {
     requestNonce:'',updateStatus:'',allowUnstable:false,
     autoUpdateEnabled:false,autoUpdateUnstable:false,autoAttemptKey:'',
     overlayVisible:false,hudMode:false,
+    checkNonce:'',checkState:'idle',checkError:'',checkAt:'',checkOrigin:'',
     ...valuesOverride,
   };
   const updates=[];
@@ -110,7 +111,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.5.1')])});
+  const ui=setup({catalog:catalog([own('0.5.2')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -193,7 +194,7 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   const preview=find(overlay,x=>x.props?.['data-dsh-hud-preview']==='true')[0];
   assert.ok(preview);
   assert.equal(preview.props.style.pointerEvents,'none');
-  assert.equal(preview.props['data-dsh-hud-version'],'0.5.0');
+  assert.equal(preview.props['data-dsh-hud-version'],'0.5.1');
 });
 
 test('component center shows the renamed repository rather than legacy UI copy',()=>{
@@ -282,4 +283,52 @@ test('HUD Escape and manager entry both keep DSH navigation usable',async()=>{
   button.props.onClick();
   await flushMode();
   assert.equal(ui.values.hudMode,true);
+});
+
+
+test('vector cockpit uses traced angular panels, faint grid, and a scope reticle',()=>{
+  const ui=setup({hudMode:true});
+  const overlay=renderWorkspace(ui);
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.1');
+  assert.match(JSON.stringify(overlay.props.style),/backgroundSize/);
+  assert.ok(find(overlay,x=>x.props?.['data-hud-vector-frame']===true).length>=4);
+  assert.ok(find(overlay,x=>x.props?.['data-hud-traces']===true).length>=4);
+  assert.equal(find(overlay,x=>x.props?.['data-hud-scope']===true).length,1);
+  const manager=ui.render('main');
+  assert.equal(manager.props['data-hud-visual'],'vector-051');
+  assert.ok(find(manager,x=>x.props?.['data-hud-vector-frame']===true).length>=2);
+});
+
+test('check updates button queues a manual scan without queuing a package',async()=>{
+  const ui=setup({catalog:catalog([own('0.6.0','0.6.1')])});
+  const button=find(ui.render('main'),x=>x.props?.['data-hud-check-button']===true)[0];
+  assert.ok(button,'manual scan button exists');
+  assert.equal(button.props.disabled,false);
+  button.props.onClick();
+  await flushMode();
+  assert.equal(ui.values.checkState,'checking');
+  assert.match(ui.values.checkNonce,/^\d+-/);
+  assert.equal(ui.values.requestNonce,'','Refresh must not install a bundle');
+  assert.equal(ui.values.updateStatus,'');
+  const pending=find(ui.render('main'),x=>x.props?.['data-hud-check-button']===true)[0];
+  assert.equal(pending.props.disabled,true);
+});
+
+test('partial index checks display actual channel errors, not up-to-date',()=>{
+  const ui=setup({checkState:'partial',checkAt:'2026-11-05T02:40:10Z',
+    checkError:'hud/unstable: HTTP 404',checkOrigin:'canonical'});
+  const tree=ui.render('main');
+  const panel=find(tree,x=>x.props?.['data-hud-check-panel']===true)[0];
+  assert.ok(panel);
+  assert.equal(find(panel,x=>x.props?.['data-hud-check-state']==='partial').length,1);
+  assert.equal(find(panel,x=>x.props?.['data-hud-check-error']===true).length,1);
+  assert.match(JSON.stringify(panel),/hud\/unstable: HTTP 404/);
+  assert.match(JSON.stringify(panel),/当前源：dsh-hud-plugin/);
+});
+
+test('check button remains available when catalog is offline',()=>{
+  const ui=setup({catalog:'{"schema":3,"source":"unavailable","components":[]}'});
+  const button=find(ui.render('main'),x=>x.props?.['data-hud-check-button']===true)[0];
+  assert.ok(button);
+  assert.equal(button.props.disabled,false);
 });

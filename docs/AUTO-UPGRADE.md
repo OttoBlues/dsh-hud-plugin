@@ -27,3 +27,10 @@ https://github.com/OttoBlues/dsh-plugins/actions/workflows/auto-upgrade.yml
 - U01：用户已于 2026-11-04 确认 HUD V0.1 预览正常显示。
 - HUD V0.2 已进入 main 并完成 Linux/Windows CI，等待首次真实自动升级和 GUI 人工确认。
 - U02（卸载恢复）仍未人工验收；部署成功与真正的 HUD 渲染/会话状态正确性是不同验证层级。
+
+## 首次自动升级的实际结果
+
+- 2026-11-04：[自动升级执行 #41822835662](https://github.com/OttoBlues/dsh-plugins/actions/runs/41822835662) 成功。
+- `desktop` Profile 从 HUD `0.1.0` 更新为 `0.2.0`，且旧版本已成功生成临时回滚归档，精确版本核验通过。
+- 此次运行后备份临时目录已按正常流程清理；并非长期保存的回滚快照。
+- V0.2 的界面状态是否正确，仍须用户打开 DSH 后进行 U11 人工验收。

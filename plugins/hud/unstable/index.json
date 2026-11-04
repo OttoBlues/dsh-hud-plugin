@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.5.2",
+  "latest": "0.5.3",
   "releases": [
     {
       "version": "0.3.0",
@@ -81,6 +81,17 @@
         "result": "success"
       },
       "note": "User-requested U052 cockpit geometry fix, reduced decoration and DSH-native component center; HUD visual approval pending."
+    },
+    {
+      "version": "0.5.3",
+      "file": "v0.5.3/local-dsh-hud-0.5.3.tgz",
+      "sha256": "71f698caf24c0186da9f29d5d2be97663c323d41f10750561ce60bdb4343bbbd",
+      "sourceCommit": "c7e261f21a7267387556da6b8e08eb68f3b8d17a",
+      "test": {
+        "ciRun": "41913217218",
+        "result": "success"
+      },
+      "note": "Unstable HUD v0.5.3: bounded refresh and watchdog retry, flat single-palette cockpit, and component-center-only HUD entry; U053 Desktop validation pending."
     }
   ]
 }

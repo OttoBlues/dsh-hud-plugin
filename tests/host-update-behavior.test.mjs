@@ -45,6 +45,7 @@ function setup(overrides={}) {
     catalog:'{"schema":3,"source":"checking","components":[]}',
     allowUnstable:false,autoUpdateEnabled:false,autoUpdateUnstable:false,
     autoAttemptKey:'',overlayVisible:false,
+    checkNonce:'',checkState:'idle',checkError:'',checkAt:'',checkOrigin:'',
     requestComponent:'',requestVersion:'',requestChannel:'released',
     requestNonce:'',updateStatus:'',
     ...overrides.values,
@@ -61,6 +62,7 @@ function setup(overrides={}) {
     if(url.endsWith('/plugins/index.json'))return response(JSON.stringify(repoIndex));
     if(url.endsWith('/hud/released/index.json'))return response(JSON.stringify(
       index('released',overrides.released===undefined?'0.4.1':overrides.released,overrides.badChecksum?'f'.repeat(64):sha)));
+    if(overrides.failUnstable && url.endsWith('/hud/unstable/index.json'))return response('Not found',404);
     if(url.endsWith('/hud/unstable/index.json'))return response(JSON.stringify(
       index('unstable',overrides.unstable || null)));
     if(url.endsWith('.tgz'))return response(archive);
@@ -120,7 +122,10 @@ function setup(overrides={}) {
     callbacks[1]();
     await flush();
   }
-  return {values,calls,inventory,click,refresh:async()=>{callbacks[0]();await flush();},
+  return {values,calls,inventory,click,
+    check:async()=>{values.checkNonce='check-'+(++id);values.checkState='checking';
+      callbacks[1]();await flush();},
+    refresh:async()=>{callbacks[0]();await flush();},
     reconcile:async()=>{startTimers[0]?.();await flush();},stop:()=>dispose()};
 }
 
@@ -264,4 +269,57 @@ test('self-update disposal forbids edits from the old Host after package replace
     await flush();
     assert.equal(x.calls.writes.length,afterDispose);
   }finally{x.stop();}
+});
+
+
+test('manual refresh fetches both channels immediately and records success',async()=>{
+  const s=setup({unstable:'0.5.1'});
+  try {
+    await flush();
+    const before=s.calls.http.length;
+    await s.check();
+    assert(s.calls.http.length>before,'Manual check should fetch all sources again');
+    assert.equal(s.values.checkState,'success');
+    assert.match(s.values.checkAt,/^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(s.values.checkOrigin,'canonical');
+    assert.equal(s.values.checkNonce,'');
+    assert.equal(s.calls.installed.length,0);
+  } finally{s.stop();}
+});
+
+test('manual refresh exposes missing unstable channel instead of a fake latest',async()=>{
+  const s=setup({failUnstable:true});
+  try {
+    await flush();
+    await s.check();
+    assert.equal(s.values.checkState,'partial');
+    assert.match(s.values.checkError,/hud\/unstable/);
+    const rows=JSON.parse(s.values.catalog);
+    assert.equal(rows.source,'public');
+    assert.equal(rows.components[0].unstable,null);
+    assert.equal(s.calls.installed.length,0);
+  } finally{s.stop();}
+});
+
+test('manual refresh surfaces network failure and does not install',async()=>{
+  const s=setup({private:true});
+  try {
+    await flush();
+    await s.check();
+    assert.equal(s.values.checkState,'failed');
+    assert(s.values.checkError.length>0);
+    assert.equal(JSON.parse(s.values.catalog).source,'unavailable');
+    assert.equal(s.calls.installed.length,0);
+  } finally{s.stop();}
+});
+
+test('explicit check never triggers a package replacement even if auto-update is enabled',async()=>{
+  const s=setup();
+  try {
+    await flush(); // complete initial periodic discovery first
+    s.values.autoUpdateEnabled=true;
+    await s.check();
+    assert.equal(s.values.checkState,'success');
+    assert.equal(s.calls.installed.length,0);
+  } finally{s.stop();}
 });

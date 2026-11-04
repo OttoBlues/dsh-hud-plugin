@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.0 development Client.
+ * DSH HUD V0.5.1 development Client: vector-interface HUD and manual refresh.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.0';
+    const VERSION = '0.5.1';
     const REFRESH_MS = 5 * 60_000;
 
     const dictionaries = {
@@ -116,6 +116,53 @@ window.__ModuleLoader__.load({
 
     // Full-frame in-app HUD. The DSH AppFrame stays mounted underneath:
     // no root-slot override, global DOM mutations or session navigation hacks.
+
+    // Shared line-built panel treatment: no image assets, no invented status data.
+    // Vector corner paths are decorative and cannot intercept input.
+    const V = {
+      cyan:'#77f5f0', electric:'#7dbfe4', amber:'#f1d59b',
+      text:'#e8faff', muted:'#95b5c4', stroke:'rgba(105,235,242,.34)',
+      inner:'rgba(5,21,32,.92)',
+      cut:'polygon(13px 0,calc(100% - 13px) 0,100% 13px,100% calc(100% - 13px),calc(100% - 13px) 100%,13px 100%,0 calc(100% - 13px),0 13px)',
+      background:'linear-gradient(rgba(83,216,231,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(83,216,231,.045) 1px,transparent 1px),radial-gradient(ellipse at 74% 16%,rgba(17,78,100,.55),transparent 55%),linear-gradient(145deg,#030c15,#081927 65%,#081721)',
+      backgroundSize:'38px 38px,38px 38px,auto,auto',
+    };
+    function vectorTraces() {
+      return h('svg',{'aria-hidden':true,'data-hud-traces':true,
+        viewBox:'0 0 100 100',preserveAspectRatio:'none',
+        style:{position:'absolute',inset:0,width:'100%',height:'100%',
+          pointerEvents:'none',zIndex:0,overflow:'hidden'}},
+        h('path',{d:'M 0 20 V 13 L 13 0 H 32 M 68 0 H 87 L 100 13 V 28 M 100 72 V 87 L 87 100 H 68 M 32 100 H 13 L 0 87 V 72',
+          fill:'none',stroke:'rgba(119,245,240,.76)',strokeWidth:1.3,
+          vectorEffect:'non-scaling-stroke'}),
+        h('path',{d:'M 18 0 H 37 M 63 100 H 82 M 0 38 V 49 M 100 51 V 62',
+          fill:'none',stroke:'rgba(125,191,228,.55)',strokeWidth:1,
+          vectorEffect:'non-scaling-stroke'}));
+    }
+    function vectorFrame(tag, attributes, ...children) {
+      return h(tag,{...attributes,'data-hud-vector-frame':true,
+        style:{
+          position:'relative',overflow:'hidden',borderRadius:0,
+          clipPath:V.cut,border:'1px solid '+V.stroke,
+          background:'linear-gradient(130deg,rgba(13,37,52,.95),'+V.inner+')',
+          boxShadow:'inset 0 1px 0 rgba(131,236,241,.16),0 12px 35px rgba(0,4,14,.15)',
+          ...attributes.style,
+        }},
+        vectorTraces(),
+        ...children);
+    }
+    function scopeLines() {
+      return h('svg',{'aria-hidden':true,'data-hud-scope':true,
+        viewBox:'0 0 240 165',width:240,height:165,
+        style:{position:'absolute',right:10,top:9,opacity:.25,pointerEvents:'none'}},
+        h('circle',{cx:121,cy:82,r:57,stroke:V.cyan,fill:'none',strokeWidth:1}),
+        h('circle',{cx:121,cy:82,r:35,stroke:V.electric,fill:'none',strokeWidth:1}),
+        h('path',{d:'M 121 10 V 155 M 49 82 H 193 M 70 31 L 172 133 M 174 31 L 71 134',
+          stroke:V.cyan,strokeWidth:0.8,fill:'none'}),
+        h('path',{d:'M 121 82 L 169 49 M 118 78 H 124 V 86 H 118 Z',
+          stroke:V.amber,strokeWidth:2,fill:'none'}));
+    }
+
     function HudWorkspace({t, sessions, statuses, onExit, onComponents, error}) {
       const [tab, setTab] = React.useState('overview');
       const [clock, setClock] = React.useState(new Date().toLocaleTimeString(undefined,
@@ -138,19 +185,25 @@ window.__ModuleLoader__.load({
       });
       const active = rows.filter(row => row.running).length;
       const selected = rows.find(row => row.current);
-      const hue = '#8be9e0', muted = '#9cb3c0';
-      const outline = '1px solid rgba(141,222,225,.18)';
-      const panel = {border:outline,borderRadius:18,background:'rgba(12,29,41,.86)',
-        boxShadow:'0 12px 42px rgba(0,0,0,.18)'};
+      const hue = V.cyan, muted = V.muted;
+      const outline = '1px solid '+V.stroke;
+      const panel = {background:'linear-gradient(115deg,rgba(8,36,49,.95),rgba(3,17,28,.93))',
+        border:outline,boxShadow:'inset 0 0 20px rgba(18,78,103,.18)'};
       const pill = (label,onClick,primary=false, extra={}) => h('button',{
         type:'button',onClick,...extra,style:{font:'inherit',fontSize:13,fontWeight:600,
-          color:primary?'#0b222a':'#e7f5f8',background:primary?hue:'rgba(119,177,198,.10)',
-          border:primary?'1px solid transparent':outline,borderRadius:11,
-          padding:'11px 17px',cursor:'pointer',minHeight:42,...extra.style}},label);
-      const metric = (key,value,foot) => h('div',{key,style:{...panel,padding:'17px 20px',
-        minWidth:135,flex:'1 1 150px'}},
-        h('div',{style:{fontSize:11,color:muted,letterSpacing:'0.09em'}},key),
-        h('strong',{style:{display:'block',fontSize:29,marginTop:9,fontWeight:620}},value),
+          color:primary?'#021921':V.text,
+          background:primary?'linear-gradient(90deg,#58d9e4,#9ef7eb)':'rgba(8,43,56,.55)',
+          border:primary?'1px solid rgba(130,250,247,.85)':outline,borderRadius:0,
+          clipPath:'polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))',
+          boxShadow:primary?'0 0 15px rgba(101,239,235,.20)':'inset 0 0 12px rgba(77,199,209,.1)',
+          letterSpacing:'.06em',padding:'11px 17px',cursor:'pointer',minHeight:42,...extra.style}},label);
+      const metric = (key,value,foot) => vectorFrame('div',{key,
+        style:{...panel,padding:'18px 23px',minWidth:140,flex:'1 1 150px'}},
+        h('div',{style:{fontSize:10,color:hue,letterSpacing:'.16em',
+          fontFamily:'Consolas,monospace'}},'// '+key),
+        h('strong',{style:{display:'block',fontSize:33,marginTop:12,
+          fontWeight:600,fontVariantNumeric:'tabular-nums',letterSpacing:'.04em'}},value),
+        h('div',{style:{height:1,width:48,background:V.cyan,margin:'9px 0 8px',opacity:.65}}),
         h('div',{style:{fontSize:12,color:muted,marginTop:5}},foot));
       const sessionRow = row => h('div',{key:row.id,'data-hud-session-id':String(row.id),
         style:{display:'flex',gap:12,alignItems:'center',justifyContent:'space-between',
@@ -168,16 +221,23 @@ window.__ModuleLoader__.load({
         tabIndex:0,'data-dsh-hud-workspace':true,'data-dsh-hud-version':VERSION,
         onKeyDown:e=>{if(e.key==='Escape'){e.stopPropagation?.();onExit();}},
         style:{position:'absolute',inset:0,zIndex:30,boxSizing:'border-box',
-          background:'radial-gradient(ellipse at 80% 12%, #15384b 0%, transparent 45%), linear-gradient(140deg,#06141e,#091a26 60%,#102b33)',
-          color:'#edf8fb',fontFamily:'system-ui, sans-serif',
+          backgroundColor:'#030c15',backgroundImage:V.background,
+          backgroundSize:V.backgroundSize,
+          color:V.text,fontFamily:'system-ui, sans-serif',
           pointerEvents:'auto',overflowY:'auto',overflowX:'hidden'}},
-        h('div',{style:{maxWidth:1600,margin:'0 auto',padding:'28px clamp(18px,3vw,54px) 38px',
-          boxSizing:'border-box',minHeight:'100%',display:'flex',gap:28}},
+        h('div',{style:{maxWidth:1640,margin:'0 auto',
+          padding:'30px clamp(16px,3vw,52px) 40px',boxSizing:'border-box',
+          minHeight:'100%',display:'flex',flexWrap:'wrap',gap:25}},
           h('nav',{'aria-label':t('workspaceNav'),
-            style:{width:145,flex:'0 0 145px',display:'flex',flexDirection:'column',
-              gap:12,borderRight:'1px solid rgba(141,222,225,.12)',paddingRight:18}},
-            h('div',{style:{fontSize:24,fontWeight:800,letterSpacing:'0.15em',
-              color:hue,padding:'0 8px 28px'}},'HUD'),
+            style:{width:176,flex:'1 1 155px',maxWidth:185,display:'flex',flexDirection:'column',
+              gap:12,borderRight:'1px solid rgba(141,222,225,.24)',paddingRight:18}},
+            h('div',{style:{padding:'4px 7px 29px'}},
+              h('div',{style:{fontSize:29,fontWeight:800,letterSpacing:'.20em',
+                color:hue,textShadow:'0 0 14px rgba(98,239,242,.3)'}},'HUD'),
+              h('div',{style:{height:1,background:'linear-gradient(90deg,#65e9ef,transparent)',
+                margin:'13px 0 8px'}}),
+              h('div',{style:{fontSize:9,color:muted,letterSpacing:'.14em',
+                fontFamily:'Consolas,monospace'}},'VECTOR / INTERFACE')),
             pill(t('overview'),()=>setTab('overview'),tab==='overview',
               {'data-hud-tab':'overview'}),
             pill(t('sessionTab'),()=>setTab('sessions'),tab==='sessions',
@@ -187,25 +247,32 @@ window.__ModuleLoader__.load({
             h('div',{style:{marginTop:'auto',paddingTop:35}},
               pill(t('returnDSH'),onExit,false,{'data-hud-nav':'dsh',
                 style:{width:'100%'}}))),
-          h('div',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:22}},
+          h('div',{style:{flex:'5 1 460px',minWidth:0,display:'flex',flexDirection:'column',gap:20}},
+            h('div',{'data-hud-vector-scanline':true,
+              style:{height:2,width:'100%',
+                background:'linear-gradient(90deg,#6ce9ea 0%,#6ce9ea 17%,transparent 17%,transparent 21%,rgba(108,233,234,.5) 21%,rgba(108,233,234,.5) 48%,transparent 48%)'}}),
             h('header',{style:{display:'flex',alignItems:'center',gap:16,
               justifyContent:'space-between',flexWrap:'wrap'}},
               h('div',null,
-                h('div',{style:{fontSize:11,letterSpacing:'0.13em',color:hue}},'DEEPSEEK HARNESS / HUD'),
+                h('div',{style:{fontSize:11,letterSpacing:'.18em',color:hue,
+                  fontFamily:'Consolas,monospace'}},'DSH // VECTOR INTERFACE / 05'),
                 h('h1',{style:{fontSize:'clamp(25px,3vw,40px)',fontWeight:620,
                   letterSpacing:'-0.035em',margin:'8px 0 0'}},t('workspaceTitle'))),
               h('div',{style:{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}},
-                h('time',{style:{fontSize:24,letterSpacing:'-0.02em'},'data-hud-clock':true},clock),
+                h('time',{style:{fontSize:25,letterSpacing:'.05em',
+                  fontFamily:'Consolas,monospace',color:hue},'data-hud-clock':true},clock),
                 pill(t('returnDSH'),onExit,true,{'data-hud-exit':true}))),
-            h('section',{style:{...panel,padding:'clamp(22px,3vw,38px)',
-              background:'linear-gradient(110deg, rgba(23,67,80,.9),rgba(9,31,46,.9))'}},
+            vectorFrame('section',{style:{...panel,padding:'clamp(23px,3vw,42px)',
+              background:'linear-gradient(110deg, rgba(8,42,56,.94),rgba(2,19,30,.96))'}},
+              scopeLines(),
               h('div',{style:{display:'flex',gap:11,alignItems:'center'}},
                 h('span',{style:{width:8,height:8,borderRadius:'50%',
                   background:active>0?'#6ce0ba':hue,display:'inline-block'}}),
                 h('span',{style:{fontSize:12,color:hue,letterSpacing:'0.12em'}},
                   t('liveStatus'))),
-              h('h2',{style:{fontSize:'clamp(25px,3vw,38px)',lineHeight:1.2,
-                margin:'18px 0 12px',fontWeight:590}},t('heroTitle')),
+              h('h2',{style:{fontSize:'clamp(26px,3.1vw,41px)',lineHeight:1.2,
+                margin:'22px 0 12px',fontWeight:580,position:'relative',
+                textShadow:'0 0 12px rgba(88,220,235,.14)'}},t('heroTitle')),
               h('div',{style:{fontSize:14,color:'#c1d6df',lineHeight:1.7,
                 maxWidth:650}},t('heroHelp'))),
             h('div',{style:{display:'flex',flexWrap:'wrap',gap:15}},
@@ -214,7 +281,7 @@ window.__ModuleLoader__.load({
               metric(t('viewMode'),'HUD',t('switchable'))),
             h('div',{style:{display:'grid',
               gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,320px),1fr))',gap:18}},
-              h('section',{style:{...panel,padding:'20px 23px',minHeight:195}},
+              vectorFrame('section',{style:{...panel,padding:'22px 25px',minHeight:195}},
                 h('div',{style:{fontSize:12,color:hue,letterSpacing:'.10em'}},
                   tab==='overview'?t('currentSession'):t('sessionTab')),
                 h('h3',{style:{fontSize:21,margin:'18px 0 9px',fontWeight:560}},
@@ -224,10 +291,10 @@ window.__ModuleLoader__.load({
                   tab==='overview'?t('currentHelp'):t('sessionsHelp')),
                 pill(t('openConversation'),onExit,false,
                   {'data-hud-open-conversation':true})),
-              h('section',{style:{...panel,padding:'20px 23px',minHeight:195}},
+              vectorFrame('section',{style:{...panel,padding:'22px 25px',minHeight:195}},
                 h('div',{style:{display:'flex',alignItems:'center',
                   justifyContent:'space-between',gap:12}},
-                  h('h3',{style:{fontSize:16,fontWeight:570,margin:0}},
+                  h('h3',{style:{fontSize:16,fontWeight:570,margin:0,color:hue}},
                     tab==='overview'?t('recentSessions'):t('allSessions')),
                   h('span',{style:{color:muted,fontSize:11}},String(rows.length))),
                 rows.length?h('div',{style:{marginTop:8}},...rows.slice(0,tab==='overview'?5:12).map(sessionRow)):
@@ -237,7 +304,9 @@ window.__ModuleLoader__.load({
               paddingTop:20,display:'flex',gap:16,flexWrap:'wrap',
               alignItems:'center',justifyContent:'space-between'}},
               h('span',{style:{fontSize:12,color:muted}},t('readOnlyBoundary')),
-              h('span',{style:{fontSize:11,color:hue}},'HUD '+VERSION+' · '+t('previewStatus'))),
+              h('span',{style:{fontSize:11,color:hue,
+                fontFamily:'Consolas,monospace',letterSpacing:'.08em'}},
+                'HUD // '+VERSION+'  ·  '+t('previewStatus'))),
             error?h('div',{role:'alert',style:{color:'#ffb5b5',fontSize:13}},error):null)));
     }
 

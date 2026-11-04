@@ -31,3 +31,7 @@ npm run verify:pack
 ```
 
 `npm run pack:hud` 仅制作本地**研发候选包**，不会放入正式发布通道，也不会自动安装。更多说明参见 [更新设计](docs/AUTO-UPGRADE.md)、[发布政策](docs/RELEASE-POLICY.md)、[验收记录](docs/MANUAL-ACCEPTANCE.md)。
+
+## 当前研发状态
+
+V0.3.0 已通过 U03-1～U03-4 的真实界面验收，仍在 `unstable/`。接下来的 **V0.3.1 研发源码**专注免 Runner 更新可靠性，尚未发布或安装；仓库目前为 Private，匿名联网更新仍待公开源后验证。

@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
-  "description": "DSH HUD with component update catalog and opt-in updater tab",
+  "description": "Unreleased HUD development with in-app updater lifecycle and validation tests",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },

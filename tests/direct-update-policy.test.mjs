@@ -28,8 +28,14 @@ test('real installer is gated on explicit component confirmation, version and sh
   assert.match(host, /isNewer|newer\(version, CURRENT_VERSION\)/);
   assert.match(host, /row\.file !== 'v' \+ row\.version/);
   assert.match(host, /createHash\('sha256'\)\.update\(content\)\.digest\('hex'\)/);
-  assert.match(host, /ctx\.pluginManager\.installBundle\(archive, \{ enabled: true \}\)/);
+  assert.match(host, /ctx\.pluginManager\.installBundle\(archive, \{/);
+  assert.match(host, /saveExact: true/);
+  assert.match(host, /ctx\.pluginManager\.listBundles\(\)/);
   assert.match(host, /result\.application === 'restart-required'/);
+  assert.match(host, /\['applied', 'restart-required'\]\.includes\(result\.application\)/);
+  assert.match(host, /requestNonce: '', updateStatus: 'installing'/);
+  assert.match(host, /AbortSignal\.timeout\(DOWNLOAD_TIMEOUT_MS\)/);
+  assert.doesNotMatch(host, /readFile\(join\(base, 'catalog\.json'/);
   assert.match(client, /path: \['requestNonce'\]/);
 });
 

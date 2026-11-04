@@ -123,7 +123,7 @@ test('new version renders a real update button on the right of its component row
   const buttons = findNodes(tab, node => node.type === 'button');
   assert.ok(buttons.some(btn => btn.children.includes('↑ 更新')));
   const text = JSON.stringify(tab);
-  assert.match(text, /0\.3\.0/);
+  assert.match(text, /0\.3\.1/);
   assert.match(text, /0\.4\.0/);
 });
 
@@ -148,7 +148,7 @@ test('click requires confirmation then stores a scoped update request', async ()
 });
 
 test('matching versions never present an update action', () => {
-  const harness = setup({ catalog: catalog('0.3.0') });
+  const harness = setup({ catalog: catalog('0.3.1') });
   const tab = harness.render('plugins.tab');
   assert.equal(findNodes(tab, node => node.type === 'button' &&
     node.children.includes('↑ 更新')).length, 0);
@@ -159,7 +159,7 @@ test('preview may be deliberately enabled without stealing pointer events', () =
   const harness = setup({ overlayVisible: true });
   const overlay = harness.render('shell.overlay');
   assert.equal(overlay.props.style.pointerEvents, 'none');
-  assert.equal(overlay.props['data-dsh-hud-version'], '0.3.0');
+  assert.equal(overlay.props['data-dsh-hud-version'], '0.3.1');
   assert.equal(overlay.children.length, 4);
 });
 
@@ -198,7 +198,9 @@ test('Host exposes experimental preferences and performs only consented direct u
   assert.match(host, /requestChannel: Schema\.string/);
   assert.match(host, /requestNonce: Schema\.string/);
   assert.match(host, /channel === 'unstable' && config\.allowUnstable\.get\(\) !== true/);
-  assert.match(host, /ctx\.pluginManager\.installBundle\(archive, \{ enabled: true \}\)/);
+  assert.match(host, /ctx\.pluginManager\.installBundle\(archive, \{/);
+  assert.match(host, /saveExact: true/);
+  assert.match(host, /ctx\.pluginManager\.listBundles\(\)/);
   assert.match(host, /createHash\('sha256'\)/);
   assert.match(host, /raw\.githubusercontent\.com\/OttoBlues\/dsh-plugins\/main\/plugins\/hud/);
   assert.doesNotMatch(host, /GITHUB_TOKEN|child_process|exec\(/);

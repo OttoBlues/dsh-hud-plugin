@@ -14,3 +14,12 @@
 **V0.3 实机已通过**：组件标签及 HUD 显示、V0.3.0 版本、试验版开关默认关闭、HUD 重叠消失（2026-11-04，详见 MANUAL-ACCEPTANCE）。**尚未通过**：公网版本发现、实际点击安装、失败恢复及应用内升级的真实闭环。当前仓库 Private，匿名直连需要公开发布源。
 
 用户批准发布 `released` 前，保持 `plugins/hud/released/index.json` 的 `releases: []`。
+
+## V0.3.1 研发源码（尚未发布）的更新可靠性改进
+
+- 你日常 Desktop 仍是 **HUD V0.3.0**；`unstable/v0.3.0` 原安装包保持不可变。
+- 从客户端更新候选中移除对 Windows Runner 本地缓存的依赖，只根据可匿名访问的 `released/` 和 `unstable/` 索引发现版本。
+- 在执行网络请求与安装前消费一次性请求标识，避免旧请求在 DSH 重启后重复执行。
+- 将 `failed`、`cancelled`、`overridden` 与真正的 `applied` / `restart-required` 区分，核对 DSH PluginManager 已安装版本。
+- 补充模拟公开/私有仓库、SHA-256 篡改、拒绝试验版、版本不匹配和重启提示等行为测试。
+- 真实的匿名联网下载、失败回退及用户点击升级尚未完成端到端验收；此改动不能自动进入任一发布通道。

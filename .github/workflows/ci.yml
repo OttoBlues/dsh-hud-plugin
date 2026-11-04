@@ -1,0 +1,70 @@
+name: DSH plugins CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'package.json'
+      - 'plugins/**'
+      - 'scripts/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/ci.yml'
+      - 'package.json'
+      - 'plugins/**'
+      - 'scripts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dsh-plugins-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-check:
+    name: Verify and test (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate DSH bundles
+        run: npm run verify
+      - name: Run Node tests
+        run: npm test
+
+  windows-build:
+    name: Test and pack HUD (Windows)
+    if: github.event_name != 'pull_request'
+    needs: linux-check
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate DSH bundles
+        run: npm run verify
+      - name: Run Node tests
+        run: npm test
+      - name: Pack DSH HUD installable tarball
+        run: npm run pack:hud
+      - name: Inspect package contents
+        run: npm run verify:pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-hud-bundle-${{ github.run_number }}
+          path: dist/*.tgz
+          if-no-files-found: error
+          retention-days: 7

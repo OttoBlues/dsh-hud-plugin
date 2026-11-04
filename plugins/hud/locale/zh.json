@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "桌面 HUD 预览",
+    "description": "在 DSH 界面内显示轻量化透明 HUD 预览，不修改原有布局或 Agent 状态。"
+  }
+}

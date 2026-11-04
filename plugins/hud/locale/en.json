@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Desktop HUD preview",
+    "description": "Adds a light HUD overlay inside the DSH window without replacing the layout or changing Agent state."
+  }
+}

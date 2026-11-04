@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "component": "hud",
+  "package": "@local/dsh-hud",
+  "channel": "unstable",
+  "version": "0.4.0",
+  "file": "local-dsh-hud-0.4.0.tgz",
+  "sha256": "7fc23e0d7d6fe9742bd327f112c8589e759d58aa9f9634efd1b8810161eedcc3",
+  "sourceCommit": "61a036560d47d6273fed27255a04828ca3b37ebd",
+  "test": {
+    "ciRun": "41850543533",
+    "result": "success"
+  },
+  "verification": {
+    "sourceCi": "41850543355",
+    "role": "Anonymous public GitHub update test",
+    "approvedAsStable": false
+  }
+}

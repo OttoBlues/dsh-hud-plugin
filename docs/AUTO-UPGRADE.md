@@ -1,36 +1,24 @@
-# DSH HUD 自动升级（已明确授权）
+# DSH 双通道组件检查与用户确认更新
 
-## 自动流程
+**功能政策**：`plugins/<组件>/released/` 只存用户批准的正式版本；`unstable/` 只存试验包。源码文件始终是最新研发状态，不允许作为直接安装源。
 
-- 在 GitHub **main** 分支上，只有 `DSH plugins CI` 的 **push 事件**所产生的 Linux 检查和 Windows 构建全部通过后，自动升级检查才会被执行。
-- 如果 DSH Desktop 未运行、`desktop` Profile 已安装 HUD 且其版本低于 main 中版本，将自动构建并升级 HUD。
-- 如果 DSH 仍在运行，状态标记为 `deferred`，**不强制退出、不中断 Agent、不中途热替换**。GitHub 每小时第 23 分钟（UTC）重试一次；用户正常退出 DSH 后才可能成功，计划任务可能被 GitHub 延迟。
-- 如果当前版本已是目标版本或更高，状态为 `current`，不重复安装；如果 HUD 已被用户卸载，状态为 `not-installed`，不会擅自重新安装。
-- 自动部署始终使用仓库的已通过 CI 的 main 源码，并复用专用 Windows Runner：`[self-hosted, windows, x64, dsh-hud-test]`。
-- 检查目标 `@local/dsh-hud` 的版本号（`X.Y.Z`），版本没有增加就不会升级；现阶段不支持对预发布 SemVer 自动升级。
-- 升级前将旧插件打包到 Runner 临时目录作为同次任务的回退包；若安装或版本核验失败，尝试恢复先前版本；不修改其他插件、Session 或授权记录。
-- 临时原始 CLI 日志、回退包留在 Runner 本地临时目录并删除，GitHub 仅上传非敏感 JSON 状态报告。
+## 组件页
 
-## 两条工作流
+- 每次打开「插件 → 组件」时读取可信 Host 清单；插件运行期间 Host 每 20 秒读取一次 Runner 的本地版本清单，Windows Runner 每 15 分钟安排一次检查（GitHub Actions 可能延迟）。
+- 默认不接受试验版：只把 `released` 版本作为可更新候选。
+- 用户可打开「允许试验版更新」使 `unstable` 可见；**仍必须点击「更新」并再次确认**。
+- 只接受具体组件、通道、版本、提交及 SHA-256 的一项更新请求，且需现有版本更低。
+- 关闭开关后，任何排队中的 `unstable` 请求也会被 Runner 拒绝。
+- DSH 正在运行时不强制结束进程；保留更新请求，正常退出后才升级。
+- 升级前备份已安装插件；如果升级或版本核验失败，尝试回退；不自动改变会话与权限。
 
-- `.github/workflows/ci.yml`：自动构建、单元测试及 Windows 包检查。
-- `.github/workflows/auto-upgrade.yml`：在绿色 CI 后和每小时定时重试时检查；需要升级时才构建与写入 Desktop Profile。
-- `.github/workflows/desktop-deploy.yml`：保留原有的 `check/install/upgrade/uninstall` 手动入口，用户可随时检查或卸载。
+## 私有仓库和 Token
 
-GitHub 操作入口：
-https://github.com/OttoBlues/dsh-plugins/actions/workflows/auto-upgrade.yml
+当前仓库是 Private，公开匿名下载不可用。已授权的 GitHub Runner 能通过 Actions 的短期凭据获取代码并暂存**仅属于已登记通道**的包，插件本身不存储 Token 或直接访问 GitHub 私有仓库。将仓库转为 Public 后，可以改用匿名 HTTP 检查，不需要个人 Access Token。这个工作流不负责改变仓库可见性。
 
-如需暂停全部自动升级，可在 GitHub 仓库 Actions 页面停用 `DSH HUD auto-upgrade` 工作流，并且停用后无需移除已安装插件。仅停止 Runner 也能阻止执行，但会保留待运行任务。
+## 当前状态
 
-## 当前验收
-
-- U01：用户已于 2026-11-04 确认 HUD V0.1 预览正常显示。
-- HUD V0.2 已进入 main 并完成 Linux/Windows CI，等待首次真实自动升级和 GUI 人工确认。
-- U02（卸载恢复）仍未人工验收；部署成功与真正的 HUD 渲染/会话状态正确性是不同验证层级。
-
-## 首次自动升级的实际结果
-
-- 2026-11-04：[自动升级执行 #41822835662](https://github.com/OttoBlues/dsh-plugins/actions/runs/41822835662) 成功。
-- `desktop` Profile 从 HUD `0.1.0` 更新为 `0.2.0`，且旧版本已成功生成临时回滚归档，精确版本核验通过。
-- 此次运行后备份临时目录已按正常流程清理；并非长期保存的回滚快照。
-- V0.2 的界面状态是否正确，仍须用户打开 DSH 后进行 U11 人工验收。
+- `released/index.json`: `latest: null`, `releases: []`。
+- `unstable/index.json`: `latest: null`, `releases: []`。
+- Windows DSH Desktop 之前已安装 HUD V0.2（不因改变发布政策自动卸载/回退）。
+- 下一步需要用户明确选择是否为 V0.3 创建试验版包后，才能把新组件管理界面部署到 Windows 进行实际验收。

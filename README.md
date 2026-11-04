@@ -58,3 +58,7 @@ dsh --profile hud-test --dump-config
 选择一台 Windows VM/备用电脑注册仓库级 Runner（标签 `dsh-hud-test`），以后可在 GitHub Actions 手动运行 `preflight` 或隔离安装/启动测试 `install-smoke`。配置请见 [自托管 Runner 指南](docs/SELF-HOSTED-RUNNER.md)，需要亲自确认的鼠标穿透、透明置顶等项目见 [人工验收清单](docs/MANUAL-ACCEPTANCE.md)。
 
 **隔离安装测试不会自动触发到你的电脑。** 经用户明确授权，HUD 现在支持 **CI 通过后自动升级**；DSH 运行期间仅记录待升级，正常退出后由每小时一次的检查自动完成。详见 [自动升级指南](docs/AUTO-UPGRADE.md) 与 [手动安装/卸载](docs/DESKTOP-DEPLOY.md)。当前 HUD 仍是 DSH 窗口内的预览界面。
+
+## 组件发布通道（稳定与试验分离）
+
+每个组件始终保持最新研发源码，同时独立维护 `released/`（用户批准的安全版本）和 `unstable/`（试验版、默认关闭）。目前两个安装包目录均为空，不存在已批准的新版本。**Git HEAD 不等于可发布版本。** 详见 [发布规范](docs/RELEASE-POLICY.md) 和 [更新规范](docs/AUTO-UPGRADE.md)。

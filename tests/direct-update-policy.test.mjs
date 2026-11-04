@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.5.1 development source parse successfully',()=>{
+test('Host and Client v0.5.2 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -95,11 +95,15 @@ test('one-click checks use the Host allowlisted source and cannot auto-install',
   assert.doesNotMatch(client,/fetch\(/);
 });
 
-test('vector controls replace thick rounded dashboard cards',()=>{
-  assert.match(client,/function vectorFrame\(/);
-  assert.match(client,/data-hud-vector-frame/);
-  assert.match(client,/data-hud-traces/);
-  assert.match(client,/data-hud-scope/);
-  assert.match(client,/backgroundSize:V\.backgroundSize/);
-  assert.match(client,/data-hud-visual':'vector-051/);
+test('HUD panels use fixed-pixel geometry while management inherits DSH theme',()=>{
+  assert.match(client,/function cockpitPanel\(/);
+  assert.match(client,/data-hud-cockpit-panel/);
+  assert.match(client,/data-hud-panel-liner/);
+  assert.match(client,/data-hud-panel-cap/);
+  assert.match(client,/data-hud-header-rule/);
+  assert.match(client,/data-hud-management-theme':'dsh-native/);
+  assert.doesNotMatch(client,/preserveAspectRatio:'none'/);
+  assert.doesNotMatch(client,/function vectorTraces\(/);
+  assert.doesNotMatch(client,/function scopeLines\(/);
+  assert.doesNotMatch(client,/function vectorFrame\(/);
 });

@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.1 development Client: vector-interface HUD and manual refresh.
+ * DSH HUD V0.5.2 development: cockpit panel geometry and DSH-native component manager.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.1';
+    const VERSION = '0.5.2';
     const REFRESH_MS = 5 * 60_000;
 
     const dictionaries = {
@@ -30,7 +30,7 @@ window.__ModuleLoader__.load({
         section: '仓库组件', options: '更新策略', sourceOK: '公开仓库已连接',
         sourceUnavailable: '仓库版本源暂不可匿名访问：请将 GitHub 仓库设为 Public。',
         sourceChecking: '正在读取公开组件清单…', noComponents: '当前没有可用的仓库组件',
-        checkNow:'检查更新',checkingNow:'扫描版本源…',checkIdle:'手动触发云端版本扫描',
+        sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkIdle:'手动触发云端版本扫描',
         checkSuccess:'版本检查完成',checkPartial:'部分通道检查不完整',checkFailed:'版本检查失败',
         checkAt:'检查时间',checkCanonical:'当前源：dsh-hud-plugin',checkLegacy:'当前源：旧地址兼容',
         checkTip:'仅重新读取公开组件索引与发布清单，不安装任何版本。',
@@ -64,7 +64,7 @@ window.__ModuleLoader__.load({
         section: 'Repository components', options: 'Update policy', sourceOK: 'Public repository connected',
         sourceUnavailable: 'Anonymous update source unavailable. Make the GitHub repository Public to enable direct updates.',
         sourceChecking: 'Checking the public component index…', noComponents: 'No repository components are available',
-        checkNow:'Check updates',checkingNow:'Scanning channels…',checkIdle:'Check public channels now',
+        sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkIdle:'Check public channels now',
         checkSuccess:'Update check completed',checkPartial:'Some release channels could not be checked',
         checkFailed:'Update check failed',checkAt:'Checked at',checkCanonical:'Source: dsh-hud-plugin',
         checkLegacy:'Source: legacy compatibility',checkTip:'Read public release manifests now; no installation is triggered.',
@@ -125,50 +125,39 @@ window.__ModuleLoader__.load({
     // Full-frame in-app HUD. The DSH AppFrame stays mounted underneath:
     // no root-slot override, global DOM mutations or session navigation hacks.
 
-    // Shared line-built panel treatment: no image assets, no invented status data.
-    // Vector corner paths are decorative and cannot intercept input.
+
+    // HUD cockpit visuals are intentionally isolated from the native DSH
+    // Component Center. All angled edges use fixed CSS pixels, never a
+    // stretched SVG viewport (the v0.5.1 distortion regression).
     const V = {
-      cyan:'#77f5f0', electric:'#7dbfe4', amber:'#f1d59b',
-      text:'#e8faff', muted:'#95b5c4', stroke:'rgba(105,235,242,.34)',
-      inner:'rgba(5,21,32,.92)',
-      cut:'polygon(13px 0,calc(100% - 13px) 0,100% 13px,100% calc(100% - 13px),calc(100% - 13px) 100%,13px 100%,0 calc(100% - 13px),0 13px)',
-      background:'linear-gradient(rgba(83,216,231,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(83,216,231,.045) 1px,transparent 1px),radial-gradient(ellipse at 74% 16%,rgba(17,78,100,.55),transparent 55%),linear-gradient(145deg,#030c15,#081927 65%,#081721)',
-      backgroundSize:'38px 38px,38px 38px,auto,auto',
+      cyan:'#77dbe0',electric:'#7baec3',amber:'#dcb781',
+      text:'#e9f3f7',muted:'#a1b6c1',
+      stroke:'rgba(99,175,194,.52)',
+      cut:'polygon(12px 0,calc(100% - 12px) 0,100% 12px,100% calc(100% - 12px),calc(100% - 12px) 100%,12px 100%,0 calc(100% - 12px),0 12px)',
+      innerCut:'polygon(10px 0,calc(100% - 10px) 0,100% 10px,100% calc(100% - 10px),calc(100% - 10px) 100%,10px 100%,0 calc(100% - 10px),0 10px)',
+      outer:'linear-gradient(150deg,#4b8fa0 0%,#2f6174 28%,#1c3c4e 75%,#376d7b 100%)',
+      inner:'linear-gradient(180deg,#1b3444 0%,#122a3b 22%,#0b1f2e 85%,#0b1a27 100%)',
+      background:'radial-gradient(ellipse at 63% 12%,rgba(42,76,90,.22),transparent 48%),linear-gradient(155deg,#05111b 0%,#071623 72%,#091825 100%)',
+      backgroundSize:'auto',
     };
-    function vectorTraces() {
-      return h('svg',{'aria-hidden':true,'data-hud-traces':true,
-        viewBox:'0 0 100 100',preserveAspectRatio:'none',
-        style:{position:'absolute',inset:0,width:'100%',height:'100%',
-          pointerEvents:'none',zIndex:0,overflow:'hidden'}},
-        h('path',{d:'M 0 20 V 13 L 13 0 H 32 M 68 0 H 87 L 100 13 V 28 M 100 72 V 87 L 87 100 H 68 M 32 100 H 13 L 0 87 V 72',
-          fill:'none',stroke:'rgba(119,245,240,.76)',strokeWidth:1.3,
-          vectorEffect:'non-scaling-stroke'}),
-        h('path',{d:'M 18 0 H 37 M 63 100 H 82 M 0 38 V 49 M 100 51 V 62',
-          fill:'none',stroke:'rgba(125,191,228,.55)',strokeWidth:1,
-          vectorEffect:'non-scaling-stroke'}));
-    }
-    function vectorFrame(tag, attributes, ...children) {
-      return h(tag,{...attributes,'data-hud-vector-frame':true,
-        style:{
-          position:'relative',overflow:'hidden',borderRadius:0,
-          clipPath:V.cut,border:'1px solid '+V.stroke,
-          background:'linear-gradient(130deg,rgba(13,37,52,.95),'+V.inner+')',
-          boxShadow:'inset 0 1px 0 rgba(131,236,241,.16),0 12px 35px rgba(0,4,14,.15)',
-          ...attributes.style,
-        }},
-        vectorTraces(),
-        ...children);
-    }
-    function scopeLines() {
-      return h('svg',{'aria-hidden':true,'data-hud-scope':true,
-        viewBox:'0 0 240 165',width:240,height:165,
-        style:{position:'absolute',right:10,top:9,opacity:.25,pointerEvents:'none'}},
-        h('circle',{cx:121,cy:82,r:57,stroke:V.cyan,fill:'none',strokeWidth:1}),
-        h('circle',{cx:121,cy:82,r:35,stroke:V.electric,fill:'none',strokeWidth:1}),
-        h('path',{d:'M 121 10 V 155 M 49 82 H 193 M 70 31 L 172 133 M 174 31 L 71 134',
-          stroke:V.cyan,strokeWidth:0.8,fill:'none'}),
-        h('path',{d:'M 121 82 L 169 49 M 118 78 H 124 V 86 H 118 Z',
-          stroke:V.amber,strokeWidth:2,fill:'none'}));
+    function cockpitPanel(tag,attributes,...children) {
+      // A solid 2px metallic housing encloses a lower recessed information
+      // cavity. Nested CSS cuts share a 45-degree / fixed-pixel geometry.
+      // No percent-based SVG perimeter drawing; no duplicated corner paths.
+      const userStyle=attributes.style||{};
+      return h(tag,{...attributes,'data-hud-cockpit-panel':true,
+        style:{position:'relative',isolation:'isolate',overflow:'hidden',
+          borderRadius:0,boxSizing:'border-box',
+          ...userStyle,clipPath:V.cut,border:0,
+          background:V.outer,
+          boxShadow:'inset 0 1px 0 rgba(172,218,226,.22)'}},
+        h('span',{'aria-hidden':true,'data-hud-panel-liner':true,
+          style:{position:'absolute',inset:2,clipPath:V.innerCut,
+            pointerEvents:'none',background:V.inner,zIndex:0}}),
+        h('span',{'aria-hidden':true,'data-hud-panel-cap':true,
+          style:{position:'absolute',left:31,top:4,width:50,height:1,
+            pointerEvents:'none',zIndex:1,background:'rgba(132,217,218,.56)'}}),
+        h('div',{style:{position:'relative',zIndex:1}},...children));
     }
 
     function HudWorkspace({t, sessions, statuses, onExit, onComponents, error}) {
@@ -195,8 +184,7 @@ window.__ModuleLoader__.load({
       const selected = rows.find(row => row.current);
       const hue = V.cyan, muted = V.muted;
       const outline = '1px solid '+V.stroke;
-      const panel = {background:'linear-gradient(115deg,rgba(8,36,49,.95),rgba(3,17,28,.93))',
-        border:outline,boxShadow:'inset 0 0 20px rgba(18,78,103,.18)'};
+      const panel = {background:V.inner,boxShadow:'inset 0 10px 30px rgba(0,0,0,.15)'};
       const pill = (label,onClick,primary=false, extra={}) => h('button',{
         type:'button',onClick,...extra,style:{font:'inherit',fontSize:13,fontWeight:600,
           color:primary?'#021921':V.text,
@@ -205,7 +193,7 @@ window.__ModuleLoader__.load({
           clipPath:'polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))',
           boxShadow:primary?'0 0 15px rgba(101,239,235,.20)':'inset 0 0 12px rgba(77,199,209,.1)',
           letterSpacing:'.06em',padding:'11px 17px',cursor:'pointer',minHeight:42,...extra.style}},label);
-      const metric = (key,value,foot) => vectorFrame('div',{key,
+      const metric = (key,value,foot) => cockpitPanel('div',{key,
         style:{...panel,padding:'18px 23px',minWidth:140,flex:'1 1 150px'}},
         h('div',{style:{fontSize:10,color:hue,letterSpacing:'.16em',
           fontFamily:'Consolas,monospace'}},'// '+key),
@@ -229,7 +217,7 @@ window.__ModuleLoader__.load({
         tabIndex:0,'data-dsh-hud-workspace':true,'data-dsh-hud-version':VERSION,
         onKeyDown:e=>{if(e.key==='Escape'){e.stopPropagation?.();onExit();}},
         style:{position:'absolute',inset:0,zIndex:30,boxSizing:'border-box',
-          backgroundColor:'#030c15',backgroundImage:V.background,
+          backgroundColor:'#06111a',backgroundImage:V.background,
           backgroundSize:V.backgroundSize,
           color:V.text,fontFamily:'system-ui, sans-serif',
           pointerEvents:'auto',overflowY:'auto',overflowX:'hidden'}},
@@ -238,7 +226,8 @@ window.__ModuleLoader__.load({
           minHeight:'100%',display:'flex',flexWrap:'wrap',gap:25}},
           h('nav',{'aria-label':t('workspaceNav'),
             style:{width:176,flex:'1 1 155px',maxWidth:185,display:'flex',flexDirection:'column',
-              gap:12,borderRight:'1px solid rgba(141,222,225,.24)',paddingRight:18}},
+              gap:12,borderRight:'1px solid rgba(122,180,193,.20)',padding:'18px 20px 17px 13px',
+              background:'linear-gradient(90deg,rgba(4,19,31,.54),rgba(12,30,43,.16))'}} ,
             h('div',{style:{padding:'4px 7px 29px'}},
               h('div',{style:{fontSize:29,fontWeight:800,letterSpacing:'.20em',
                 color:hue,textShadow:'0 0 14px rgba(98,239,242,.3)'}},'HUD'),
@@ -256,9 +245,9 @@ window.__ModuleLoader__.load({
               pill(t('returnDSH'),onExit,false,{'data-hud-nav':'dsh',
                 style:{width:'100%'}}))),
           h('div',{style:{flex:'5 1 460px',minWidth:0,display:'flex',flexDirection:'column',gap:20}},
-            h('div',{'data-hud-vector-scanline':true,
-              style:{height:2,width:'100%',
-                background:'linear-gradient(90deg,#6ce9ea 0%,#6ce9ea 17%,transparent 17%,transparent 21%,rgba(108,233,234,.5) 21%,rgba(108,233,234,.5) 48%,transparent 48%)'}}),
+            h('div',{'data-hud-header-rule':true,
+              style:{height:1,width:'100%',opacity:.75,
+                background:'linear-gradient(90deg,rgba(116,215,220,.7),rgba(116,215,220,.12) 45%,transparent)'}}),
             h('header',{style:{display:'flex',alignItems:'center',gap:16,
               justifyContent:'space-between',flexWrap:'wrap'}},
               h('div',null,
@@ -270,9 +259,8 @@ window.__ModuleLoader__.load({
                 h('time',{style:{fontSize:25,letterSpacing:'.05em',
                   fontFamily:'Consolas,monospace',color:hue},'data-hud-clock':true},clock),
                 pill(t('returnDSH'),onExit,true,{'data-hud-exit':true}))),
-            vectorFrame('section',{style:{...panel,padding:'clamp(23px,3vw,42px)',
-              background:'linear-gradient(110deg, rgba(8,42,56,.94),rgba(2,19,30,.96))'}},
-              scopeLines(),
+            cockpitPanel('section',{style:{...panel,padding:'clamp(23px,3vw,42px)',
+              background:V.inner}},
               h('div',{style:{display:'flex',gap:11,alignItems:'center'}},
                 h('span',{style:{width:8,height:8,borderRadius:'50%',
                   background:active>0?'#6ce0ba':hue,display:'inline-block'}}),
@@ -289,7 +277,7 @@ window.__ModuleLoader__.load({
               metric(t('viewMode'),'HUD',t('switchable'))),
             h('div',{style:{display:'grid',
               gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,320px),1fr))',gap:18}},
-              vectorFrame('section',{style:{...panel,padding:'22px 25px',minHeight:195}},
+              cockpitPanel('section',{style:{...panel,padding:'22px 25px',minHeight:195}},
                 h('div',{style:{fontSize:12,color:hue,letterSpacing:'.10em'}},
                   tab==='overview'?t('currentSession'):t('sessionTab')),
                 h('h3',{style:{fontSize:21,margin:'18px 0 9px',fontWeight:560}},
@@ -299,7 +287,7 @@ window.__ModuleLoader__.load({
                   tab==='overview'?t('currentHelp'):t('sessionsHelp')),
                 pill(t('openConversation'),onExit,false,
                   {'data-hud-open-conversation':true})),
-              vectorFrame('section',{style:{...panel,padding:'22px 25px',minHeight:195}},
+              cockpitPanel('section',{style:{...panel,padding:'22px 25px',minHeight:195}},
                 h('div',{style:{display:'flex',alignItems:'center',
                   justifyContent:'space-between',gap:12}},
                   h('h3',{style:{fontSize:16,fontWeight:570,margin:0,color:hue}},
@@ -435,15 +423,19 @@ window.__ModuleLoader__.load({
           installedByName.set('@local/dsh-hud', { name:'@local/dsh-hud',
             installed:true, version:VERSION });
         }
-        const surface = {padding:'22px 25px',border:'1px solid '+V.stroke,
-          background:'linear-gradient(125deg,rgba(11,35,48,.97),rgba(4,20,32,.96))',
-          marginTop:16,boxShadow:'inset 0 0 18px rgba(23,82,96,.12)'};
-        const tiny = {fontSize:12,color:V.muted};
-        const subtle = {fontSize:13,color:V.muted,letterSpacing:'.025em'};
-        const actionStyle = disabled => ({
-          borderRadius:0,clipPath:V.cut,padding:'10px 18px',fontSize:13,
-          border:'1px solid '+V.stroke,fontFamily:'inherit',letterSpacing:'.04em',
-          color:V.cyan,background:'rgba(10,55,69,.48)',
+        // DSH owns the component center's light/dark theme. Brand accent
+        // does not replace the surrounding native management visual language.
+        const surface={padding:'18px 22px',borderRadius:12,
+          border:'1px solid var(--border-color,rgba(105,118,138,.22))',
+          background:'var(--surface-secondary,rgba(115,131,152,.035))',
+          marginTop:14};
+        const tiny={fontSize:12,color:'var(--text-secondary,#777)'};
+        const subtle={fontSize:13,color:'var(--text-secondary,#777)',opacity:.85};
+        const actionStyle=disabled=>({
+          borderRadius:8,padding:'8px 15px',fontSize:13,
+          border:'1px solid var(--border-color,rgba(105,118,138,.27))',
+          fontFamily:'inherit',color:'inherit',
+          background:'var(--surface-primary,transparent)',
           cursor:disabled?'not-allowed':'pointer',opacity:disabled?.5:1,
         });
         const btn = (label,onClick,disabled=false) =>
@@ -452,7 +444,7 @@ window.__ModuleLoader__.load({
           h('div',{style:{padding:'12px 0',opacity:disabled?.55:1}},
             h('label',{style:{display:'flex',gap:11,alignItems:'center',fontSize:14,cursor:'pointer'}},
               h('input',{type:'checkbox',checked:checked===true,disabled,
-                'data-hud-setting':dataName,style:{accentColor:V.cyan,width:16,height:16},
+                'data-hud-setting':dataName,style:{accentColor:'var(--accent-color,#4f9ab1)',width:16,height:16},
                 onChange:e=>{void change(e.target.checked);}}),
               label),
             h('div',{style:{...tiny,marginLeft:27,marginTop:5}},help));
@@ -501,61 +493,54 @@ window.__ModuleLoader__.load({
         const originLabel = values.checkOrigin === 'canonical' ? t('checkCanonical')
           : values.checkOrigin === 'legacy' ? t('checkLegacy') : '';
 
-        return h('main',{'data-dsh-hud-main':true,'data-hud-visual':'vector-051',
+        return h('main',{'data-dsh-hud-main':true,'data-hud-management-theme':'dsh-native',
           style:{boxSizing:'border-box',overflowY:'auto',height:'100%',
-            padding:'36px max(20px, 3vw) 70px',fontFamily:'system-ui,sans-serif',
-            backgroundColor:'#030c15',backgroundImage:V.background,
-            backgroundSize:V.backgroundSize,color:V.text,width:'100%'}},
-        h('div',{style:{maxWidth:1120,margin:'0 auto'}},
-          h('div',{style:{height:2,width:'100%',marginBottom:23,
-            background:'linear-gradient(90deg,#6becef 0%,#6becef 22%,transparent 22%,transparent 28%,rgba(90,214,232,.45) 28%,transparent 92%)'}}),
+            padding:'36px max(28px, 4vw) 70px',fontFamily:'system-ui,sans-serif',
+            background:'transparent',color:'inherit',width:'100%'}},
+        h('div',{style:{maxWidth:980,margin:'0 auto'}},
+          h('div',{style:{height:3,width:40,borderRadius:3,marginBottom:18,
+            background:'linear-gradient(90deg,#4cabb3,rgba(76,171,179,.06))'}}),
           h('div',{style:{display:'flex',gap:16,alignItems:'center',
             justifyContent:'space-between',flexWrap:'wrap'}},
-            h('h1',{style:{fontSize:27,margin:'0 0 7px',fontWeight:630,
-              letterSpacing:'.08em',color:V.text,
-              textShadow:'0 0 15px rgba(100,228,238,.17)'}},t('title')),
+            h('h1',{style:{fontSize:25,margin:'0 0 7px',fontWeight:650}},t('title')),
             h('button',{type:'button','data-hud-enter-mode':true,
               onClick:()=>{void form.set('hudMode',true);},
-              style:{...actionStyle(false),fontWeight:650,
-                background:'rgba(15,72,88,.74)',color:V.cyan}},t('enterHud'))),
+              style:{...actionStyle(false),fontWeight:600,
+                borderColor:'rgba(72,165,179,.4)',background:'rgba(76,171,179,.09)'}},t('enterHud'))),
           h('p',{style:{...subtle,margin:0}},t('sub')),
-          vectorFrame('section',{'data-hud-check-panel':true,
+          h('section',{'data-hud-check-panel':true,
             style:{...surface,padding:'20px 24px',marginTop:24}},
             h('div',{style:{display:'flex',gap:18,flexWrap:'wrap',
               alignItems:'center',justifyContent:'space-between'}},
               h('div',{style:{minWidth:200,flex:'1 1 330px'}},
-                h('div',{style:{fontFamily:'Consolas,monospace',
-                  color:V.cyan,fontSize:11,letterSpacing:'.15em'}},
-                  '02 // RELEASE CHANNEL SCAN'),
-                h('div',{style:{marginTop:7,fontSize:13,color:V.text},
+                h('div',{style:{display:'flex',alignItems:'center',gap:9,fontSize:13,fontWeight:600}},
+                  h('span',{'aria-hidden':true,style:{display:'inline-block',width:6,height:6,
+                    borderRadius:'50%',background:'#48a5b2'}},''),t('sourceHeading')),
+                h('div',{style:{marginTop:7,fontSize:13},
                   'data-hud-source':catalog.source,role:'status'},
                   catalog.source === 'public'?t('sourceOK'):
                     catalog.source==='checking'?t('sourceChecking'):t('sourceUnavailable')),
                 h('div',{'data-hud-check-state':checkState,role:'status',
                   style:{fontSize:12,marginTop:7,
-                    color:checkState==='failed'||checkState==='partial'?V.amber:V.muted}},
+                    color:checkState==='failed'||checkState==='partial'?'#ad722a':'var(--text-secondary,#777)'}},
                   checkLabel,
                   lastChecked?' · '+t('checkAt')+' '+lastChecked:'',
                   originLabel?' · '+originLabel:'')),
               h('button',{type:'button','data-hud-check-button':true,
                 disabled:busyCheck,onClick:()=>{void requestCheck();},
-                style:{...actionStyle(busyCheck),minWidth:152,
-                  background:busyCheck?'rgba(18,53,64,.55)':
-                    'linear-gradient(90deg,rgba(21,110,125,.85),rgba(11,69,90,.83))',
-                  fontWeight:650}},
+                style:{...actionStyle(busyCheck),minWidth:140,fontWeight:600}},
                 busyCheck?t('checkingNow'):t('checkNow'))),
             h('div',{style:{...tiny,marginTop:13}},t('checkTip')),
             (checkState==='failed'||checkState==='partial') && values.checkError
               ? h('div',{role:'alert','data-hud-check-error':true,
-                  style:{fontSize:12,marginTop:10,color:V.amber,
-                    padding:'10px 12px',background:'rgba(80,56,22,.28)',
-                    borderLeft:'2px solid '+V.amber,
+                  style:{fontSize:12,marginTop:10,color:'#a06e34',
+                    padding:'10px 12px',background:'rgba(165,118,54,.065)',
+                    borderLeft:'2px solid #c09b5f',
                     overflowWrap:'anywhere'}},values.checkError)
               : null),
 
           h('section',{style:{marginTop:31}},
-            h('h2',{style:{fontSize:17,margin:'0 0 10px',color:V.cyan,
-              letterSpacing:'.12em'}},t('section')),
+            h('h2',{style:{fontSize:18,margin:'0 0 8px',fontWeight:650}},t('section')),
             ...known.map(component=>{
               const installed = installedByName.get(component.name);
               const current = installed?.version || null;
@@ -580,13 +565,13 @@ window.__ModuleLoader__.load({
                         btn(t('confirm'),()=>{void queue(component,latest);},saving))
                     : btn(installed?t('update'):t('install'),()=>setConfirm(key),saving)
                   : h('span',{style:tiny},latest?t('latest'):t('unavailable'));
-              return vectorFrame('div',{key:component.name,style:surface,
+              return h('div',{key:component.name,style:surface,
                 'data-hud-component':component.name},
                 h('div',{style:{display:'flex',gap:15,alignItems:'center',
                   justifyContent:'space-between',flexWrap:'wrap'}},
                   h('div',{style:{flex:'1 1 300px',minWidth:175}},
                     h('div',{style:{display:'flex',alignItems:'center',gap:9}},
-                      h('strong',{style:{fontSize:16,color:V.text,letterSpacing:'.02em'}},component.title),
+                      h('strong',{style:{fontSize:15,fontWeight:600}},component.title),
                       h('span',{style:tiny},installed?t('installed'):t('notInstalled'))),
                     h('p',{style:{...tiny,margin:'5px 0 9px'}},component.description),
                     h('div',{style:tiny},
@@ -604,9 +589,8 @@ window.__ModuleLoader__.load({
           ),
 
           h('section',{style:{marginTop:36}},
-            h('h2',{style:{fontSize:17,margin:'0 0 9px',color:V.cyan,
-              letterSpacing:'.12em'}},t('options')),
-            vectorFrame('div',{style:surface},
+            h('h2',{style:{fontSize:18,margin:'0 0 8px',fontWeight:650}},t('options')),
+            h('div',{style:surface},
               toggle(t('allowUnstable'),t('allowUnstableHelp'),values.allowUnstable,
                 async value=>{
                   await form.mutate([{op:'set',path:['allowUnstable'],value},
@@ -625,8 +609,7 @@ window.__ModuleLoader__.load({
           values.updateStatus==='failed'?h('p',{role:'alert',style:{color:'#b84b4b'}},t('failed')):
           values.updateStatus==='restart-required'?h('p',{role:'status'},t('restart')):
           values.updateStatus==='installed'?h('p',{role:'status'},t('succeeded')):null,
-          h('p',{style:{...tiny,marginTop:25,fontFamily:'Consolas,monospace',
-            letterSpacing:'.03em'}},'// '+t('noToken'))
+          h('p',{style:{...tiny,marginTop:25}},t('noToken'))
         ));
       };
     }

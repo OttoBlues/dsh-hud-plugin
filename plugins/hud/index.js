@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.1 development: vector HUD workspace and on-demand channel refresh.
+ * DSH HUD v0.5.2: cockpit panel visuals, native DSH manager and on-demand channel refresh.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation

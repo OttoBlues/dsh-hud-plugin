@@ -30,7 +30,7 @@ window.__ModuleLoader__.load({
         section: '仓库组件', options: '更新策略', sourceOK: '公开仓库已连接',
         sourceUnavailable: '仓库版本源暂不可匿名访问：请将 GitHub 仓库设为 Public。',
         sourceChecking: '正在读取公开组件清单…', noComponents: '当前没有可用的仓库组件',
-        checkNow:'检查更新',checkingNow:'扫描版本源…',checkIdle:'手动触发云端版本扫描',
+        sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkIdle:'手动触发云端版本扫描',
         checkSuccess:'版本检查完成',checkPartial:'部分通道检查不完整',checkFailed:'版本检查失败',
         checkAt:'检查时间',checkCanonical:'当前源：dsh-hud-plugin',checkLegacy:'当前源：旧地址兼容',
         checkTip:'仅重新读取公开组件索引与发布清单，不安装任何版本。',
@@ -64,7 +64,7 @@ window.__ModuleLoader__.load({
         section: 'Repository components', options: 'Update policy', sourceOK: 'Public repository connected',
         sourceUnavailable: 'Anonymous update source unavailable. Make the GitHub repository Public to enable direct updates.',
         sourceChecking: 'Checking the public component index…', noComponents: 'No repository components are available',
-        checkNow:'Check updates',checkingNow:'Scanning channels…',checkIdle:'Check public channels now',
+        sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkIdle:'Check public channels now',
         checkSuccess:'Update check completed',checkPartial:'Some release channels could not be checked',
         checkFailed:'Update check failed',checkAt:'Checked at',checkCanonical:'Source: dsh-hud-plugin',
         checkLegacy:'Source: legacy compatibility',checkTip:'Read public release manifests now; no installation is triggered.',
@@ -423,15 +423,19 @@ window.__ModuleLoader__.load({
           installedByName.set('@local/dsh-hud', { name:'@local/dsh-hud',
             installed:true, version:VERSION });
         }
-        const surface = {padding:'22px 25px',border:'1px solid '+V.stroke,
-          background:'linear-gradient(125deg,rgba(11,35,48,.97),rgba(4,20,32,.96))',
-          marginTop:16,boxShadow:'inset 0 0 18px rgba(23,82,96,.12)'};
-        const tiny = {fontSize:12,color:V.muted};
-        const subtle = {fontSize:13,color:V.muted,letterSpacing:'.025em'};
-        const actionStyle = disabled => ({
-          borderRadius:0,clipPath:V.cut,padding:'10px 18px',fontSize:13,
-          border:'1px solid '+V.stroke,fontFamily:'inherit',letterSpacing:'.04em',
-          color:V.cyan,background:'rgba(10,55,69,.48)',
+        // DSH owns the component center's light/dark theme. Brand accent
+        // does not replace the surrounding native management visual language.
+        const surface={padding:'18px 22px',borderRadius:12,
+          border:'1px solid var(--border-color,rgba(105,118,138,.22))',
+          background:'var(--surface-secondary,rgba(115,131,152,.035))',
+          marginTop:14};
+        const tiny={fontSize:12,color:'var(--text-secondary,#777)'};
+        const subtle={fontSize:13,color:'var(--text-secondary,#777)',opacity:.85};
+        const actionStyle=disabled=>({
+          borderRadius:8,padding:'8px 15px',fontSize:13,
+          border:'1px solid var(--border-color,rgba(105,118,138,.27))',
+          fontFamily:'inherit',color:'inherit',
+          background:'var(--surface-primary,transparent)',
           cursor:disabled?'not-allowed':'pointer',opacity:disabled?.5:1,
         });
         const btn = (label,onClick,disabled=false) =>
@@ -440,7 +444,7 @@ window.__ModuleLoader__.load({
           h('div',{style:{padding:'12px 0',opacity:disabled?.55:1}},
             h('label',{style:{display:'flex',gap:11,alignItems:'center',fontSize:14,cursor:'pointer'}},
               h('input',{type:'checkbox',checked:checked===true,disabled,
-                'data-hud-setting':dataName,style:{accentColor:V.cyan,width:16,height:16},
+                'data-hud-setting':dataName,style:{accentColor:'var(--accent-color,#4f9ab1)',width:16,height:16},
                 onChange:e=>{void change(e.target.checked);}}),
               label),
             h('div',{style:{...tiny,marginLeft:27,marginTop:5}},help));
@@ -489,25 +493,22 @@ window.__ModuleLoader__.load({
         const originLabel = values.checkOrigin === 'canonical' ? t('checkCanonical')
           : values.checkOrigin === 'legacy' ? t('checkLegacy') : '';
 
-        return h('main',{'data-dsh-hud-main':true,'data-hud-visual':'vector-051',
+        return h('main',{'data-dsh-hud-main':true,'data-hud-management-theme':'dsh-native',
           style:{boxSizing:'border-box',overflowY:'auto',height:'100%',
-            padding:'36px max(20px, 3vw) 70px',fontFamily:'system-ui,sans-serif',
-            backgroundColor:'#030c15',backgroundImage:V.background,
-            backgroundSize:V.backgroundSize,color:V.text,width:'100%'}},
-        h('div',{style:{maxWidth:1120,margin:'0 auto'}},
-          h('div',{style:{height:2,width:'100%',marginBottom:23,
-            background:'linear-gradient(90deg,#6becef 0%,#6becef 22%,transparent 22%,transparent 28%,rgba(90,214,232,.45) 28%,transparent 92%)'}}),
+            padding:'36px max(28px, 4vw) 70px',fontFamily:'system-ui,sans-serif',
+            background:'transparent',color:'inherit',width:'100%'}},
+        h('div',{style:{maxWidth:980,margin:'0 auto'}},
+          h('div',{style:{height:3,width:40,borderRadius:3,marginBottom:18,
+            background:'linear-gradient(90deg,#4cabb3,rgba(76,171,179,.06))'}}),
           h('div',{style:{display:'flex',gap:16,alignItems:'center',
             justifyContent:'space-between',flexWrap:'wrap'}},
-            h('h1',{style:{fontSize:27,margin:'0 0 7px',fontWeight:630,
-              letterSpacing:'.08em',color:V.text,
-              textShadow:'0 0 15px rgba(100,228,238,.17)'}},t('title')),
+            h('h1',{style:{fontSize:25,margin:'0 0 7px',fontWeight:650}},t('title')),
             h('button',{type:'button','data-hud-enter-mode':true,
               onClick:()=>{void form.set('hudMode',true);},
-              style:{...actionStyle(false),fontWeight:650,
-                background:'rgba(15,72,88,.74)',color:V.cyan}},t('enterHud'))),
+              style:{...actionStyle(false),fontWeight:600,
+                borderColor:'rgba(72,165,179,.4)',background:'rgba(76,171,179,.09)'}},t('enterHud'))),
           h('p',{style:{...subtle,margin:0}},t('sub')),
-          vectorFrame('section',{'data-hud-check-panel':true,
+          h('section',{'data-hud-check-panel':true,
             style:{...surface,padding:'20px 24px',marginTop:24}},
             h('div',{style:{display:'flex',gap:18,flexWrap:'wrap',
               alignItems:'center',justifyContent:'space-between'}},
@@ -568,7 +569,7 @@ window.__ModuleLoader__.load({
                         btn(t('confirm'),()=>{void queue(component,latest);},saving))
                     : btn(installed?t('update'):t('install'),()=>setConfirm(key),saving)
                   : h('span',{style:tiny},latest?t('latest'):t('unavailable'));
-              return vectorFrame('div',{key:component.name,style:surface,
+              return h('div',{key:component.name,style:surface,
                 'data-hud-component':component.name},
                 h('div',{style:{display:'flex',gap:15,alignItems:'center',
                   justifyContent:'space-between',flexWrap:'wrap'}},
@@ -594,7 +595,7 @@ window.__ModuleLoader__.load({
           h('section',{style:{marginTop:36}},
             h('h2',{style:{fontSize:17,margin:'0 0 9px',color:V.cyan,
               letterSpacing:'.12em'}},t('options')),
-            vectorFrame('div',{style:surface},
+            h('div',{style:surface},
               toggle(t('allowUnstable'),t('allowUnstableHelp'),values.allowUnstable,
                 async value=>{
                   await form.mutate([{op:'set',path:['allowUnstable'],value},

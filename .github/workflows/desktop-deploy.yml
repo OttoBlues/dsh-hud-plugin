@@ -1,0 +1,75 @@
+name: DSH HUD Desktop deployment
+
+# One-time, explicitly authorized initial deployment via a dedicated main push.
+# Future installs/uninstalls are workflow_dispatch only; ordinary pushes do not deploy.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/desktop-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Check current Desktop installation, install HUD, or uninstall HUD'
+        required: true
+        type: choice
+        default: check
+        options: [check, install, uninstall]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dsh-hud-self-hosted
+  cancel-in-progress: false
+
+jobs:
+  desktop-deployment:
+    if: >-
+      github.repository == 'OttoBlues/dsh-plugins' &&
+      github.ref == 'refs/heads/main' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'push' &&
+          startsWith(github.event.head_commit.message, 'deploy: install HUD v0.1.0 to Desktop')
+        )
+      )
+    name: Desktop HUD deployment
+    runs-on: [self-hosted, windows, x64, dsh-hud-test]
+    timeout-minutes: 15
+    env:
+      DEPLOY_MODE: ${{ github.event_name == 'push' && 'install' || inputs.mode }}
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout trusted main commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          clean: true
+      - name: Set up Node for local bundle build
+        if: env.DEPLOY_MODE == 'install'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify and build the HUD installable bundle
+        if: env.DEPLOY_MODE == 'install'
+        run: |
+          npm run check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run pack:hud
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run verify:pack
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Apply to the existing DSH Desktop profile
+        run: .\scripts\windows\desktop-deploy.ps1 -Mode $env:DEPLOY_MODE
+      - name: Upload non-sensitive deployment status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hud-desktop-deploy-${{ github.run_id }}
+          path: deploy-results/*.json
+          if-no-files-found: warn
+          retention-days: 7

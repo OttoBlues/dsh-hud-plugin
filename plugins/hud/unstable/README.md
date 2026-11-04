@@ -1,6 +1,6 @@
 # HUD · Unstable 试验版通道
 
-此目录只包含经过 CI 审查、在 `index.json` 中登记的不可变试验安装包，不是 Released 正式版。当前列有 V0.3.0、V0.4.0、V0.4.1、V0.4.2；`latest` 为 **0.4.2**。
+此目录只包含经过 CI 审查、在 `index.json` 中登记的不可变试验安装包，不是 Released 正式版。当前列有 V0.3.0、V0.4.0、V0.4.1、V0.4.2、V0.5.0；`latest` 为 **0.5.0**。
 
 ```text
 unstable/
@@ -19,3 +19,5 @@ V0.4.2 已经根据用户明确请求加入本通道，但未经完整 Desktop �
 新规范仓库为 `OttoBlues/dsh-hud-plugin`；不再提供本机 Actions Runner 安装或远程控制 DSH 的流程。
 
 - V0.4.2：统一新仓库名称 `OttoBlues/dsh-hud-plugin` 的中英文 UI 与组件说明、删除 self-hosted Runner 工程；来源提交 `cd8bbde8d17a1b27409ece5ca5f079b1d248cb34`，云端 CI `41888883556` 成功。安装前必须保留必要回退手段，并手动验收 DSH 更新过程与重启后状态。
+
+- V0.5.0：可切换的全帧 HUD 主界面、真实会话状态及返回原 DSH，默认不开启；CI `41896884679` 成功。该版仅供 U05 人工验收，不是原生透明 Windows 桌面 HUD，发布后需在 DSH 本机手动确认安装和实际切换稳定性。

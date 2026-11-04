@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "component": "hud",
+  "package": "@local/dsh-hud",
+  "channel": "unstable",
+  "version": "0.5.0",
+  "file": "local-dsh-hud-0.5.0.tgz",
+  "sha256": "9b5cfb4c5485f5da50dbacd4693bf8a48e202e99ec79a09275de4cab0ef3b470",
+  "sourceCommit": "71089ba01aeb971f9e738eab5cb3e9b884f92f3e",
+  "test": {
+    "ciRun": "41896884679",
+    "result": "success"
+  },
+  "verification": {
+    "sourceCi": "41896884679",
+    "role": "Full-frame HUD workspace/U05 Desktop experimental acceptance",
+    "approvedAsStable": false
+  }
+}

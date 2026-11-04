@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.4.2",
+  "latest": "0.5.0",
   "releases": [
     {
       "version": "0.3.0",
@@ -48,6 +48,17 @@
         "result": "success"
       },
       "note": "User-requested Unstable update: renamed dsh-hud-plugin UI/registry copy, retired local self-hosted Actions Runner; CI-vetted, not stable."
+    },
+    {
+      "version": "0.5.0",
+      "file": "v0.5.0/local-dsh-hud-0.5.0.tgz",
+      "sha256": "9b5cfb4c5485f5da50dbacd4693bf8a48e202e99ec79a09275de4cab0ef3b470",
+      "sourceCommit": "71089ba01aeb971f9e738eab5cb3e9b884f92f3e",
+      "test": {
+        "ciRun": "41896884679",
+        "result": "success"
+      },
+      "note": "Experimental HUD full-frame workspace and reversible HUD/DSH switch with read-only live session status; explicit U05 manual UI acceptance required."
     }
   ]
 }

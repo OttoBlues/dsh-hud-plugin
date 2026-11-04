@@ -7,8 +7,8 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.0 开发源码**（未发布；Unstable 最新仍为 V0.4.2）。
-- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.4.2**。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.0 源码**（已根据明确要求发布 Unstable 试验安装包）。
+- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.0**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
 
@@ -38,4 +38,4 @@ npm run verify:pack
 - 原 DSH 页面的 HUD 小入口、HUD 组件中心的「进入 HUD 模式」按钮可以进入；HUD 内提供「返回 DSH」和「组件中心」。
 - 展示真实 Session 标题、运行状态与数量，不伪造 Agent 输出；本轮输入与高风险批准操作仍在 DSH 原生界面完成。
 - HUD 工作区默认不启用；不覆盖 root Slot，不触碰 Electron 原生窗口或 Windows 系统层透明/穿透能力。
-- 本次开发尚未发布可安装包，不能视为已在用户本地真实运行；参见 [U05 验收项](docs/HUD-WORKSPACE-V050.md)。
+- V0.5.0 已作为 Unstable 试验包发布，用户需在 HUD 组件中心手动升级并完成 [U05 实机验收](docs/HUD-WORKSPACE-V050.md)；CI 通过不代表实际 Desktop 已运行成功。

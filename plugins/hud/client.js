@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
       zh: {
         workspaceTitle:'HUD 工作台',workspaceNav:'HUD 导航',overview:'总览',sessionTab:'会话',
         enterHud:'进入 HUD 模式',returnDSH:'返回 DSH',componentCenter:'组件中心',
-        liveStatus:'实时状态',heroTitle:'专注于重要的任务',heroHelp:'HUD 主界面基于 DSH 当前会话显示真实的工作状态；操作和权限仍由原 DSH 控制。',
+        liveStatus:'信号接入 / 实时状态',heroTitle:'任务态势中心',heroHelp:'HUD 正从 DSH 的真实会话中读取运行态势。核心命令、对话与授权仍由原生 DSH 执行。',
         sessionCount:'会话数量',runningCount:'运行中',viewMode:'显示模式',
         fromDSH:'由 DSH 提供',realtime:'实时状态',switchable:'随时可切换',
         currentSession:'当前会话',noCurrent:'未选择会话',noSessions:'暂无会话',
@@ -30,6 +30,10 @@ window.__ModuleLoader__.load({
         section: '仓库组件', options: '更新策略', sourceOK: '公开仓库已连接',
         sourceUnavailable: '仓库版本源暂不可匿名访问：请将 GitHub 仓库设为 Public。',
         sourceChecking: '正在读取公开组件清单…', noComponents: '当前没有可用的仓库组件',
+        checkNow:'检查更新',checkingNow:'扫描版本源…',checkIdle:'手动触发云端版本扫描',
+        checkSuccess:'版本检查完成',checkPartial:'部分通道检查不完整',checkFailed:'版本检查失败',
+        checkAt:'检查时间',checkCanonical:'当前源：dsh-hud-plugin',checkLegacy:'当前源：旧地址兼容',
+        checkTip:'仅重新读取公开组件索引与发布清单，不安装任何版本。',
         installed: '已安装', notInstalled: '未安装', current: '当前', released: '正式版',
         unstable: '试验版', notPublished: '未发布', update: '更新', install: '安装',
         latest: '已是最新', unavailable: '暂无可安装的新版本', queued: '已确认，准备安装…',
@@ -46,7 +50,7 @@ window.__ModuleLoader__.load({
       en: {
         workspaceTitle:'HUD Workspace',workspaceNav:'HUD navigation',overview:'Overview',sessionTab:'Sessions',
         enterHud:'Enter HUD mode',returnDSH:'Return to DSH',componentCenter:'Component Center',
-        liveStatus:'LIVE STATUS',heroTitle:'Stay focused on what matters',
+        liveStatus:'LIVE SIGNAL / SESSION LINK',heroTitle:'MISSION CONTROL',
         heroHelp:'A live HUD workspace powered by DSH session state. Commands and permissions stay in DSH.',
         sessionCount:'SESSIONS',runningCount:'RUNNING',viewMode:'VIEW MODE',
         fromDSH:'From DSH',realtime:'Live state',switchable:'Switch anytime',
@@ -60,6 +64,10 @@ window.__ModuleLoader__.load({
         section: 'Repository components', options: 'Update policy', sourceOK: 'Public repository connected',
         sourceUnavailable: 'Anonymous update source unavailable. Make the GitHub repository Public to enable direct updates.',
         sourceChecking: 'Checking the public component index…', noComponents: 'No repository components are available',
+        checkNow:'Check updates',checkingNow:'Scanning channels…',checkIdle:'Check public channels now',
+        checkSuccess:'Update check completed',checkPartial:'Some release channels could not be checked',
+        checkFailed:'Update check failed',checkAt:'Checked at',checkCanonical:'Source: dsh-hud-plugin',
+        checkLegacy:'Source: legacy compatibility',checkTip:'Read public release manifests now; no installation is triggered.',
         installed: 'Installed', notInstalled: 'Not installed', current: 'Current', released: 'Released',
         unstable: 'Unstable', notPublished: 'Not published', update: 'Update', install: 'Install',
         latest: 'Up to date', unavailable: 'No installable new version', queued: 'Update confirmed and queued…',
@@ -401,6 +409,7 @@ window.__ModuleLoader__.load({
         const [confirm, setConfirm] = React.useState('');
         const [saving, setSaving] = React.useState(false);
         const [error, setError] = React.useState('');
+        const [requestingCheck, setRequestingCheck] = React.useState(false);
         React.useEffect(() => {
           let alive = true;
           async function refreshInstalled() {
@@ -426,15 +435,16 @@ window.__ModuleLoader__.load({
           installedByName.set('@local/dsh-hud', { name:'@local/dsh-hud',
             installed:true, version:VERSION });
         }
-        const surface = { padding: '18px 20px', borderRadius: 12,
-          border:'1px solid rgba(110,125,145,.18)', marginTop: 13 };
-        const tiny = { fontSize: 12, color:'var(--text-secondary, #777)' };
-        const subtle = { fontSize: 13, opacity: .7 };
+        const surface = {padding:'22px 25px',border:'1px solid '+V.stroke,
+          background:'linear-gradient(125deg,rgba(11,35,48,.97),rgba(4,20,32,.96))',
+          marginTop:16,boxShadow:'inset 0 0 18px rgba(23,82,96,.12)'};
+        const tiny = {fontSize:12,color:V.muted};
+        const subtle = {fontSize:13,color:V.muted,letterSpacing:'.025em'};
         const actionStyle = disabled => ({
-          borderRadius: 8, padding: '8px 16px', fontSize: 13,
-          border: '1px solid rgba(100,110,120,.24)',
-          color:'inherit', background:'transparent',
-          cursor:disabled?'not-allowed':'pointer', opacity:disabled?.5:1,
+          borderRadius:0,clipPath:V.cut,padding:'10px 18px',fontSize:13,
+          border:'1px solid '+V.stroke,fontFamily:'inherit',letterSpacing:'.04em',
+          color:V.cyan,background:'rgba(10,55,69,.48)',
+          cursor:disabled?'not-allowed':'pointer',opacity:disabled?.5:1,
         });
         const btn = (label,onClick,disabled=false) =>
           h('button',{type:'button',onClick,disabled,style:actionStyle(disabled)},label);
@@ -462,19 +472,52 @@ window.__ModuleLoader__.load({
           finally {setSaving(false);}
         };
 
-        return h('main',{'data-dsh-hud-main':true,
+
+        const checkState = values.checkState || 'idle';
+        const busyCheck = requestingCheck || !!values.checkNonce || checkState === 'checking';
+        const lastChecked = typeof values.checkAt === 'string' && !Number.isNaN(Date.parse(values.checkAt))
+          ? new Date(values.checkAt).toLocaleTimeString(undefined,
+              {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+        const requestCheck = async () => {
+          if (busyCheck) return;
+          setRequestingCheck(true);setError('');
+          try {
+            const accepted = await form.mutate([
+              {op:'set',path:['checkNonce'],value:String(Date.now())+'-'+Math.random().toString(36).slice(2)},
+              {op:'set',path:['checkState'],value:'checking'},
+              {op:'set',path:['checkError'],value:''},
+            ]);
+            if (accepted === false) throw new Error('The update check request was rejected.');
+          } catch {
+            setError(t('checkFailed'));
+          } finally {
+            setRequestingCheck(false);
+          }
+        };
+        const checkLabel = checkState === 'checking' ? t('checkingNow')
+          : checkState === 'success' ? t('checkSuccess')
+          : checkState === 'partial' ? t('checkPartial')
+          : checkState === 'failed' ? t('checkFailed') : t('checkIdle');
+        const originLabel = values.checkOrigin === 'canonical' ? t('checkCanonical')
+          : values.checkOrigin === 'legacy' ? t('checkLegacy') : '';
+
+        return h('main',{'data-dsh-hud-main':true,'data-hud-visual':'vector-051',
           style:{boxSizing:'border-box',overflowY:'auto',height:'100%',
-            padding:'36px max(28px, 4vw) 70px',fontFamily:'system-ui,sans-serif',
-            color:'inherit',width:'100%'}},
-        h('div',{style:{maxWidth:940,margin:'0 auto'}},
+            padding:'36px max(20px, 3vw) 70px',fontFamily:'system-ui,sans-serif',
+            backgroundColor:'#030c15',backgroundImage:V.background,
+            backgroundSize:V.backgroundSize,color:V.text,width:'100%'}},
+        h('div',{style:{maxWidth:1120,margin:'0 auto'}},
+          h('div',{style:{height:2,width:'100%',marginBottom:23,
+            background:'linear-gradient(90deg,#6becef 0%,#6becef 22%,transparent 22%,transparent 28%,rgba(90,214,232,.45) 28%,transparent 92%)'}}),
           h('div',{style:{display:'flex',gap:16,alignItems:'center',
             justifyContent:'space-between',flexWrap:'wrap'}},
-            h('h1',{style:{fontSize:25,margin:'0 0 7px',fontWeight:650}},t('title')),
+            h('h1',{style:{fontSize:27,margin:'0 0 7px',fontWeight:630,
+              letterSpacing:'.08em',color:V.text,
+              textShadow:'0 0 15px rgba(100,228,238,.17)'}},t('title')),
             h('button',{type:'button','data-hud-enter-mode':true,
               onClick:()=>{void form.set('hudMode',true);},
-              style:{fontSize:13,borderRadius:10,padding:'10px 16px',
-                background:'#133a47',color:'#d6fff8',border:'1px solid #589f9d',
-                cursor:'pointer'}},t('enterHud'))),
+              style:{...actionStyle(false),fontWeight:650,
+                background:'rgba(15,72,88,.74)',color:V.cyan}},t('enterHud'))),
           h('p',{style:{...subtle,margin:0}},t('sub')),
           h('div',{style:{marginTop:24,fontSize:12,opacity:.7},
             'data-hud-source':catalog.source,role:'status'},

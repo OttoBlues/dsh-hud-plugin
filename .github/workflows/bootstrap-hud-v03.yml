@@ -1,0 +1,141 @@
+name: DSH HUD v0.3 one-time bootstrap
+
+# A user-authorized temporary installer. All version and channel checks are
+# explicit, and the workflow is disabled after the initial Desktop upgrade.
+# Never executes on pull requests or unverified source.
+on:
+  workflow_run:
+    workflows: ['DSH plugins CI']
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '5,35 * * * *'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: dsh-hud-self-hosted
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Require approved one-time bootstrap and successful current main CI
+    if: github.repository == 'OttoBlues/dsh-plugins'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      approved: ${{ steps.gate.outputs.approved }}
+      sha: ${{ steps.gate.outputs.sha }}
+    steps:
+      - id: gate
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = 'OttoBlues', repo = 'dsh-plugins';
+            const branch = await github.rest.repos.getBranch({owner,repo,branch:'main'});
+            const sha = branch.data.commit.sha;
+            const commit = await github.rest.repos.getCommit({owner,repo,ref:sha});
+            if (commit.data.commit.message.trim() !== 'bootstrap: install HUD v0.3.0 unstable once') {
+              core.info('No current explicit one-time bootstrap approval.');
+              return;
+            }
+            if (context.eventName === 'workflow_run') {
+              const run = context.payload.workflow_run;
+              if (!run || run.event !== 'push' || run.head_branch !== 'main' ||
+                  run.head_sha !== sha || run.conclusion !== 'success' ||
+                  run.head_repository?.full_name !== 'OttoBlues/dsh-plugins') {
+                core.info('Source CI is not successful for the current main commit.');
+                return;
+              }
+            }
+            const history = await github.rest.actions.listWorkflowRuns({
+              owner,repo,workflow_id:'ci.yml',branch:'main',
+              event:'push',head_sha:sha,per_page:20,
+            });
+            if (!history.data.workflow_runs.some(r =>
+                r.head_sha === sha && r.event === 'push' &&
+                r.status === 'completed' && r.conclusion === 'success')) {
+              core.info('The current main has not passed complete CI.');
+              return;
+            }
+            core.setOutput('sha',sha);
+            core.setOutput('approved','true');
+
+  desktop-bootstrap:
+    name: Safely install vetted HUD v0.3.0 with Windows DSH CLI
+    needs: gate
+    if: needs.gate.outputs.approved == 'true'
+    runs-on: [self-hosted, windows, x64, dsh-hud-test]
+    timeout-minutes: 30
+    env:
+      BOOTSTRAP_SHA: ${{ needs.gate.outputs.sha }}
+      BOOTSTRAP_GIT_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout vetted main without downloading Actions plugins
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'Git is required on the Windows Runner.' }
+          if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw 'Node.js is required on the Windows Runner.' }
+          $auth = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("x-access-token:$env:BOOTSTRAP_GIT_TOKEN"))
+          git init .
+          if ($LASTEXITCODE -ne 0) { throw 'Git init failed.' }
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags --depth=1 "https://github.com/OttoBlues/dsh-plugins.git" main
+          if ($LASTEXITCODE -ne 0) { throw 'Vetted main fetch failed.' }
+          $actual = (git rev-parse FETCH_HEAD).Trim()
+          if ($actual -ne $env:BOOTSTRAP_SHA) { throw 'Main changed after CI approval; refusing stale install.' }
+          git checkout --force --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Checkout failed.' }
+          Write-Host '[PASSED] Checked out the exact CI-approved source SHA.'
+      - id: readiness
+        name: Check installed HUD version and Desktop running state
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pkgPath = Join-Path $env:USERPROFILE '.dsh\profiles\desktop\node_modules\@local\dsh-hud\package.json'
+          if (-not (Test-Path -LiteralPath $pkgPath -PathType Leaf)) { throw 'The current Desktop HUD package is missing.' }
+          $pkg = Get-Content -LiteralPath $pkgPath -Raw | ConvertFrom-Json
+          if ($pkg.name -ne '@local/dsh-hud') { throw 'Installed Desktop package is not HUD.' }
+          if ([version]$pkg.version -ge [version]'0.3.0') {
+            Write-Host '[SKIPPED] Desktop already has HUD v0.3.0 or later.'
+            'ready=false' | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ASCII
+            exit 0
+          }
+          .\scripts\windows\desktop-deploy.ps1 -Mode check
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop state probe failed.' }
+          $status = Get-Content -LiteralPath 'deploy-results\desktop-deploy.json' -Raw | ConvertFrom-Json
+          $process = @($status.checks | Where-Object { $_.name -eq 'desktop-process' })
+          if ($process.Count -ne 1) { throw 'Desktop process status is unknown.' }
+          if ($process[0].state -eq 'warning') {
+            Write-Host '[DEFERRED] DSH Desktop is open. This task will retry on the next scheduled check.'
+            'ready=false' | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ASCII
+          } else {
+            Write-Host '[PASSED] Desktop is stopped; it is safe to upgrade.'
+            'ready=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ASCII
+          }
+      - name: Validate exact unstable tarball and Source/CI evidence
+        if: steps.readiness.outputs.ready == 'true'
+        run: |
+          node scripts/verify-channels.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Smoke-test V0.3 in a temporary DSH Web Profile
+        if: steps.readiness.outputs.ready == 'true'
+        run: .\scripts\windows\self-hosted-smoke.ps1 -Mode install-smoke -Channel unstable
+      - name: Install authorized V0.3 into existing Desktop Profile
+        if: steps.readiness.outputs.ready == 'true'
+        run: .\scripts\windows\desktop-deploy.ps1 -Mode upgrade -Channel unstable -TargetVersion 0.3.0 -BootstrapV03
+      - name: Verify persistent Desktop package version
+        if: steps.readiness.outputs.ready == 'true'
+        run: |
+          $status = Get-Content -LiteralPath 'deploy-results\desktop-deploy.json' -Raw | ConvertFrom-Json
+          if ($status.overall -notin @('upgraded','already-current')) { throw 'Desktop upgrade did not succeed.' }
+          $pkg = Get-Content -LiteralPath (Join-Path $env:USERPROFILE '.dsh\profiles\desktop\node_modules\@local\dsh-hud\package.json') -Raw | ConvertFrom-Json
+          if ($pkg.name -ne '@local/dsh-hud' -or $pkg.version -ne '0.3.0') {
+            throw 'Desktop still resolves an unexpected HUD version.'
+          }
+          Write-Host '[PASSED] DSH Desktop now persistently installs HUD v0.3.0.'

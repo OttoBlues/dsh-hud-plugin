@@ -3,6 +3,18 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": null,
-  "releases": []
+  "latest": "0.3.0",
+  "releases": [
+    {
+      "version": "0.3.0",
+      "file": "v0.3.0/local-dsh-hud-0.3.0.tgz",
+      "sha256": "15636f18682d01ea93a348257d5026ac91d3f3eac50c015652cc373210c6796e",
+      "sourceCommit": "5812723b564e593235971efd10224fdbe8c5e0cf",
+      "test": {
+        "ciRun": "41839057679",
+        "result": "success"
+      },
+      "note": "One-time user-requested trial for actual DSH Desktop testing; not a stable release"
+    }
+  ]
 }

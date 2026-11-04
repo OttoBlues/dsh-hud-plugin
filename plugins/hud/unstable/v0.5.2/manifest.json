@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "component": "hud",
+  "package": "@local/dsh-hud",
+  "channel": "unstable",
+  "version": "0.5.2",
+  "file": "local-dsh-hud-0.5.2.tgz",
+  "sha256": "dd5cee6bdbf2e90cbcbc9441e6af93e7e3dfa8e3f8bedc9eec9f0479f02c8eea",
+  "sourceCommit": "f52e6f3690a6f8a0122cbd3fa5f044c00504249a",
+  "test": {
+    "ciRun": "41908482570",
+    "result": "success"
+  },
+  "verification": {
+    "sourceCi": "41908482570",
+    "role": "U052 second-round cockpit panel geometry and native DSH component center",
+    "approvedAsStable": false
+  }
+}

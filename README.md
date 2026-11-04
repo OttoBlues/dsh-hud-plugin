@@ -7,8 +7,8 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.2 开发源码**（第二轮驾驶舱面板视觉修正，尚未发布；Unstable 最新为 V0.5.1）。
-- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.1**。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.2 试验源码**（已按用户要求发布 Unstable，尚待第二轮视觉验收）。
+- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.2**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
 
@@ -60,3 +60,5 @@ V0.5.1 的设计候选为 **矢量线框/驾驶舱式 HUD**：切角边框、角
 - 保留 HUD ⇄ DSH 切换、真实会话概览、安装确认与“检查更新”按钮及其失败诊断。
 
 **重要：** V0.5.2 视觉仍待实机定稿，不包含全局 Windows 透明/置顶能力；代码合并与 CI 通过不等于自动安装或 GUI 通过。
+
+**V0.5.2 发布进度：** 试验安装包经 GitHub 托管 CI 校验已登记在 Unstable，不是 Released；用户仍须从 DSH HUD 的组件中心手动确认安装。具体风格待 U052 实机截图与交互反馈最终确认。

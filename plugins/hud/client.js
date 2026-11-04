@@ -1,8 +1,7 @@
 /**
- * DSH HUD v0.3.1 development: safer in-app update confirmation and lifecycle.
- * The browser never sees GitHub credentials or executes installers. The
- * Host anonymously verifies approved public GitHub archives and installs via
- * the official DSH pluginManager; a private repository remains unavailable.
+ * DSH HUD V0.4 development Client.
+ * HUD is a DSH plugin with its own left sidebar panel; repo components are
+ * managed inside that panel, not inside DSH's native Plugins management tab.
  */
 window.__ModuleLoader__.load({
   id: '@local/dsh-hud',
@@ -10,299 +9,298 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
     const NS = 'dsh.hud';
-    const CURRENT_VERSION = '0.3.1';
-    const RETRY_BUNDLES_MS = 5 * 60_000;
+    const PANEL = 'dsh-hud';
+    const VERSION = '0.4.0';
+    const REFRESH_MS = 5 * 60_000;
+
     const dictionaries = {
       zh: {
-        sessionTitle: '会话活动 / SESSIONS',
-        count: '会话', runningCount: '运行中', pendingCount: '待处理',
-        systemTitle: 'DSH / HUD', systemDetail: '时间 · 天气 · 系统状态待接入',
-        messageTitle: '最近消息 / LATEST', messageDetail: '实时消息待接入',
-        current: '当前会话', noSelected: '尚未选中会话',
-        running: '执行中', idle: '空闲', passive: '只读，不影响原会话',
-        nativeHint: '桌面透明/鼠标穿透仍需 Windows 原生窗口',
-        componentTab: '组件', componentTitle: '组件与更新', checking: '仅检查 released 已发布版；试验版需要自行开启',
-        unstableToggle: '允许试验版更新（默认关闭）', unstableNote: '仅显示 unstable 中的测试包；仍需逐项点击确认。',
-        unstableVersion: '试验版', stableVersion: '正式版',
-        currentVersion: '当前版本', latestVersion: '可用版本',
-        alreadyLatest: '已是最新', unavailable: '尚未取得可信版本清单',
-        needsSetup: '更新源尚未就绪', update: '更新', cancel: '取消',
-        confirm: '确认更新', confirmText: '确认后由 DSH 安装经过校验的发布包；更新可能需要重启 DSH。',
-        restartRequired: '已安装，重启 DSH 生效', installedOK: '更新已安装', failedUpdate: '更新未完成，请检查仓库是否公开及 DSH 日志',
-        queued: '已确认更新，正在交给 DSH 安装',
-        requesting: '提交更新请求中…', requestFailed: '请求未保存，请重试',
-        installing: '正在校验和安装…',
-        preview: '聊天窗口 HUD 预览', previewDesc: '关闭后不会在聊天内容和标题栏上叠加状态文字。',
-        noBundles: '未找到对应的 DSH 组件', installed: '已安装',
+        panel: 'HUD', title: 'HUD 组件中心', sub: 'OttoBlues/dsh-plugins · 组件安装、版本和更新策略',
+        section: '仓库组件', options: '更新策略', sourceOK: '公开仓库已连接',
+        sourceUnavailable: '仓库版本源暂不可匿名访问：请将 GitHub 仓库设为 Public。',
+        sourceChecking: '正在读取公开组件清单…', noComponents: '当前没有可用的仓库组件',
+        installed: '已安装', notInstalled: '未安装', current: '当前', released: '正式版',
+        unstable: '试验版', notPublished: '未发布', update: '更新', install: '安装',
+        latest: '已是最新', unavailable: '暂无可安装的新版本', queued: '已确认，准备安装…',
+        installing: '正在校验并安装…', failed: '安装失败或未能验证版本，请查看 DSH 日志',
+        restart: '已完成安装，请重启 DSH', succeeded: '更新已安装',
+        confirm: '确认', cancel: '取消',
+        confirmText: '只安装仓库对应通道中经过校验的 .tgz。更新期间 DSH 可能要求重启。',
+        allowUnstable: '接收试验版更新', allowUnstableHelp: '默认关闭。开启后可以手动安装 unstable 中的试验包。',
+        autoUpdate: '自动更新正式版', autoUpdateHelp: '默认关闭。定期检测已安装组件；仅自动安装 released 中版本更高的正式包，不自动安装新组件。',
+        autoUnstable: '自动更新试验版', autoUnstableHelp: '独立的额外授权；只有同时开启上述两个选项才会自动安装 unstable 包。存在不稳定风险。',
+        preview: '聊天窗口 HUD 预览', previewHelp: '默认关闭；可避免状态文字与标题栏、聊天输入区重叠。',
+        noToken: '无需 GitHub Token · 仅下载公开通道中登记的安装包',
       },
       en: {
-        sessionTitle: 'SESSION ACTIVITY',
-        count: 'Sessions', runningCount: 'Running', pendingCount: 'Needs action',
-        systemTitle: 'DSH / HUD', systemDetail: 'Time/weather/system data not connected',
-        messageTitle: 'LATEST', messageDetail: 'Live messages not connected',
-        current: 'Current session', noSelected: 'No session selected',
-        running: 'Running', idle: 'Idle', passive: 'Read-only status',
-        nativeHint: 'Native desktop overlay requires an Electron window layer',
-        componentTab: 'Components', componentTitle: 'Components & updates',
-        checking: 'Only released versions are shown by default',
-        unstableToggle: 'Allow experimental updates (off by default)',
-        unstableNote: 'Shows unstable test packages; each install still requires confirmation.',
-        unstableVersion: 'Unstable', stableVersion: 'Released',
-        currentVersion: 'Installed', latestVersion: 'Available',
-        alreadyLatest: 'Up to date', unavailable: 'Trusted update catalog unavailable',
-        needsSetup: 'Update source not ready', update: 'Update', cancel: 'Cancel',
-        confirm: 'Confirm update',
-        confirmText: 'DSH installs the verified release after confirmation; a restart may be required.',
-        restartRequired: 'Installed; restart DSH', installedOK: 'Update installed', failedUpdate: 'Update failed; check public repository access and DSH logs',
-        queued: 'Update request confirmed and being processed by DSH',
-        requesting: 'Saving update request…', requestFailed: 'Could not save request; retry',
-        installing: 'Verifying and installing…',
-        preview: 'Chat-window HUD preview',
-        previewDesc: 'Off means no floating HUD text overlaps chats or window chrome.',
-        noBundles: 'No matching DSH components found', installed: 'Installed',
+        panel: 'HUD', title: 'HUD Component Center', sub: 'OttoBlues/dsh-plugins · Install, update and configure',
+        section: 'Repository components', options: 'Update policy', sourceOK: 'Public repository connected',
+        sourceUnavailable: 'Anonymous update source unavailable. Make the GitHub repository Public to enable direct updates.',
+        sourceChecking: 'Checking the public component index…', noComponents: 'No repository components are available',
+        installed: 'Installed', notInstalled: 'Not installed', current: 'Current', released: 'Released',
+        unstable: 'Unstable', notPublished: 'Not published', update: 'Update', install: 'Install',
+        latest: 'Up to date', unavailable: 'No installable new version', queued: 'Update confirmed and queued…',
+        installing: 'Verifying and installing…', failed: 'Install failed or version could not be verified; check DSH logs',
+        restart: 'Installed; restart DSH', succeeded: 'Component updated',
+        confirm: 'Confirm', cancel: 'Cancel',
+        confirmText: 'Only SHA-256-verified channel packages are installed. A DSH restart may be required.',
+        allowUnstable: 'Allow experimental updates', allowUnstableHelp: 'Off by default; enables manual updates from unstable.',
+        autoUpdate: 'Automatic released updates', autoUpdateHelp: 'Off by default. Automatically update existing installed components from released; never installs new components.',
+        autoUnstable: 'Automatically install unstable updates', autoUnstableHelp: 'Additional explicit opt-in, effective only with both options above; experimental risk.',
+        preview: 'HUD chat-window preview', previewHelp: 'Off by default to avoid overlapping window chrome and chat input.',
+        noToken: 'No GitHub Token · Only indexed public installable archives',
       },
     };
 
     function newer(a, b) {
-      if (!/^\d+\.\d+\.\d+$/.test(a) || !/^\d+\.\d+\.\d+$/.test(b)) return false;
-      const left = a.split('.').map(Number);
-      const right = b.split('.').map(Number);
-      for (let i = 0; i < 3; i++) {
-        if (left[i] !== right[i]) return left[i] > right[i];
-      }
+      if (!/^\d+\.\d+\.\d+$/.test(a || '')) return false;
+      if (b == null || b === '') return true;
+      if (!/^\d+\.\d+\.\d+$/.test(b)) return false;
+      const left = a.split('.').map(Number), right = b.split('.').map(Number);
+      for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return left[i] > right[i];
       return false;
     }
 
-    function readCatalog(text) {
+    function parseCatalog(value) {
       try {
-        const data = JSON.parse(text || '');
-        if (data?.schema !== 2 || !Array.isArray(data.components)) return [];
-        return data.components.filter(item =>
-          typeof item.name === 'string' && /^@local\/[a-z0-9-]+$/.test(item.name) &&
-          (item.channel === 'released' || item.channel === 'unstable') &&
-          typeof item.version === 'string' && /^\d+\.\d+\.\d+$/.test(item.version));
-      } catch {
-        return [];
-      }
+        const data = JSON.parse(value || '{}');
+        if (data.schema !== 3 || !Array.isArray(data.components) || data.components.length > 32) {
+          return { source: 'unavailable', components: [] };
+        }
+        return {
+          source: data.source === 'public' ? 'public' :
+            data.source === 'checking' ? 'checking' : 'unavailable',
+          components: data.components.filter(row =>
+            /^[a-z0-9][a-z0-9-]*$/.test(row?.id || '') &&
+            /^@local\/[a-z0-9-]+$/.test(row?.name || '') &&
+            typeof row.title === 'string' && typeof row.description === 'string'),
+        };
+      } catch { return { source: 'unavailable', components: [] }; }
     }
 
-    const captionStyle = {
-      fontFamily: 'system-ui, sans-serif',
-      textShadow: '0 1px 6px rgba(0, 0, 0, .8)',
-      pointerEvents: 'none',
-      letterSpacing: '.03em',
+    const overlayStyle = {
+      fontFamily: 'system-ui,sans-serif', textShadow: '0 1px 5px rgba(0,0,0,.8)',
+      pointerEvents: 'none', letterSpacing: '.025em',
     };
-    function Corner({ place, title, detail, align = 'left' }) {
-      return h('section', {
-        style: { ...captionStyle, position: 'absolute', ...place,
-          maxWidth: 'min(32vw, 315px)', textAlign: align, overflow: 'hidden' },
-      }, h('div', { style: { color: '#9bdcf0', fontSize: 11, fontWeight: 600 } }, title),
-      h('div', { style: { color: '#aac1cb', fontSize: 11, marginTop: 5, overflow: 'hidden',
-        textOverflow: 'ellipsis' } }, detail));
+    function OverlayLabel({ title, body, side }) {
+      return h('div', {
+        style: { ...overlayStyle, position: 'absolute', ...side, color: '#96d3eb',
+          fontSize: 11, maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden',
+          textOverflow: 'ellipsis' },
+      }, h('strong', null, title), h('div', { style: { opacity: .83, marginTop: 4 } }, body));
     }
 
     function makeOverlay(form) {
-      return function HudPreview({ t, useSessions, useSessionStatus }) {
+      return function Overlay({ t, useSessions, useSessionStatus }) {
         const config = React.useSyncExternalStore(
-          callback => form.subscribe(callback),
-          () => form.getSnapshot(),
-          () => form.getSnapshot(),
-        );
-        const sessions = useSessions(value => value);
-        const statuses = useSessionStatus(value => value);
-        // Previous preview overlapped title bar and chat composer. Turned off
-        // by default; the person may opt in from the Components tab.
+          notify => form.subscribe(notify),
+          () => form.getSnapshot(), () => form.getSnapshot());
+        const sessions = useSessions(x => x);
+        const statuses = useSessionStatus(x => x);
         if (config.value?.overlayVisible !== true) return null;
-        const ids = sessions.ids;
-        const selected = Object.values(sessions.byId)
-          .find(row => (row.retainedBy?.mainView ?? 0) > 0);
-        let running = 0, pending = 0;
+        const ids = sessions.ids || [], selected = Object.values(sessions.byId || {})
+          .find(row => (row.retainedBy?.mainView || 0) > 0);
+        let running = 0;
         for (const id of ids) {
-          const state = statuses.get(id);
-          if ((state?.running ?? sessions.byId[id]?.running) === true) running++;
-          if (state?.pendingInteraction != null) pending++;
+          if ((statuses.get(id)?.running ?? sessions.byId[id]?.running) === true) running++;
         }
-        const detail = [t('count') + ' ' + ids.length, t('runningCount') + ' ' + running,
-          t('pendingCount') + ' ' + pending].join(' · ');
-        const current = selected === undefined ? t('noSelected') :
-          t('current') + ': ' + selected.displayTitle;
-        const active = selected !== undefined &&
-          (statuses.get(selected.id)?.running ?? selected.running) === true;
         return h('div', {
-          'aria-label': 'DSH HUD preview',
-          'data-dsh-hud-preview': 'true',
-          'data-dsh-hud-version': CURRENT_VERSION,
-          style: { position: 'absolute', inset: 0, pointerEvents: 'none',
-            background: 'transparent', overflow: 'hidden' },
+          'data-dsh-hud-preview': 'true', 'data-dsh-hud-version': VERSION,
+          style: { position: 'absolute', inset: 0, background: 'transparent',
+            overflow: 'hidden', pointerEvents: 'none' },
         },
-        h(Corner, { place: { top: 84, left: 355 },
-          title: t('sessionTitle'), detail }),
-        h(Corner, { place: { top: 84, right: 34 },
-          title: t('systemTitle'), detail: t('systemDetail'), align: 'right' }),
-        h(Corner, { place: { right: 34, bottom: 132 },
-          title: t('messageTitle'), detail: t('messageDetail'), align: 'right' }),
-        h('section', {
-          style: { ...captionStyle, position: 'absolute', bottom: 126, left: '50%',
-            transform: 'translateX(-50%)', maxWidth: 'min(60vw, 600px)',
-            textAlign: 'center' },
-        },
-        h('div', { style: { color: '#9bdcf0', fontSize: 11,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, current),
-        h('div', { style: { color: '#aac1cb', fontSize: 10, marginTop: 3 } },
-          (active ? t('running') : t('idle')) + ' · ' + t('passive'))));
+        h(OverlayLabel, { title: t('panel'), body: t('current') + ': ' + (selected?.displayTitle || '—'),
+          side: { top: 90, left: 365 } }),
+        h(OverlayLabel, { title: t('section'), body: ids.length + ' · ' + running,
+          side: { top: 90, right: 32, textAlign: 'right' } }),
+        h(OverlayLabel, { title: 'DSH', body: t('noToken'),
+          side: { right: 32, bottom: 128, textAlign: 'right' } }));
       };
     }
 
-    function makeComponentTab(ctx, form) {
-      return function ComponentUpdates({ t }) {
+    function HudIcon({ size }) {
+      const edge = size || 20;
+      return h('svg', { width: edge, height: edge, viewBox: '0 0 24 24',
+        fill: 'none', stroke: 'currentColor', strokeWidth: 1.7,
+        strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true },
+      h('rect', { x: 3.5, y: 4.5, width: 17, height: 15, rx: 3 }),
+      h('path', { d: 'M7 12h2.6l1.6-3 2 6 1.5-3H17' }));
+    }
+
+    function makeMainPage(ctx, form) {
+      return function HudMain({ t }) {
         const snapshot = React.useSyncExternalStore(
-          callback => form.subscribe(callback),
-          () => form.getSnapshot(),
-          () => form.getSnapshot(),
-        );
+          cb => form.subscribe(cb),
+          () => form.getSnapshot(), () => form.getSnapshot());
         const [bundles, setBundles] = React.useState([]);
-        const [confirm, setConfirm] = React.useState(null);
+        const [confirm, setConfirm] = React.useState('');
         const [saving, setSaving] = React.useState(false);
         const [error, setError] = React.useState('');
         React.useEffect(() => {
-          let active = true;
-          async function fetchInstalled() {
+          let alive = true;
+          async function refreshInstalled() {
             try {
               const response = await ctx.remote.pluginManager.listBundles();
-              if (active && response.ok) setBundles(response.value);
-            } catch {
-              // Do not claim a version based on a failed inventory query.
-            }
+              if (alive && response.ok && Array.isArray(response.value)) setBundles(response.value);
+            } catch { /* Missing Host inventory must not fabricate installations. */ }
           }
-          void fetchInstalled();
-          const timer = setInterval(() => { void fetchInstalled(); }, RETRY_BUNDLES_MS);
-          return () => { active = false; clearInterval(timer); };
+          void refreshInstalled();
+          const timer = setInterval(() => { void refreshInstalled(); }, REFRESH_MS);
+          return () => { alive = false; clearInterval(timer); };
         }, []);
 
-        const value = snapshot.value || {};
-        const components = readCatalog(value.catalog);
-        const availableByName = new Map();
-        for (const component of components) {
-          if (component.channel === 'unstable' && value.allowUnstable !== true) continue;
-          const current = availableByName.get(component.name);
-          // A released candidate wins on version ties.
-          if (current === undefined || newer(component.version, current.version) ||
-              (component.version === current.version && component.channel === 'released')) {
-            availableByName.set(component.name, component);
-          }
+        const values = snapshot.value || {};
+        const catalog = parseCatalog(values.catalog);
+        const known = [...catalog.components];
+        if (!known.some(x => x.name === '@local/dsh-hud')) {
+          known.unshift({ id: 'hud', name:'@local/dsh-hud', title:'DSH HUD',
+            description:'Windows HUD and component center', released:null, unstable:null });
         }
-        const installed = bundles.filter(item => item.installed && item.name.startsWith('@local/'));
-        // Show the currently running HUD even if inventory is still loading.
-        if (!installed.some(item => item.name === '@local/dsh-hud')) {
-          installed.unshift({ name: '@local/dsh-hud', version: CURRENT_VERSION, installed: true });
+        const installedByName = new Map(bundles.filter(x => x.installed).map(x => [x.name,x]));
+        if (!installedByName.has('@local/dsh-hud')) {
+          installedByName.set('@local/dsh-hud', { name:'@local/dsh-hud',
+            installed:true, version:VERSION });
         }
-        const button = (label, onClick, disabled) =>
-          h('button', {
-            type: 'button', onClick, disabled,
-            style: {
-              padding: '7px 13px', borderRadius: 7, border: '1px solid currentColor',
-              background: 'transparent', color: 'inherit', cursor: disabled ? 'default' : 'pointer',
-              opacity: disabled ? .5 : 1, fontSize: 12,
-            },
-          }, label);
-        const itemStyle = {
-          display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between',
-          gap: 14, padding: '14px 0', borderBottom: '1px solid var(--border-subtle, rgba(128,128,128,.2))',
-        };
-        const request = async item => {
-          setSaving(true);
-          setError('');
+        const surface = { padding: '18px 20px', borderRadius: 12,
+          border:'1px solid rgba(110,125,145,.18)', marginTop: 13 };
+        const tiny = { fontSize: 12, color:'var(--text-secondary, #777)' };
+        const subtle = { fontSize: 13, opacity: .7 };
+        const actionStyle = disabled => ({
+          borderRadius: 8, padding: '8px 16px', fontSize: 13,
+          border: '1px solid rgba(100,110,120,.24)',
+          color:'inherit', background:'transparent',
+          cursor:disabled?'not-allowed':'pointer', opacity:disabled?.5:1,
+        });
+        const btn = (label,onClick,disabled=false) =>
+          h('button',{type:'button',onClick,disabled,style:actionStyle(disabled)},label);
+        const toggle = (label,help,checked,change,disabled=false,dataName) =>
+          h('div',{style:{padding:'12px 0',opacity:disabled?.55:1}},
+            h('label',{style:{display:'flex',gap:11,alignItems:'center',fontSize:14,cursor:'pointer'}},
+              h('input',{type:'checkbox',checked:checked===true,disabled,
+                'data-hud-setting': dataName,
+                onChange:e=>{void change(e.target.checked);}}),
+              label),
+            h('div',{style:{...tiny,marginLeft:27,marginTop:5}},help));
+        const queue = async (component,candidate) => {
+          setSaving(true); setError('');
           try {
-            const success = await form.mutate([
-              { op: 'set', path: ['requestComponent'], value: item.name },
-              { op: 'set', path: ['requestVersion'], value: item.version },
-              { op: 'set', path: ['requestChannel'], value: item.channel },
-              { op: 'set', path: ['requestNonce'], value: String(Date.now()) },
-              { op: 'set', path: ['updateStatus'], value: '' },
+            const result = await form.mutate([
+              {op:'set',path:['requestComponent'],value:component.name},
+              {op:'set',path:['requestVersion'],value:candidate.version},
+              {op:'set',path:['requestChannel'],value:candidate.channel},
+              {op:'set',path:['requestNonce'],value:String(Date.now())},
+              {op:'set',path:['updateStatus'],value:'queued'},
             ]);
-            if (!success) setError(t('requestFailed'));
-            else setConfirm(null);
-          } catch {
-            setError(t('requestFailed'));
-          } finally {
-            setSaving(false);
-          }
+            if (!result) setError(t('failed'));
+            else setConfirm('');
+          } catch { setError(t('failed')); }
+          finally {setSaving(false);}
         };
-        return h('div', {
-          'data-dsh-hud-components': 'true',
-          style: { padding: '14px 18px', color: 'inherit', fontFamily: 'system-ui, sans-serif',
-            width: '100%', boxSizing: 'border-box', maxWidth: 920, margin: '0 auto' },
-        },
-        h('h3', { style: { margin: '0 0 5px', fontSize: 17 } }, t('componentTitle')),
-        h('p', { style: { fontSize: 12, opacity: .7, margin: '0 0 15px' } }, t('checking')),
-        ...installed.map(row => {
-          const latest = availableByName.get(row.name);
-          const current = row.version || (row.name === '@local/dsh-hud' ? CURRENT_VERSION : '');
-          const canUpdate = latest !== undefined && newer(latest.version, current);
-          const pending = canUpdate &&
-            value.requestComponent === row.name && value.requestVersion === latest.version &&
-            value.requestChannel === latest.channel &&
-            (value.updateStatus === 'installing' ||
-              (value.updateStatus === '' && !!value.requestNonce));
-          const name = row.name === '@local/dsh-hud' ? 'DSH HUD' : row.name;
-          return h('div', { key: row.name, style: itemStyle },
-            h('div', { style: { minWidth: 190, flex: '1 1 240px' } },
-              h('strong', { style: { display: 'block', fontSize: 13 } }, name),
-              h('div', { style: { fontSize: 11, opacity: .65, marginTop: 5 } },
-                t('currentVersion') + ': ' + current + '   ·   ' +
-                t('latestVersion') + ': ' + (latest?.version || '—') +
-                (latest ? ' (' + (latest.channel === 'unstable' ? t('unstableVersion') : t('stableVersion')) + ')' : ''))),
-            h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
-              pending
-                ? h('span', { role: 'status', style: { fontSize: 12, opacity: .75 } },
-                    t(value.updateStatus === 'installing' ? 'installing' : 'queued'))
-                : !canUpdate
-                  ? h('span', { style: { fontSize: 12, opacity: .7 } },
-                      latest === undefined ? t('unavailable') : t('alreadyLatest'))
-                  : confirm === row.name
-                    ? h(React.Fragment, null,
-                        h('span', { style: { fontSize: 11, opacity: .7, maxWidth: 260 } }, t('confirmText')),
-                        button(t('cancel'), () => setConfirm(null), saving),
-                        button(saving ? t('requesting') : t('confirm'), () => { void request(latest); }, saving))
-                    : button('↑ ' + t('update'), () => setConfirm(row.name), saving)
-            ));
-        }),
-        error ? h('div', { role: 'alert', style: { marginTop: 12, color: '#c65b5b' } }, error) : null,
-        value.updateStatus === 'failed'
-          ? h('p', { role: 'alert', style: { color: '#c65b5b', fontSize: 12 } }, t('failedUpdate'))
-          : value.updateStatus === 'restart-required'
-            ? h('p', { role: 'status', style: { fontSize: 12 } }, t('restartRequired'))
-            : value.updateStatus === 'installed'
-              ? h('p', { role: 'status', style: { fontSize: 12 } }, t('installedOK')) : null,
-        h('div', { style: { marginTop: 18, paddingTop: 12, borderTop: '1px solid rgba(128,128,128,.22)' } },
-          h('label', { style: { display: 'flex', alignItems: 'center', gap: 9, fontSize: 13 } },
-            h('input', { type: 'checkbox', checked: value.allowUnstable === true,
-              'data-hud-unstable-opt-in': 'true',
-              onChange: event => { void form.set('allowUnstable', event.target.checked); } }),
-            t('unstableToggle')),
-          h('p', { style: { fontSize: 11, opacity: .68, marginTop: 7 } }, t('unstableNote'))),
-        h('div', { style: { marginTop: 24, paddingTop: 16, borderTop: '1px solid rgba(128,128,128,.22)' } },
-          h('label', { style: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 } },
-            h('input', { type: 'checkbox', checked: value.overlayVisible === true,
-              onChange: event => { void form.set('overlayVisible', event.target.checked); } }),
-            t('preview')),
-          h('p', { style: { fontSize: 11, opacity: .68, marginTop: 7 } }, t('previewDesc'))));
+
+        return h('main',{'data-dsh-hud-main':true,
+          style:{boxSizing:'border-box',overflowY:'auto',height:'100%',
+            padding:'36px max(28px, 4vw) 70px',fontFamily:'system-ui,sans-serif',
+            color:'inherit',width:'100%'}},
+        h('div',{style:{maxWidth:940,margin:'0 auto'}},
+          h('h1',{style:{fontSize:25,margin:'0 0 7px',fontWeight:650}},t('title')),
+          h('p',{style:{...subtle,margin:0}},t('sub')),
+          h('div',{style:{marginTop:24,fontSize:12,opacity:.7},
+            'data-hud-source':catalog.source,role:'status'},
+            catalog.source === 'public'?t('sourceOK'):
+              catalog.source==='checking'?t('sourceChecking'):t('sourceUnavailable')),
+
+          h('section',{style:{marginTop:30}},
+            h('h2',{style:{fontSize:18,margin:0}},t('section')),
+            ...known.map(component=>{
+              const installed = installedByName.get(component.name);
+              const current = installed?.version || null;
+              const stable = component.released || null;
+              const experimental = values.allowUnstable === true ? component.unstable || null : null;
+              const latest = experimental && (!stable || newer(experimental.version,stable.version))
+                ? experimental : stable;
+              const eligible = latest && newer(latest.version,current);
+              const key = component.name + ':' + (latest?.version || '');
+              const isPending = values.requestComponent === component.name &&
+                values.requestVersion === latest?.version &&
+                (values.updateStatus === 'queued' || values.updateStatus === 'installing') &&
+                !!values.requestNonce;
+              const rightAction = isPending
+                ? h('span',{role:'status',style:tiny},
+                    t(values.updateStatus==='installing'?'installing':'queued'))
+                : eligible
+                  ? confirm===key
+                    ? h(React.Fragment,null,
+                        h('span',{style:{...tiny,maxWidth:245}},t('confirmText')),
+                        btn(t('cancel'),()=>setConfirm(''),saving),
+                        btn(t('confirm'),()=>{void queue(component,latest);},saving))
+                    : btn(installed?t('update'):t('install'),()=>setConfirm(key),saving)
+                  : h('span',{style:tiny},latest?t('latest'):t('unavailable'));
+              return h('div',{key:component.name,style:surface,
+                'data-hud-component':component.name},
+                h('div',{style:{display:'flex',gap:15,alignItems:'center',
+                  justifyContent:'space-between',flexWrap:'wrap'}},
+                  h('div',{style:{flex:'1 1 300px',minWidth:175}},
+                    h('div',{style:{display:'flex',alignItems:'center',gap:9}},
+                      h('strong',{style:{fontSize:15}},component.title),
+                      h('span',{style:tiny},installed?t('installed'):t('notInstalled'))),
+                    h('p',{style:{...tiny,margin:'5px 0 9px'}},component.description),
+                    h('div',{style:tiny},
+                      t('current')+': '+(current||'—')+
+                      '   ·   '+t('released')+': '+(stable?.version||'—')+
+                      (values.allowUnstable===true?
+                        '   ·   '+t('unstable')+': '+(experimental?.version||'—'):''))
+                  ),
+                  h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},
+                    rightAction)
+                )
+              );
+            }),
+            known.length===0?h('p',{style:tiny},t('noComponents')):null
+          ),
+
+          h('section',{style:{marginTop:36}},
+            h('h2',{style:{fontSize:18,margin:'0 0 4px'}},t('options')),
+            h('div',{style:surface},
+              toggle(t('allowUnstable'),t('allowUnstableHelp'),values.allowUnstable,
+                async value=>{
+                  await form.mutate([{op:'set',path:['allowUnstable'],value},
+                    ...(value?[]:[{op:'set',path:['autoUpdateUnstable'],value:false}])]);
+                },false,'unstable'),
+              toggle(t('autoUpdate'),t('autoUpdateHelp'),values.autoUpdateEnabled,
+                value=>form.set('autoUpdateEnabled',value),false,'auto'),
+              toggle(t('autoUnstable'),t('autoUnstableHelp'),values.autoUpdateUnstable,
+                value=>form.set('autoUpdateUnstable',value),
+                values.allowUnstable!==true || values.autoUpdateEnabled!==true,'auto-unstable'),
+              toggle(t('preview'),t('previewHelp'),values.overlayVisible,
+                value=>form.set('overlayVisible',value),false,'preview')
+            )
+          ),
+          error?h('p',{role:'alert',style:{color:'#b84b4b'}},error):null,
+          values.updateStatus==='failed'?h('p',{role:'alert',style:{color:'#b84b4b'}},t('failed')):
+          values.updateStatus==='restart-required'?h('p',{role:'status'},t('restart')):
+          values.updateStatus==='installed'?h('p',{role:'status'},t('succeeded')):null,
+          h('p',{style:{...tiny,marginTop:25}},t('noToken'))
+        ));
       };
     }
 
     return {
-      inject: ['slots', 'locale', 'uiSession', 'configForms', 'remote', 'remote.pluginManager'],
+      inject: ['slots','locale','layout','uiSession','configForms','remote','remote.pluginManager'],
       apply(ctx) {
-        ctx.effect(() => ctx.locale.register(NS, dictionaries), 'hud: locale');
+        ctx.effect(() => ctx.locale.register(NS,dictionaries),'hud: locale');
         const form = ctx.configForms.get('dsh-hud');
-        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-          name: 'shell.overlay', id: 'dsh-hud.preview', order: 100, locale: NS,
-        }, makeOverlay(form)));
-        ctx.slots.inject('plugins.tab', () => ctx.slots.register({
-          name: 'plugins.tab', id: 'dsh-hud.components',
-          label: () => ctx.locale.bind(NS)('componentTab'),
-          order: 20, locale: NS,
-        }, makeComponentTab(ctx, form)));
+        ctx.slots.inject('shell.overlay',() => ctx.slots.register({
+          name:'shell.overlay',id:'dsh-hud.preview',order:100,locale:NS,
+        },makeOverlay(form)));
+
+        // This is a *DSH plugin panel*, not a 'plugins.tab' child.
+        ctx.slots.inject('main',()=>ctx.slots.register({
+          name:'main',key:PANEL,id:PANEL,locale:NS,
+        },makeMainPage(ctx,form)));
+        ctx.slots.inject('sidebar.panellist',()=>ctx.slots.register({
+          name:'sidebar.panellist',id:PANEL,order:5,locale:NS,
+          label:()=>ctx.locale.bind(NS)('panel'),
+        },HudIcon));
       },
     };
   },

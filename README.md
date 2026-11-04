@@ -1,37 +1,32 @@
-# DSH Plugins · 最新研发代码与独立发布包
+# DSH Plugins · 官方 DSH 插件与仓库组件分层
 
-`OttoBlues/dsh-plugins` 当前是私有的 DeepSeek Harness（DSH）Cordis 插件 Monorepo。**最新源码不等于已批准发布版本**。
+当前仓库 `OttoBlues/dsh-plugins` 是 DeepSeek Harness Cordis 插件 Monorepo。每个仓库组件使用独立的 `released/` 与 `unstable/` 版本通道。最新开发源码永远不自动成为可安装的版本。
 
-## 每个组件的独立通道
+## 组织形式
 
 ```text
-plugins/hud/
-  index.js, client.js, package.json, tests/   # 研发最新版
-  released/index.json                        # 正式版：用户明确批准才发布
-  unstable/index.json                        # 试验版：显式测试/点击确认
-  unstable/v0.3.0/local-dsh-hud-0.3.0.tgz    # 本次已测试归档
+plugins/
+  index.json                   # 公开仓库的组件列表（包括未安装的组件）
+  hud/
+    index.js, client.js        # 当前开发源码（V0.4 研发中）
+    package.json
+    released/index.json       # 正式版：用户批准才发布，目前为空
+    unstable/
+      index.json
+      v0.3.0/                  # 之前 Windows 已安装并通过部分界面验收的试验包
 ```
 
-HUD v0.3.0 已于 **2026-11-04** 通过 [Windows Runner 一次性安装任务](https://github.com/OttoBlues/dsh-plugins/actions/runs/41841386623) 持久安装至用户 DSH Desktop 的 `desktop` Profile；日志确认旧版归档、临时 Web Profile 冒烟测试和精确版本校验。**这不代表图形界面已由用户验收，也不代表它成为正式发布版。** `released/` 仍为空。
+## DSH 插件、仓库组件的区别
 
-## 后续不用本机 Runner 的更新方式
+- **DSH 左侧菜单 HUD**：HUD 是一个 DSH 插件，有自己的独立 `main` 页面。它不是 DSH 原生「插件」管理页中的一个标签。
+- **HUD 主界面**：展示本仓库 `plugins/index.json` 中所有组件的安装和版本状态，可安装、手动更新或设置更新策略。
+- **更新策略**：试验版更新默认关闭，自动正式版更新默认关闭；自动试验版更新必须额外独立开启；默认 HUD 聊天窗口覆盖也保持关闭。
+- **匿名源**：公开后通过 `raw.githubusercontent.com` 读取清单及经 SHA-256 核实的 `.tgz`，无个人 GitHub Token、无需本机 Windows Runner。
 
-V0.3 的 Host 有匿名 HTTPS 检查与 DSH 官方 `pluginManager.installBundle` 代码，组件页试验版开关默认关闭，用户点击更新后再验证版本和 SHA-256。**当前仓库仍是 Private，匿名 HTTP 无法读取版本包；只有将发布源公开后，才能实际验证并使用这条无需 Runner 的更新链路。**
+## 当前研发与安装
 
-首次安装已完成，因此一次性 Runner bootstrap 和临时候选打包工作流已从主分支撤下，专用的 `-BootstrapV03` 安装例外也已删除。日常 GitHub 云端 CI 保留，Windows Runner 的旧手动诊断、部署工作流仅作为维护入口，不会由常规源码提交自动在电脑上执行。你现在可以停止 Windows Runner；以后重新启用相关手动维护功能则需将它再次上线。
+Windows Desktop 已安装的是 **HUD V0.3.0**，在 2026-11-04 由用户确认组件标签、版本显示、试验版开关默认关闭、无布局重叠均通过。V0.4 目前只在开发分支，尚未安装或发布。
 
-## 本地开发检查
+本地运行 `npm run check` 可验证源代码、组件总索引、版本通道与单元测试。发布包只放在各组件 `released/` 或 `unstable/`，未经批准不自动升为正式版。
 
-```powershell
-npm run verify
-npm run verify:channels
-npm test
-npm run pack:hud
-npm run verify:pack
-```
-
-`npm run pack:hud` 仅制作本地**研发候选包**，不会放入正式发布通道，也不会自动安装。更多说明参见 [更新设计](docs/AUTO-UPGRADE.md)、[发布政策](docs/RELEASE-POLICY.md)、[验收记录](docs/MANUAL-ACCEPTANCE.md)。
-
-## 当前研发状态
-
-V0.3.0 已通过 U03-1～U03-4 的真实界面验收，仍在 `unstable/`。接下来的 **V0.3.1 研发源码**专注免 Runner 更新可靠性，尚未发布或安装；仓库目前为 Private，匿名联网更新仍待公开源后验证。
+详见 [组件中心更新规则](docs/AUTO-UPGRADE.md)、[人工验收](docs/MANUAL-ACCEPTANCE.md)、[路线图](docs/ROADMAP.md)。

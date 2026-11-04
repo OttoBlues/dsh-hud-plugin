@@ -29,3 +29,9 @@ plugins/
 公开仓库的 `raw.githubusercontent.com` 端点允许匿名读取公开发布归档和索引。V0.3 在 DSH Host 中直接查询、校验，再调用官方 `pluginManager.installBundle`。**仓库仍为 Private 时，这条无 Token 路径不可访问**，只能用已连接的 Runner 做一次引导安装，不能声称私有 GitHub 源可以匿名更新。
 
 这次引导完成以后，可停止 Windows Runner。后续仍可使用 GitHub 云端 Actions 做代码测试和构建，与用户本机 Runner 是两回事。
+
+## 仓库级组件总索引
+
+从 V0.4 开始新增 `plugins/index.json`，管理仓库有哪些组件可以被独立安装或更新。`npm run verify:components` 校验它与实际 `plugins/<组件>/package.json` 一致。这个索引不代表版本已发布，具体安装权限仍由各组件的 `released/index.json` 和 `unstable/index.json` 决定。
+
+自动更新默认关闭，仅已安装组件可自动更新，正式与试验版分别设定权限；新的仓库组件不能仅因上架就自动安装。

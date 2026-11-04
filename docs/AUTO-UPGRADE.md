@@ -1,51 +1,47 @@
-# DSH HUD V0.3 更新方式
+# DSH HUD · 独立组件中心与匿名更新（V0.4 研发版）
 
-## 已完成的一次性试验版引导
+## 正确的界面结构
 
-V0.3 已于 **2026-11-04** 通过 [Windows Runner 运行 #41841386623](https://github.com/OttoBlues/dsh-plugins/actions/runs/41841386623) 真实安装到日常 DSH Desktop（`@local/dsh-hud@0.3.0`），同时通过临时 Web Profile 安装与启动测试。该版本仅属于 `unstable/`，**不是正式发布版**；`released/` 保持为空。
+`HUD` 是一个 DSH 插件，注册到 `sidebar.panellist`（DSH 左侧导航），并使用独立 `main` 键 `dsh-hud` 呈现自己的管理面板。**不再占用 DSH 原生「插件 → 组件」分栏**。
 
-该版本的 HUD 窗口内叠加层默认隐藏，避免覆盖 DSH 标题栏和聊天输入区。组件管理页面新增试验版开关，默认关闭。
+HUD 主界面读取 `plugins/index.json` 作为仓库级组件目录，包含已安装和未安装的组件。每一条组件有版本、已安装状态、是否有可安装的正式版或试验版，及「安装/更新」按钮。
 
-## 后续在 DSH 内更新（不再依赖 Actions Runner）
+## 更新源
 
-V0.3 Host 更新器使用 **HTTPS 匿名读取公开 GitHub 仓库**：
+- 仓库级目录：`https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/index.json`
+- 组件稳定版：`plugins/<组件名>/released/index.json`
+- 组件测试版：`plugins/<组件名>/unstable/index.json`
+- 安装包：只允许通道索引明确登记的 `vX.Y.Z/*.tgz`，校验 SHA-256 和来源提交。
+- 新组件必须进入 `plugins/index.json`；`npm run verify:components` 会检查清单与实际目录是否一致。
 
-- `https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/hud/released/index.json`
-- `https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/hud/unstable/index.json`（只有用户主动开启试验版才允许安装）
+**客户端和 Host 均不保存 GitHub Token。** 当前仓库仍为 Private，匿名源不可访问时主界面显示明确的「仓库版本源暂不可匿名访问」；不会误报「已是最新」。
 
-每 5 分钟检查一次。只读取索引登记的最高版本，不直接从仓库最新源码打包更新。用户打开「插件 → 组件」，点击更新并确认时，Host 再次读取目标版本清单，并严格检查组件名、通道、版本、源码提交及归档 SHA-256，确认一致后下载固定路径的 `.tgz`，将其交给 **DSH 官方 `pluginManager.installBundle`**。DSH 可能提示需要重启，但更新器不会自行关闭主程序或停止 Agent。
+## 更新策略（独立开关）
 
-**必要前提：仓库必须变成 Public，公开索引与 .tgz 归档必须能匿名下载。** 当前仓库仍为 Private，没有给浏览器或插件保存任何 GitHub Token，所以未来直连更新在仓库公开前不可用。本次引导安装由已经授权的 Windows Runner 完成，之后公开仓库即可不再需要 Runner 进行安装。
+| 开关 | 默认 | 实际行为 |
+| --- | --- | --- |
+| 接收试验版更新 | 关闭 | 开启后显示并允许手动安装 `unstable` 安装包 |
+| 自动更新正式版 | 关闭 | 定期检查并自动更新**已经安装**且有更高 `released` 的组件，不自动安装新组件 |
+| 自动更新试验版 | 关闭且不可选 | 只有同时开启上面两个开关，才可再单独授权自动更新更高版本的 `unstable` |
+| 聊天窗口 HUD 预览 | 关闭 | 避免在窗口标题栏和输入区叠加文字 |
 
-## 当前通道规则
+Host 每 5 分钟刷新一次公开版本目录；只有版本更高、发布清单完整、安装包 SHA-256 校验通过才允许更新。会话内一次自动更新失败后不会无限重试同一包；用户仍可进行人工故障排查。
 
-- `released/`：只有用户明确批准正式发布才加入不可变安装包。
-- `unstable/`：可供测试的已打包版本，必须通过 CI、带 SHA-256，并且由用户确认升级。
-- 试验版开关默认关闭，打开后**也不会自动安装**。
-- 任何新 `main` 提交都不是正式发布，CI 的短期候选构建也不是安装来源。
+手动更新必须通过 HUD 独立主界面点击，并再次确认。Host 只调用 DSH 官方 `pluginManager.installBundle`，不会执行 shell 命令、强制退出 DSH 或改写 Session。更新结果需依据官方 DSH 返回状态及实际安装版本核实；某些更新可能需要用户手动重启 DSH。
 
-## 角色边界
+## 当前阶段和匿名测试步骤
 
-- GitHub Actions：继续自动测试、构建和严格校验发布产物；不要求长期连接用户本机。
-- DSH Host：用户点击后调用官方插件管理服务进行更新；不执行 PowerShell、`cmd.exe`、`git clone` 或不可信脚本。
-- Windows Runner：本次 V0.3 引导安装已完成。引导专用工作流和安装绕过条件已撤回；后续可以停止 Runner。保留的 Runner 手动工作流只是诊断和故障回退入口。
+- Windows 日常 DSH 目前已安装并经过 4 项人工 UI 验收的是 **V0.3.0**（`unstable`）。
+- **V0.4.0** 当前仅是源码开发候选，侧栏和自动更新功能仍要经 GitHub CI 与真实 DSH 验收，不得直接称为已安装。
+- `released/` 仍保持空目录；任何正式发布仍由用户决定。
+- 要真实测试匿名更新，需要先将仓库 Public（用户自己执行）并有更高的 `unstable` 测试安装包。
+- 公网匿名检查成功 ≠ 包安装成功；待更高版本发布到 `unstable` 后，在已安装的 V0.3「插件 → 组件」中主动开启试验版，并点击更新以验证 V0.4 的引导升级；新 V0.4 再通过左侧 HUD 入口验收。
+- 日常使用无需 Windows 自托管 Runner；普通 GitHub 云端 CI 仍用于源码和发布归档检查。
 
-## 验收
+## GitHub 公开路径
 
-- V0.2 安装过，但截图存在文字与标题栏/输入区重叠；并未进入正式发布。
-- V0.3 已完成：`unstable` 归档 CI、Windows 临时安装、Desktop 持久安装及精确版本核验；用户于 2026-11-04 确认四项 UI 验收全部通过（组件标签、版本、试验版默认关闭、无布局重叠）。
-- 当仓库正式公开且有更高版本加入发布通道时，再验证无需 Runner 的匿名检查和点击更新。这一最后步骤当前无法在私有仓库中做端到端证明。
+仓库：`https://github.com/OttoBlues/dsh-plugins`
 
-## 下一阶段：免 Runner 更新的完整验收
+进入 `Settings → General → Danger Zone → Change repository visibility → Public`，确认公开后果。GitHub 仓库历史和 Actions 历史/日志也会公开；必须先检查私密凭据、路径和不希望公开的内容。
 
-下一关是验证 **匿名版本发现 → 选择 released/unstable → 点击确认 → 校验安装包 SHA-256 → DSH 官方插件管理器返回准确状态 → 重启后实际版本变更**。本轮 V0.3 四项 UI 验收并未覆盖此流程。
-
-- 私有仓库的匿名 GitHub Raw API 不可读取，因此不能把目前“没有可用更新”视为更新功能通过。
-- 不会为了测试擅自将仓库 Public，也不会创建未经批准的 `released/` 正式版本。
-- 先补齐可模拟的网络/安装管理器单元测试和失败处理；待你公开仓库或单独公开安装包后，再执行真实端到端测试。
-
-## 后续 V0.3.1 研发源码（未发布）
-
-现正补强直接更新的可靠性：取消旧 Runner 缓存回退、为网络读取加超时、用户确认后消费一次性请求，并根据 PluginManager 的确切状态和已安装版本判断结果。当前只是开发代码，**V0.3.1 没有发布安装包，也没有修改已安装的 V0.3.0**。
-
-这些检查会使用可控制的模拟 GitHub 响应和 DSH PluginManager；在仓库保持 Private 的情况下，真实匿名下载不能端到端运行。不能把模拟通过写成公开更新已验收，也不能保证尚未实现的完整失败回退。
+仓库公开以后访问 `https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/index.json`，应返回 JSON 而不是 404。若返回 404、403 或网络失败，更新器会明确报告不可用，而不是回退到安装最新版源码。

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "components": [
+    {
+      "id": "hud",
+      "name": "@local/dsh-hud",
+      "title": "DSH HUD",
+      "description": "Windows HUD preview and component management",
+      "category": "interface"
+    }
+  ]
+}

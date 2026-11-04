@@ -5,7 +5,7 @@
       "id": "hud",
       "name": "@local/dsh-hud",
       "title": "DSH HUD",
-      "description": "HUD component center and verified anonymous updates from OttoBlues/dsh-hud-plugin",
+      "description": "Vector HUD cockpit, DSH mode switch, anonymous releases and manual checks",
       "category": "interface"
     }
   ]

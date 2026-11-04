@@ -80,22 +80,33 @@ try {
   }
 
   $activeStage = 'dsh-cli'
+  $dshReady = $false
   $dsh = Get-Command dsh -ErrorAction SilentlyContinue
   if ($null -ne $dsh) {
     $script:dshExecutable = $dsh.Source
     $rawVersion = & $script:dshExecutable --version 2>$null
     if ($LASTEXITCODE -eq 0 -and $null -ne $rawVersion) {
       $report.dsh_version = (($rawVersion | Out-String).Trim() -split '\r?\n')[0]
+      $dshReady = $true
+      Record-Check 'dsh-cli' 'passed' 'DSH CLI found and --version succeeded.'
+    } else {
+      Record-Check 'dsh-cli' 'warning' 'DSH executable found, but --version failed. Repair the CLI in the Runner account.'
     }
-    Record-Check 'dsh-cli' 'passed' 'DSH CLI found on runner PATH.'
   } else {
-    Record-Check 'dsh-cli' 'warning' 'DSH CLI not found: install DSH and expose dsh to the runner account.'
+    Record-Check 'dsh-cli' 'warning' 'DSH CLI not found. Install or register dsh for the Runner account.'
   }
 
   if ($Mode -eq 'preflight') {
-    $report.overall = if ($null -ne $dsh) { 'ready' } else { 'needs-setup' }
+    if ($dshReady) {
+      $report.overall = 'ready'
+      Record-Check 'readiness' 'passed' 'DSH CLI is available for install-smoke.'
+    } else {
+      $report.overall = 'needs-setup'
+      $exitCode = 1
+      Record-Check 'readiness' 'failed' 'Run DSH Desktop Manage dsh Command, then restart the Runner before trying install-smoke.'
+    }
   } else {
-    if ($null -eq $dsh) { throw 'DSH CLI is required for install-smoke.' }
+    if (-not $dshReady) { throw 'DSH CLI is required for install-smoke.' }
 
     $activeStage = 'bundle'
     $fullBundle = [IO.Path]::GetFullPath((Join-Path $root $BundlePath))

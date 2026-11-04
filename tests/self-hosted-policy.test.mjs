@@ -18,6 +18,11 @@ test('self-hosted workflow is manual-only and confined to main', () => {
 test('preflight is the default and install smoke is a separate manual choice', () => {
   assert.match(workflow, /default: preflight/);
   assert.match(workflow, /- install-smoke/);
+  assert.match(workflow, /Gate installation on DSH CLI readiness/);
+  assert.ok(workflow.indexOf('Gate installation on DSH CLI readiness') < workflow.indexOf('uses: actions/setup-node@v4'));
+  assert.match(script, /\$report\.overall = 'needs-setup'/);
+  assert.match(script, /\$exitCode = 1/);
+  assert.match(script, /\$dshReady = \$true/);
   assert.match(workflow, /if: inputs\.mode == 'install-smoke'/);
   assert.match(workflow, /retention-days: 7/);
 });

@@ -65,5 +65,6 @@ test('retired Windows Runner deployment workflows cannot be triggered',()=>{
   const ci=readFileSync(new URL('../.github/workflows/ci.yml',import.meta.url),'utf8');
   assert.match(ci,/runs-on: ubuntu-24\.04/);
   assert.match(ci,/runs-on: windows-2025/);
-  assert.doesNotMatch(ci,/self-hosted|scripts\\/windows|desktop-deploy|upload-artifact/);
+  assert.doesNotMatch(ci,/self-hosted|desktop-deploy|upload-artifact/);
+  assert.equal(ci.includes('scripts/windows/'),false);
 });

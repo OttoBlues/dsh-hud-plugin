@@ -7,8 +7,8 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.3 修复开发源码**（检查更新可靠性、纯色 HUD、移除悬浮入口；尚未发布）。
-- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.2**。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.3 试验源码**（已发布到 Unstable，检查更新可靠性与纯色 HUD 待用户验收）。
+- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.3**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
 
@@ -72,3 +72,5 @@ HUD 改为**统一纯色**：背景深蓝 `#071522`，所有面板内填充 `#14
 原 DSH 右上方悬浮 HUD 入口完全移除；只能从 DSH 左侧 **HUD → 组件中心 → 进入 HUD 模式** 进入，HUD 内仍保留“返回 DSH”和“组件中心”安全出口。DSH/Electron 原生的最小化、最大化和关闭按钮不在插件 UI 主题控制范围内，未擅自覆写系统标题栏。
 
 本版仍需完整 CI + 用户实机 U053 验收后才考虑稳定化；参见 [V0.5.3 验收计划](docs/HUD-UPDATE-FLAT-V053.md)。
+
+**V0.5.3 发布记录：** 固定源码提交 `c7e261f21a7267387556da6b8e08eb68f3b8d17a` 通过 GitHub 托管 CI `41913217218`；SHA-256 固定的 Unstable 安装包已提交。更新需要从 DSH 组件中心手动确认，不在用户电脑上自动安装；稳定性和最终配色需要 U053 真实环境验收。

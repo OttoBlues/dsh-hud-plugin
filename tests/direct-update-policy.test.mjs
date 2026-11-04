@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.5.2 development source parse successfully',()=>{
+test('Host and Client v0.5.3 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -72,7 +72,7 @@ test('retired Windows Runner deployment workflows cannot be triggered',()=>{
 test('full-frame HUD is opt-in, safe to exit, and leaves native DSH root intact',()=>{
   assert.match(host,/hudMode: Schema\.boolean\(\)\.default\(false\)\.volatile\(\)/);
   assert.match(client,/data-dsh-hud-workspace/);
-  assert.match(client,/data-dsh-hud-switcher/);
+  assert.doesNotMatch(client,/data-dsh-hud-switcher/);
   assert.match(client,/data-hud-enter-mode/);
   assert.match(client,/ctx\.layout\.selectPanel\(null\)/);
   assert.match(client,/ctx\.layout\.selectPanel\(PANEL\)/);
@@ -99,11 +99,33 @@ test('HUD panels use fixed-pixel geometry while management inherits DSH theme',(
   assert.match(client,/function cockpitPanel\(/);
   assert.match(client,/data-hud-cockpit-panel/);
   assert.match(client,/data-hud-panel-liner/);
-  assert.match(client,/data-hud-panel-cap/);
+  assert.doesNotMatch(client,/data-hud-panel-cap/);
   assert.match(client,/data-hud-header-rule/);
   assert.match(client,/data-hud-management-theme':'dsh-native/);
   assert.doesNotMatch(client,/preserveAspectRatio:'none'/);
   assert.doesNotMatch(client,/function vectorTraces\(/);
   assert.doesNotMatch(client,/function scopeLines\(/);
   assert.doesNotMatch(client,/function vectorFrame\(/);
+});
+
+test('bounded scanning and UI recovery prevent infinite updating states',()=>{
+  assert.match(host,/AbortSignal\.timeout\(SCAN_MS\)/);
+  assert.match(host,/Promise\.race\(\[edit,timeout\]\)/);
+  assert.match(host,/lastCheckNonce/);
+  assert.match(host,/scanAt:new Date\(\)\.toISOString\(\)/);
+  assert.match(client,/CHECK_WATCHDOG_MS/);
+  assert.match(client,/checkTimedOut/);
+  assert.match(client,/checkQueuedAt/);
+  assert.match(client,/data-hud-check-state/);
+});
+
+test('flat cockpit uses one line and panel color; entry only in Component Center',()=>{
+  const cockpit=client.slice(client.indexOf('const V ='),client.indexOf('function makeOverlay'));
+  assert.doesNotMatch(cockpit,/gradient\(|boxShadow:|textShadow:'0/);
+  assert.match(cockpit,/outer:'#6dcbd2'/);
+  assert.match(cockpit,/inner:'#142b3a'/);
+  assert.match(cockpit,/background:'#071522'/);
+  assert.doesNotMatch(client,/data-dsh-hud-switcher/);
+  assert.match(client,/data-hud-enter-mode/);
+  assert.match(client,/name:'shell\.overlay'/);
 });

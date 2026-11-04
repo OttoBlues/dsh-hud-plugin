@@ -46,7 +46,9 @@ test('probe is idempotent, version-aware and respects manual uninstall', () => {
 });
 
 test('installer keeps a local rollback package and checks exact deployed version', () => {
-  assert.match(desktop, /npm\.cmd pack \$installedRoot --pack-destination \$backupDir --ignore-scripts/);
+  assert.match(desktop, /\$tarCommand\.Source -czf \$rollback -C \$stageRoot package/);
+  assert.match(desktop, /Copy-Item -LiteralPath \$locale -Destination \$stagePackage -Recurse -Force/);
+  assert.match(desktop, /\$tarEntries -contains 'package\/package\.json'/);
   assert.match(desktop, /prior\.version/);
   assert.match(desktop, /'plugin', '--profile', 'desktop', 'add', \$bundle/);
   assert.match(desktop, /'plugin', '--profile', 'desktop', 'add', \$rollback/);

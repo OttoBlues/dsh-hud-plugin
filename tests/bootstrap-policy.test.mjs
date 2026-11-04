@@ -12,6 +12,7 @@ test('one-time bootstrapping requires an exact user-approved main commit and gre
   assert.match(flow, /commit\.data\.commit\.message\.split\('\\n'\)\[0\]\.trim\(\) !== 'bootstrap: install HUD v0\.3\.0 unstable once'/);
   assert.match(flow, /workflow_id:'ci\.yml'/);
   assert.match(flow, /runs-on: \[self-hosted, windows, x64, dsh-hud-test\]/);
+  assert.match(flow, /group: dsh-hud-v03-bootstrap/);
 });
 
 test('Windows steps never use third-party Actions; only own vetted Git source', () => {

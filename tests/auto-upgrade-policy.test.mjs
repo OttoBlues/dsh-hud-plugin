@@ -8,8 +8,8 @@ const staged = readFileSync(new URL('../scripts/windows/stage-channels.ps1', imp
 const desktop = readFileSync(new URL('../scripts/windows/desktop-deploy.ps1', import.meta.url), 'utf8');
 
 test('update worker requires successful main push CI and an explicit click', () => {
-  assert.match(flow, /workflow_run:/);
-  assert.match(flow, /workflows: \['DSH plugins CI'\]/);
+  assert.match(flow, /workflow_dispatch:/);
+  assert.doesNotMatch(flow, /^  (workflow_run|schedule):/m);
   assert.match(flow, /source\.event !== 'push'/);
   assert.match(flow, /source\.head_sha !== sha/);
   assert.match(flow, /source\.conclusion !== 'success'/);
@@ -44,8 +44,8 @@ test('unstable requires both explicit opt-in and matching user request', () => {
   assert.match(probe, /'no-request'/);
 });
 
-test('periodic worker never interrupts the running DSH Desktop', () => {
-  assert.match(flow, /cron: '7,22,37,52 \* \* \* \*'/);
+test('legacy worker is manual-only and never interrupts DSH Desktop', () => {
+  assert.match(flow, /workflow_dispatch:/);
   assert.match(flow, /concurrency:[\s\S]*cancel-in-progress: false/);
   assert.match(probe, /Get-CimInstance Win32_Process/);
   assert.match(probe, /'deferred'/);

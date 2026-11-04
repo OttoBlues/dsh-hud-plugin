@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.2: cockpit panel visuals, native DSH manager and on-demand channel refresh.
+ * DSH HUD v0.5.3: bounded refresh watchdog, flat cockpit, component-center-only entry.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -30,13 +30,18 @@ const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PACKAGE = /^@local\/[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_ARCHIVE_BYTES = 25_000_000;
 const CHECK_MS = 5 * 60_000;
-const REQUEST_MS = 850; // Responsive manual checks without removing the periodic fallback.
+const REQUEST_MS = 850;
+const SCAN_MS = 28_000; // Bound the entire network scan, not only each file.
+const EDIT_MS = 6_000; // A stuck DSH ConfigEditor must not lock checks indefinitely.
 const TIMEOUT_MS = 20_000;
 
 export const Config = Schema.object({
   catalog: Schema.string().default(CATALOG_EMPTY).volatile(),
   // Manual refresh request and its observable outcome (never an install request).
   checkNonce: Schema.string().default('').volatile(),
+  checkQueuedAt: Schema.string().default('').volatile(),
+  scanAt: Schema.string().default('').volatile(),
+  scanState: Schema.string().default('idle').volatile(),
   checkState: Schema.string().default('idle').volatile(),
   checkError: Schema.string().default('').volatile(),
   checkAt: Schema.string().default('').volatile(),
@@ -172,25 +177,32 @@ function selectRelease(entry, acceptUnstable) {
 export function apply(ctx, config) {
   let disposed = false, checking = false, updating = false, manualChecking = false;
   let lastNonce = '';
+  let lastCheckNonce = '';
   const controller = new AbortController();
   const editor = ctx.get('configEditor'), entry = ctx.fiber?.entry;
   const cacheRoot = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'approved-component-packages');
 
   async function writeSettings(patch) {
     if (disposed || !editor || !entry) return false;
+    // Bound ConfigEditor too. A stale Host may be unable to edit its entry
+    // after hot-reload, which previously left checkState='checking' forever.
+    let timer;
     try {
-      // DSH ConfigEditor rejects edits after the owning plugin entry is
-      // replaced. A lifecycle race must NEVER escape an unawaited timer.
-      await editor.edit(entry, current => ({ ...current, ...patch }));
+      const edit = Promise.resolve().then(() =>
+        editor.edit(entry, current => ({ ...current, ...patch })));
+      const timeout = new Promise((_,reject) => {
+        timer=setTimeout(() => reject(new Error('DSH ConfigEditor timeout')), EDIT_MS);
+      });
+      await Promise.race([edit,timeout]);
       return !disposed;
     } catch (error) {
-      // The old plugin may already have been replaced during its own update.
-      // Do not rethrow or try to edit the same stale entry a second time.
       if (!disposed) {
         try { ctx.logger?.warn?.('HUD settings edit was not applied (%s)', String(error?.message || 'inactive')); }
-        catch { /* logger may already be disposed */ }
+        catch { /* Disposed Host may have no logger */ }
       }
       return false;
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -302,32 +314,38 @@ export function apply(ctx, config) {
       .replace(/https?:\/\/\S+/gi, '[public source]').slice(0, 150);
   }
 
-  async function discover(manual = false) {
+  async function discover(manual = false, nonce = '') {
     if (disposed || checking) return false;
     checking = true;
+    const signal = AbortSignal.any([controller.signal,AbortSignal.timeout(SCAN_MS)]);
     try {
-      // Read only the allowlisted public origin and vetted channel manifests.
-      const repository = await selectRepository(controller.signal);
+      // A hung fetch must release checking before the next five-minute poll.
+      const repository = await selectRepository(signal);
       const problems = [];
       const components = repository.components;
       const rows = await Promise.all(components.map(async component => {
         const channels = await Promise.all(['released','unstable'].map(async channel => {
-          try { return await readChannel(repository.root, component, channel, controller.signal); }
+          try { return await readChannel(repository.root, component, channel, signal); }
           catch (error) {
             // A visible manual check must distinguish a missing channel from
             // "up to date"; an absent stable release index is NOT a success.
-            if (manual) problems.push(component.id + '/' + channel + ': ' + diagnostic(error));
+            problems.push(component.id + '/' + channel + ': ' + diagnostic(error));
             return null;
           }
         }));
         return { ...component, released:channels[0], unstable:channels[1] };
       }));
       const catalog = { schema:3, source:'public', components:rows };
-      const patch = {};
+      // Ignore an obsolete result when the user has retried with a new nonce.
+      if (manual && config.checkNonce.get() !== nonce) return false;
+      const patch = {
+        scanAt:new Date().toISOString(), scanState:problems.length?'partial':'success',
+      };
       if (JSON.stringify(catalog) !== config.catalog.get()) {
         patch.catalog = JSON.stringify(catalog);
       }
       if (manual) {
+        patch.checkNonce = '';
         patch.checkState = problems.length ? 'partial' : 'success';
         patch.checkError = problems.join(' | ').slice(0, 480);
         patch.checkAt = new Date().toISOString();
@@ -358,10 +376,12 @@ export function apply(ctx, config) {
       return true;
     } catch (error) {
       // Do not turn a failed manual lookup into a false "up-to-date" state.
+      if (manual && config.checkNonce.get() !== nonce) return false;
       const offline = '{"schema":3,"source":"unavailable","components":[]}';
-      const patch = {};
+      const patch = {scanAt:new Date().toISOString(),scanState:'failed'};
       if (!disposed && config.catalog.get() !== offline) patch.catalog = offline;
       if (manual) {
+        patch.checkNonce = '';
         patch.checkState = 'failed';
         patch.checkError = diagnostic(error);
         patch.checkAt = new Date().toISOString();
@@ -377,13 +397,20 @@ export function apply(ctx, config) {
   async function processCheckRequest() {
     if (disposed || checking || updating || manualChecking) return;
     const nonce = config.checkNonce.get();
-    if (typeof nonce !== 'string' || !nonce) return;
+    if (typeof nonce !== 'string' || !nonce || nonce === lastCheckNonce) return;
+    lastCheckNonce = nonce; // No tight retry loop when DSH Host cannot write.
     manualChecking = true;
     try {
-      if (!(await writeSettings({
-        checkNonce:'', checkState:'checking', checkError:''
-      }))) return;
-      await discover(true);
+      if (!(await writeSettings({ checkState:'checking', checkError:'' }))) return;
+      if (disposed) return;
+      await discover(true,nonce);
+    } catch (error) {
+      if (!disposed && config.checkNonce.get() === nonce) {
+        await writeSettings({
+          checkNonce:'', checkState:'failed',
+          checkError:diagnostic(error), checkAt:new Date().toISOString(),
+        });
+      }
     } finally {
       manualChecking = false;
     }

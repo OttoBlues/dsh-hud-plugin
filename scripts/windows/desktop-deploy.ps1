@@ -151,9 +151,7 @@ try {
     $exitCode = 0
   } elseif ($Mode -eq 'upgrade') {
     $stage = 'upgrade'
-    if (-not $wasInstalled) {
-      throw 'HUD Bundle is not installed; choose install instead of upgrade.'
-    }
+    if (-not $wasInstalled) { throw 'HUD is not installed; use install, not upgrade.' }
     $hudPackage = Read-DesktopManifest (Join-Path $repositoryRoot 'plugins\hud\package.json')
     if ($hudPackage.name -ne '@local/dsh-hud' -or [string]::IsNullOrWhiteSpace($hudPackage.version)) {
       throw 'Invalid HUD package name or version.'
@@ -163,22 +161,65 @@ try {
     if (-not (Test-Path -LiteralPath $bundle -PathType Leaf)) {
       throw 'The tested HUD upgrade tarball was not found.'
     }
-    Invoke-DshQuiet @('plugin', '--profile', 'desktop', 'add', $bundle) 'plugin-upgrade'
-    Record 'upgrade' 'passed' 'Official Desktop CLI accepted the HUD upgrade package.'
-    $stage = 'verify-version'
-    $after = Read-DesktopManifest $manifestPath
-    if (-not (Has-HudBundle $after)) { throw 'The HUD Bundle is missing after upgrade.' }
     $installedManifestPath = Join-Path (Split-Path -Path $manifestPath -Parent) 'node_modules\@local\dsh-hud\package.json'
     if (-not (Test-Path -LiteralPath $installedManifestPath -PathType Leaf)) {
-      throw 'Cannot resolve installed HUD package manifest for version verification.'
+      throw 'Cannot resolve the old HUD package manifest.'
     }
-    $installed = Read-DesktopManifest $installedManifestPath
-    if ($installed.name -ne '@local/dsh-hud' -or $installed.version -ne $targetVersion) {
-      throw 'The installed HUD version does not match the tested upgrade.'
+    $prior = Read-DesktopManifest $installedManifestPath
+    if ($prior.name -ne '@local/dsh-hud' -or
+        [string]$prior.version -notmatch '^\d+\.\d+\.\d+$' -or
+        $targetVersion -notmatch '^\d+\.\d+\.\d+$') {
+      throw 'Cannot verify HUD package identities and numeric SemVer versions.'
     }
-    Record 'verify-version' 'passed' ('Desktop now resolves @local/dsh-hud v' + $targetVersion + '.')
-    $report.overall = 'upgraded'
-    $exitCode = 0
+    if ([version]$prior.version -ge [version]$targetVersion) {
+      Record 'upgrade' 'passed' 'Already running the same or newer HUD; no package changes made.'
+      $report.overall = 'already-current'
+      $exitCode = 0
+    } else {
+      # Backup the prior Bundle without executing its lifecycle scripts.
+      # A failed backup stops deployment before any mutation of Desktop.
+      $stage = 'backup'
+      $backupDir = Join-Path $scratch 'rollback'
+      New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+      $installedRoot = Split-Path -Path $installedManifestPath -Parent
+      $packLog = Join-Path $scratch 'rollback-pack.log'
+      & npm.cmd pack $installedRoot --pack-destination $backupDir --ignore-scripts *> $packLog
+      if ($LASTEXITCODE -ne 0) { throw 'Cannot create a rollback package; upgrade cancelled.' }
+      $archives = @(Get-ChildItem -LiteralPath $backupDir -File -Filter '*.tgz')
+      if ($archives.Count -ne 1) { throw 'Rollback package count is not one; upgrade cancelled.' }
+      $rollback = $archives[0].FullName
+      Record 'backup' 'passed' 'Original HUD Bundle packed locally for same-run rollback.'
+
+      $stage = 'upgrade'
+      try {
+        Invoke-DshQuiet @('plugin', '--profile', 'desktop', 'add', $bundle) 'plugin-upgrade'
+        $stage = 'verify-version'
+        $after = Read-DesktopManifest $manifestPath
+        if (-not (Has-HudBundle $after)) { throw 'HUD Bundle was removed during upgrade.' }
+        $installed = Read-DesktopManifest $installedManifestPath
+        if ($installed.name -ne '@local/dsh-hud' -or $installed.version -ne $targetVersion) {
+          throw 'Installed HUD version does not match the requested upgrade.'
+        }
+        Record 'upgrade' 'passed' ('Official Desktop CLI now resolves @local/dsh-hud v' + $targetVersion + '.')
+        Record 'verify-version' 'passed' 'Installed package name and exact target version verified.'
+        $report.overall = 'upgraded'
+        $exitCode = 0
+      } catch {
+        # Restore old version on any post-write error, without uploading raw logs.
+        $stage = 'rollback'
+        try {
+          Invoke-DshQuiet @('plugin', '--profile', 'desktop', 'add', $rollback) 'plugin-rollback'
+          $restored = Read-DesktopManifest $installedManifestPath
+          if ($restored.name -ne '@local/dsh-hud' -or $restored.version -ne $prior.version) {
+            throw 'Rollback result did not match the prior version.'
+          }
+          Record 'rollback' 'passed' 'Prior HUD version was restored after upgrade failure.'
+        } catch {
+          Record 'rollback' 'failed' 'Automated rollback failed; inspect DSH locally before next upgrade.'
+        }
+        throw 'HUD upgrade failed; rollback attempt completed.'
+      }
+    }
   } elseif ($Mode -eq 'uninstall') {
     $stage = 'uninstall'
     if ($wasInstalled) {

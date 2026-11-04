@@ -28,3 +28,6 @@
 
 工作流：https://github.com/OttoBlues/dsh-plugins/actions/workflows/desktop-deploy.yml
 人工验收：https://github.com/OttoBlues/dsh-plugins/blob/main/docs/MANUAL-ACCEPTANCE.md
+## 自动升级与手动管理的边界
+
+**自动升级**独立于本手动工作流：成功的 main CI 可触发自动检查，DSH 仍运行时每小时重试。代码与安全约束参见 [AUTO-UPGRADE.md](AUTO-UPGRADE.md)。自动升级不会重新安装已卸载的 HUD，仍保留手动 `check/install/upgrade/uninstall` 作为干预入口。

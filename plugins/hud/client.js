@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.4 development Client.
+ * DSH HUD V0.4.1 development Client.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.4.0';
+    const VERSION = '0.4.1';
     const REFRESH_MS = 5 * 60_000;
 
     const dictionaries = {

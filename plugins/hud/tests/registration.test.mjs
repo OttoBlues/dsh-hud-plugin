@@ -84,7 +84,7 @@ const released=(v,channel='released')=>({
 const catalog=(components,source='public')=>JSON.stringify({
   schema:3,source,components,
 });
-const own=(releasedVersion='0.4.1',experimental=null)=>({
+const own=(releasedVersion='0.4.2',experimental=null)=>({
   id:'hud',name:'@local/dsh-hud',title:'DSH HUD',
   description:'HUD with component center',
   released:releasedVersion?released(releasedVersion):null,
@@ -107,7 +107,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.4.1')])});
+  const ui=setup({catalog:catalog([own('0.4.2')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -126,7 +126,7 @@ test('repository catalog lists uninstalled components and offers install',()=>{
 });
 
 test('Experimental opt-in and all automatic settings default off',()=>{
-  const ui=setup({catalog:catalog([own('0.4.0','0.5.0')])});
+  const ui=setup({catalog:catalog([own('0.4.1','0.5.0')])});
   const tree=ui.render();
   for(const flag of ['unstable','auto','auto-unstable']){
     const node=find(tree,x=>x.type==='input'&&x.props['data-hud-setting']===flag)[0];
@@ -138,7 +138,7 @@ test('Experimental opt-in and all automatic settings default off',()=>{
 });
 
 test('Experimental update requires explicit toggle and manual confirmation',async()=>{
-  const ui=setup({catalog:catalog([own('0.4.0','0.5.0')])});
+  const ui=setup({catalog:catalog([own('0.4.1','0.5.0')])});
   const flag=find(ui.render(),x=>x.type==='input'&&x.props['data-hud-setting']==='unstable')[0];
   flag.props.onChange({target:{checked:true}});
   await Promise.resolve();
@@ -186,5 +186,5 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   ui.values.overlayVisible=true;
   const overlay=ui.render('shell.overlay');
   assert.equal(overlay.props.style.pointerEvents,'none');
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.4.0');
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.4.1');
 });

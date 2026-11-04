@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 if ($env:GITHUB_ACTIONS -ne 'true' -or
-    $env:GITHUB_REPOSITORY -ne 'OttoBlues/dsh-plugins' -or
+    $env:GITHUB_REPOSITORY -notin @('OttoBlues/dsh-plugins', 'OttoBlues/dsh-hud-plugin') -or
     $env:GITHUB_REF -ne 'refs/heads/main' -or
     -not [string]::IsNullOrWhiteSpace($env:DSH_HOME)) {
   throw 'Only the vetted main Runner with default DSH_HOME may stage installers.'

@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.4.1",
+  "latest": "0.4.2",
   "releases": [
     {
       "version": "0.3.0",
@@ -37,6 +37,17 @@
         "result": "success"
       },
       "note": "Experimental U04-R1 self-update safety fix and dual-name repository bridge. Disable V0.4.0 automatic update before publishing. Not approved as stable."
+    },
+    {
+      "version": "0.4.2",
+      "file": "v0.4.2/local-dsh-hud-0.4.2.tgz",
+      "sha256": "aceb43d54e3849053b95066c4c8bd650e03d2ea487b049579815a794ad6fad62",
+      "sourceCommit": "cd8bbde8d17a1b27409ece5ca5f079b1d248cb34",
+      "test": {
+        "ciRun": "41888883556",
+        "result": "success"
+      },
+      "note": "User-requested Unstable update: renamed dsh-hud-plugin UI/registry copy, retired local self-hosted Actions Runner; CI-vetted, not stable."
     }
   ]
 }

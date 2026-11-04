@@ -7,8 +7,8 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，开发源码当前为 **V0.4.2**（尚未发布）。
-- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.4.1**。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，源码版本为 **V0.4.2**（已按用户请求发布至 Unstable，非正式版）。
+- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.4.2**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
 
@@ -18,7 +18,7 @@
 
 用户已在 Windows DSH Desktop 成功更新至 **V0.4.1**，页面显示当前版本与 Unstable 最新均为 0.4.1，以及“更新已安装”。自动正式版和自动试验版开关关闭。之前 V0.4.0 更新期间曾发生 DSH 异常，V0.4.1 的完全无中断更新尚需独立验收。未来 Windows 全局透明、置顶、鼠标穿透 HUD 尚未实现。
 
-当前开发版 V0.4.2 仅调整仓库命名、组件说明并退休 Runner 工程，不会自动替换任何已安装 V0.4.1 包。**修改源代码不等于发布新版本。**
+V0.4.2 已按用户要求作为 Unstable 试验包发布，更新仓库命名、组件说明并退休 Runner 工程。已安装的 V0.4.1 仍需由用户在 HUD 组件中心显式确认升级；GitHub CI 不会更改本地 Desktop。
 
 ## 开发与验证
 

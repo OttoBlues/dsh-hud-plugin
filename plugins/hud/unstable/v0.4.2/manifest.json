@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "component": "hud",
+  "package": "@local/dsh-hud",
+  "channel": "unstable",
+  "version": "0.4.2",
+  "file": "local-dsh-hud-0.4.2.tgz",
+  "sha256": "aceb43d54e3849053b95066c4c8bd650e03d2ea487b049579815a794ad6fad62",
+  "sourceCommit": "cd8bbde8d17a1b27409ece5ca5f079b1d248cb34",
+  "test": {
+    "ciRun": "41888883556",
+    "result": "success"
+  },
+  "verification": {
+    "sourceCi": "41888883556",
+    "role": "Canonical repository rename UI copy and obsolete Runner removal; request manual Desktop acceptance",
+    "approvedAsStable": false
+  }
+}

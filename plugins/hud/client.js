@@ -513,38 +513,34 @@ window.__ModuleLoader__.load({
             h('div',{style:{display:'flex',gap:18,flexWrap:'wrap',
               alignItems:'center',justifyContent:'space-between'}},
               h('div',{style:{minWidth:200,flex:'1 1 330px'}},
-                h('div',{style:{fontFamily:'Consolas,monospace',
-                  color:V.cyan,fontSize:11,letterSpacing:'.15em'}},
-                  '02 // RELEASE CHANNEL SCAN'),
-                h('div',{style:{marginTop:7,fontSize:13,color:V.text},
+                h('div',{style:{display:'flex',alignItems:'center',gap:9,fontSize:13,fontWeight:600}},
+                  h('span',{'aria-hidden':true,style:{display:'inline-block',width:6,height:6,
+                    borderRadius:'50%',background:'#48a5b2'}},''),t('sourceHeading')),
+                h('div',{style:{marginTop:7,fontSize:13},
                   'data-hud-source':catalog.source,role:'status'},
                   catalog.source === 'public'?t('sourceOK'):
                     catalog.source==='checking'?t('sourceChecking'):t('sourceUnavailable')),
                 h('div',{'data-hud-check-state':checkState,role:'status',
                   style:{fontSize:12,marginTop:7,
-                    color:checkState==='failed'||checkState==='partial'?V.amber:V.muted}},
+                    color:checkState==='failed'||checkState==='partial'?'#ad722a':'var(--text-secondary,#777)'}},
                   checkLabel,
                   lastChecked?' · '+t('checkAt')+' '+lastChecked:'',
                   originLabel?' · '+originLabel:'')),
               h('button',{type:'button','data-hud-check-button':true,
                 disabled:busyCheck,onClick:()=>{void requestCheck();},
-                style:{...actionStyle(busyCheck),minWidth:152,
-                  background:busyCheck?'rgba(18,53,64,.55)':
-                    'linear-gradient(90deg,rgba(21,110,125,.85),rgba(11,69,90,.83))',
-                  fontWeight:650}},
+                style:{...actionStyle(busyCheck),minWidth:140,fontWeight:600}},
                 busyCheck?t('checkingNow'):t('checkNow'))),
             h('div',{style:{...tiny,marginTop:13}},t('checkTip')),
             (checkState==='failed'||checkState==='partial') && values.checkError
               ? h('div',{role:'alert','data-hud-check-error':true,
-                  style:{fontSize:12,marginTop:10,color:V.amber,
-                    padding:'10px 12px',background:'rgba(80,56,22,.28)',
-                    borderLeft:'2px solid '+V.amber,
+                  style:{fontSize:12,marginTop:10,color:'#a06e34',
+                    padding:'10px 12px',background:'rgba(165,118,54,.065)',
+                    borderLeft:'2px solid #c09b5f',
                     overflowWrap:'anywhere'}},values.checkError)
               : null),
 
           h('section',{style:{marginTop:31}},
-            h('h2',{style:{fontSize:17,margin:'0 0 10px',color:V.cyan,
-              letterSpacing:'.12em'}},t('section')),
+            h('h2',{style:{fontSize:18,margin:'0 0 8px',fontWeight:650}},t('section')),
             ...known.map(component=>{
               const installed = installedByName.get(component.name);
               const current = installed?.version || null;
@@ -575,7 +571,7 @@ window.__ModuleLoader__.load({
                   justifyContent:'space-between',flexWrap:'wrap'}},
                   h('div',{style:{flex:'1 1 300px',minWidth:175}},
                     h('div',{style:{display:'flex',alignItems:'center',gap:9}},
-                      h('strong',{style:{fontSize:16,color:V.text,letterSpacing:'.02em'}},component.title),
+                      h('strong',{style:{fontSize:15,fontWeight:600}},component.title),
                       h('span',{style:tiny},installed?t('installed'):t('notInstalled'))),
                     h('p',{style:{...tiny,margin:'5px 0 9px'}},component.description),
                     h('div',{style:tiny},
@@ -593,8 +589,7 @@ window.__ModuleLoader__.load({
           ),
 
           h('section',{style:{marginTop:36}},
-            h('h2',{style:{fontSize:17,margin:'0 0 9px',color:V.cyan,
-              letterSpacing:'.12em'}},t('options')),
+            h('h2',{style:{fontSize:18,margin:'0 0 8px',fontWeight:650}},t('options')),
             h('div',{style:surface},
               toggle(t('allowUnstable'),t('allowUnstableHelp'),values.allowUnstable,
                 async value=>{
@@ -614,8 +609,7 @@ window.__ModuleLoader__.load({
           values.updateStatus==='failed'?h('p',{role:'alert',style:{color:'#b84b4b'}},t('failed')):
           values.updateStatus==='restart-required'?h('p',{role:'status'},t('restart')):
           values.updateStatus==='installed'?h('p',{role:'status'},t('succeeded')):null,
-          h('p',{style:{...tiny,marginTop:25,fontFamily:'Consolas,monospace',
-            letterSpacing:'.03em'}},'// '+t('noToken'))
+          h('p',{style:{...tiny,marginTop:25}},t('noToken'))
         ));
       };
     }

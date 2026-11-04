@@ -113,7 +113,7 @@ function Has-HudBundle($Manifest) {
 }
 
 try {
-  if ($env:GITHUB_ACTIONS -ne 'true' -or $env:GITHUB_REPOSITORY -ne 'OttoBlues/dsh-plugins' -or $env:GITHUB_REF -ne 'refs/heads/main') {
+  if ($env:GITHUB_ACTIONS -ne 'true' -or $env:GITHUB_REPOSITORY -notin @('OttoBlues/dsh-plugins', 'OttoBlues/dsh-hud-plugin') -or $env:GITHUB_REF -ne 'refs/heads/main') {
     throw 'This script may only execute in the trusted main-branch GitHub Actions runner.'
   }
   if (-not [string]::IsNullOrWhiteSpace($env:DSH_HOME)) {

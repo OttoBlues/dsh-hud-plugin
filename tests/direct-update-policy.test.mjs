@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.4 development source parse successfully',()=>{
+test('Host and Client v0.4.1 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -24,9 +24,11 @@ test('anonymous public repo catalog enumerates all valid repository components',
   assert.equal(catalog.schema,1);
   assert(Array.isArray(catalog.components));
   assert(catalog.components.some(x=>x.id==='hud'&&x.name==='@local/dsh-hud'));
-  assert.match(host,/readJSON\('index\.json', controller\.signal\)/);
+  assert.match(host,/readJSON\(root, 'index\.json', signal\)/);
+  assert.match(host,/dsh-hud-plugin\/main\/plugins/);
+  assert.match(host,/dsh-plugins\/main\/plugins/);
   assert.match(host,/\['released','unstable'\]\.map/);
-  assert.match(host,/ROOT \+ '\/' \+ component\.id/);
+  assert.match(host,/selected\.root \+ '\/' \+ component\.id/);
   assert.doesNotMatch(host+client,/GITHUB_TOKEN|gh auth|child_process|powershell\.exe/);
 });
 test('only listed released/unstable archives can be installed',()=>{

@@ -51,12 +51,13 @@ function setup(overrides={}) {
   };
   const calls={http:[],installed:[],list:0,writes:[],logs:[],cached:[]};
   const inventory=overrides.inventory || [{name:NAME,installed:true,version:'0.4.0'}];
-  const callbacks=[];let dispose=()=>{};
+  const callbacks=[], startTimers=[];let dispose=()=>{};
   const field=()=>({default(){return this;},volatile(){return this;}});
   const Schema={string:field,boolean:field,object:f=>f};
   const fetch=async(url,opts)=>{
     calls.http.push({url,opts});
     if(overrides.private===true)return response('Not found',404);
+    if(overrides.oldNameOnly && url.includes('/dsh-hud-plugin/'))return response('Not found',404);
     if(url.endsWith('/plugins/index.json'))return response(JSON.stringify(repoIndex));
     if(url.endsWith('/hud/released/index.json'))return response(JSON.stringify(
       index('released',overrides.released===undefined?'0.4.1':overrides.released,overrides.badChecksum?'f'.repeat(64):sha)));
@@ -71,6 +72,9 @@ function setup(overrides={}) {
       if(name!=='configEditor')return;
       return{async edit(_entry,transform){
         const next=transform({...values});
+        if(overrides.rejectManualConfigWrite && next.updateStatus==='installing' && next.requestNonce===''){
+          throw new Error('Configuration entry is no longer available');
+        }
         Object.assign(values,next);calls.writes.push(next);
       }};
     },
@@ -79,6 +83,7 @@ function setup(overrides={}) {
       async listBundles(){calls.list++;return inventory;},
       async installBundle(path,opts){
         calls.installed.push({path,opts});
+        if(overrides.disposeDuringInstall)dispose();
         const application=overrides.application||'restart-required';
         const version=/\/(0\.4\.\d+)\/[0-9a-f]+\.tgz/.exec(path)?.[1] || '0.4.1';
         if(application==='applied'||application==='restart-required'){
@@ -99,6 +104,8 @@ function setup(overrides={}) {
     rename:async()=>{},
     setInterval:fn=>{callbacks.push(fn);return callbacks.length;},
     clearInterval(){},
+    setTimeout:fn=>{startTimers.push(fn);return startTimers.length;},
+    clearTimeout(){},
   };
   vm.runInNewContext(source+'\n;globalThis.__host={apply};',sandbox);
   const config=Object.fromEntries(Object.keys(values).map(k=>[k,{get:()=>values[k]}]));
@@ -113,7 +120,8 @@ function setup(overrides={}) {
     callbacks[1]();
     await flush();
   }
-  return {values,calls,inventory,click,refresh:async()=>{callbacks[0]();await flush();},stop:()=>dispose()};
+  return {values,calls,inventory,click,refresh:async()=>{callbacks[0]();await flush();},
+    reconcile:async()=>{startTimers[0]?.();await flush();},stop:()=>dispose()};
 }
 
 test('public repository index exposes components with released and unstable channels',async()=>{
@@ -147,7 +155,9 @@ test('manual confirmation is consumed once and checked with exact install facts'
     assert.equal(s.calls.installed.length,1);
     assert.equal(s.calls.installed[0].opts.saveExact,true);
     assert.equal(s.values.requestNonce,'');
-    assert.equal(s.values.updateStatus,'restart-required');
+    assert.equal(s.values.updateStatus,'installing');
+    await s.reconcile();
+    assert.equal(s.values.updateStatus,'installed');
     assert.equal(s.calls.cached.length,1);
     assert(s.calls.cached[0].path.includes('.tmp'));
     await s.refresh();
@@ -172,6 +182,8 @@ test('overridden result and installed-version mismatch never mean success',async
   const wrong=setup({wrongInstalledVersion:true});
   try{await flush();await wrong.click();
     assert.equal(wrong.calls.installed.length,1);
+    assert.equal(wrong.values.updateStatus,'installing');
+    await wrong.reconcile();
     assert.equal(wrong.values.updateStatus,'failed');
   }finally{wrong.stop();}
 });
@@ -190,7 +202,9 @@ test('auto update of a released version only after user opt in, one attempt per 
   const s=setup({values:{autoUpdateEnabled:true}});
   try{await flush();
     assert.equal(s.calls.installed.length,1);
-    assert.equal(s.values.updateStatus,'restart-required');
+    assert.equal(s.values.updateStatus,'installing');
+    await s.reconcile();
+    assert.equal(s.values.updateStatus,'installed');
     assert.match(s.values.autoAttemptKey,/released:0\.4\.1:/);
     await s.refresh();
     assert.equal(s.calls.installed.length,1);
@@ -217,4 +231,37 @@ test('manual unstable request requires explicit allowUnstable setting',async()=>
   try{await flush();await s.click('unstable','0.4.2');
     assert.equal(s.calls.installed.length,0);
   }finally{s.stop();}
+});
+
+test('renamed public repository is preferred; old public name works before rename',async()=>{
+  const renamed=setup();
+  try{await flush();
+    assert(renamed.calls.http.some(x=>x.url.includes('/dsh-hud-plugin/')));
+    assert.equal(JSON.parse(renamed.values.catalog).source,'public');
+  }finally{renamed.stop();}
+  const previous=setup({oldNameOnly:true});
+  try{await flush();
+    assert(previous.calls.http.some(x=>x.url.includes('/dsh-hud-plugin/')));
+    assert(previous.calls.http.some(x=>x.url.includes('/dsh-plugins/')));
+    assert.equal(JSON.parse(previous.values.catalog).source,'public');
+  }finally{previous.stop();}
+});
+
+test('invalidated DSH config entry cannot crash an unawaited timer or install',async()=>{
+  const x=setup({rejectManualConfigWrite:true});
+  try{await flush();await x.click();
+    assert.equal(x.calls.installed.length,0);
+    assert.notEqual(x.values.updateStatus,'installed');
+  }finally{x.stop();}
+});
+
+test('self-update disposal forbids edits from the old Host after package replacement',async()=>{
+  const x=setup({disposeDuringInstall:true});
+  try{await flush();
+    await x.click();
+    assert.equal(x.calls.installed.length,1);
+    const afterDispose=x.calls.writes.length;
+    await flush();
+    assert.equal(x.calls.writes.length,afterDispose);
+  }finally{x.stop();}
 });

@@ -34,3 +34,9 @@ Windows Desktop 已安装的是 **HUD V0.3.0**，在 2026-11-04 由用户确认�
 ## 匿名更新实测（待用户确认）
 
 仓库已变成 Public，当前 `unstable` 目录最新为 `0.4.0`，`released` 仍为空。V0.3.0 之前已安装在 Desktop，且界面可用。请在无痕窗口访问 `https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins/index.json` 及 `plugins/hud/unstable/index.json` 以独立确认无 Token 下载，再从 V0.3.0 组件页开启试验版并点击更新到 V0.4。正式的更新闭环验收必须以 DSH 实际安装的版本与截图为准。
+
+## 计划更名为 `dsh-hud-plugin`
+
+用户希望未来组件主要服务 HUD，计划将当前 GitHub 仓库 `OttoBlues/dsh-plugins` 更名为 `OttoBlues/dsh-hud-plugin`。本次仅准备客户端更新源双别名、CI/Runner 过渡兼容和文档；**仓库管理员尚未在 GitHub Settings 中执行更名**，请不要把计划地址当成已存在的新仓库。
+
+用户实机 U04 验收说明：V0.4.0 匿名下载安装、独立左侧 HUD 入口和组件中心均已成功，但更新中 DSH 曾异常退出；重启后显示正常。参见 `docs/MANUAL-ACCEPTANCE.md` 与 `docs/REPOSITORY-RENAME.md`。当前 V0.4.1 仅为未发布的修复开发代码。

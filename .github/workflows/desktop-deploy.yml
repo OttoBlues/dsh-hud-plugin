@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   desktop-deployment:
-    if: github.repository == 'OttoBlues/dsh-plugins' && github.ref == 'refs/heads/main'
+    if: (github.repository == 'OttoBlues/dsh-plugins' || github.repository == 'OttoBlues/dsh-hud-plugin') && github.ref == 'refs/heads/main'
     name: Desktop HUD deployment
     runs-on: [self-hosted, windows, x64, dsh-hud-test]
     timeout-minutes: 15

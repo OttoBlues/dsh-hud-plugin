@@ -1,5 +1,5 @@
 /**
- * DSH component center (development v0.4.0).
+ * DSH HUD v0.4.1 development: safe self-update lifecycle and dual-name repo migration.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -15,7 +15,12 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 
 export const inject = ['pluginManager'];
-const ROOT = 'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins';
+// Keep the previous name as a temporary migration fallback. Once the user
+// renames the repository, old raw URLs are NOT assumed to keep redirecting.
+const ROOTS = [
+  'https://raw.githubusercontent.com/OttoBlues/dsh-hud-plugin/main/plugins',
+  'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins',
+];
 const CURRENT_NAME = '@local/dsh-hud';
 const CATALOG_EMPTY = '{"schema":3,"source":"checking","components":[]}';
 const SEMVER = /^\d+\.\d+\.\d+$/;
@@ -53,7 +58,9 @@ function newer(version, oldVersion) {
 }
 
 async function getBytes(url, maximum, signal) {
-  if (!url.startsWith(ROOT + '/')) throw new Error('Untrusted update URL.');
+  if (!ROOTS.some(root => url.startsWith(root + '/'))) {
+    throw new Error('Untrusted update URL.');
+  }
   const response = await fetch(url, {
     redirect: 'error',
     signal: AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]),
@@ -81,8 +88,21 @@ async function getBytes(url, maximum, signal) {
   for (const block of blocks) { result.set(block, offset); offset += block.byteLength; }
   return result;
 }
-async function readJSON(path, signal) {
-  return JSON.parse((await getBytes(ROOT + '/' + path, 100_000, signal)).toString('utf8'));
+async function readJSON(root, path, signal) {
+  return JSON.parse((await getBytes(root + '/' + path, 100_000, signal)).toString('utf8'));
+}
+async function selectRepository(signal) {
+  let lastError;
+  for (const root of ROOTS) {
+    try {
+      const components = checkRepositoryIndex(await readJSON(root, 'index.json', signal));
+      return { root, components };
+    } catch (error) {
+      if (signal.aborted) throw error;
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('No accessible anonymous component repository.');
 }
 function checkRepositoryIndex(value) {
   if (value?.schema !== 1 || !Array.isArray(value.components) ||
@@ -129,8 +149,8 @@ function parseRelease(index, component, channel) {
     commit: item.sourceCommit.toLowerCase(),
   };
 }
-async function readChannel(component, channel, signal) {
-  return parseRelease(await readJSON(component.id + '/' + channel + '/index.json', signal), component, channel);
+async function readChannel(root, component, channel, signal) {
+  return parseRelease(await readJSON(root, component.id + '/' + channel + '/index.json', signal), component, channel);
 }
 function selectRelease(entry, acceptUnstable) {
   let best = entry.released;
@@ -150,8 +170,20 @@ export function apply(ctx, config) {
 
   async function writeSettings(patch) {
     if (disposed || !editor || !entry) return false;
-    await editor.edit(entry, current => ({ ...current, ...patch }));
-    return true;
+    try {
+      // DSH ConfigEditor rejects edits after the owning plugin entry is
+      // replaced. A lifecycle race must NEVER escape an unawaited timer.
+      await editor.edit(entry, current => ({ ...current, ...patch }));
+      return !disposed;
+    } catch (error) {
+      // The old plugin may already have been replaced during its own update.
+      // Do not rethrow or try to edit the same stale entry a second time.
+      if (!disposed) {
+        try { ctx.logger?.warn?.('HUD settings edit was not applied (%s)', String(error?.message || 'inactive')); }
+        catch { /* logger may already be disposed */ }
+      }
+      return false;
+    }
   }
 
   async function installedRows() {
@@ -164,6 +196,7 @@ export function apply(ctx, config) {
     if (updating || disposed || !approved) return false;
     updating = true;
     let wasApplied = false;
+    let detachedSelfUpdate = false;
     try {
       const current = (await installedRows()).find(row => row.name === component.name && row.installed);
       if (!newer(approved.version, current?.version)) throw new Error('No newer reviewed version.');
@@ -173,12 +206,16 @@ export function apply(ctx, config) {
 
       // Re-fetch the channel just before use; a stale or revoked version is
       // never installed even when it was displayed in an earlier UI snapshot.
-      const latest = await readChannel(component, approved.channel, controller.signal);
+      const selected = await selectRepository(controller.signal);
+      const fresh = selected.components.find(item =>
+        item.id === component.id && item.name === component.name);
+      if (!fresh) throw new Error('The component is no longer in the public registry.');
+      const latest = await readChannel(selected.root, fresh, approved.channel, controller.signal);
       if (!latest || latest.version !== approved.version ||
           latest.sha256 !== approved.sha256 || latest.commit !== approved.commit) {
         throw new Error('Update was revoked or changed; refresh its listing.');
       }
-      const bytes = await getBytes(ROOT + '/' + component.id + '/' +
+      const bytes = await getBytes(selected.root + '/' + component.id + '/' +
         approved.channel + '/' + approved.file, MAX_ARCHIVE_BYTES, controller.signal);
       if (createHash('sha256').update(bytes).digest('hex') !== approved.sha256) {
         throw new Error('SHA-256 mismatch; refusing package.');
@@ -193,15 +230,42 @@ export function apply(ctx, config) {
       await writeFile(temporary, bytes, { mode: 0o600 });
       await rename(temporary, target);
 
+      if (component.name === CURRENT_NAME) {
+        // Self-update can unload this Host before the manager's promise
+        // settles. Never write old-instance config or query inventory after
+        // replacing this very bundle. The next Host startup reconciles status.
+        const task = ctx.pluginManager.installBundle(target, {
+          enabled: true, saveExact: true,
+        });
+        Promise.resolve(task).then(
+          result => {
+            if (disposed) return;
+            updating = false;
+            if (!result || !['applied', 'restart-required'].includes(result.application)) {
+              void writeSettings({ updateStatus: 'failed' });
+            }
+          },
+          () => {
+            if (disposed) return;
+            updating = false;
+            void writeSettings({ updateStatus: 'failed' });
+          },
+        );
+        detachedSelfUpdate = true;
+        return true; // accepted for processing, NOT proof of installation
+      }
+
       const result = await ctx.pluginManager.installBundle(target, {
         enabled: true, saveExact: true,
       });
+      if (disposed) return false;
       if (!result || !['applied', 'restart-required'].includes(result.application) ||
           (result.bundle !== undefined && result.bundle !== component.name) ||
           (result.version !== undefined && result.version !== approved.version)) {
         throw new Error('DSH did not accept the exact component version.');
       }
       const after = (await installedRows()).find(row => row.name === component.name && row.installed);
+      if (disposed) return false;
       if (!after || after.version !== approved.version) {
         throw new Error('Installed DSH version does not match the update manifest.');
       }
@@ -217,8 +281,11 @@ export function apply(ctx, config) {
       }
       return false;
     } finally {
-      updating = false;
-      if (wasApplied) ctx.logger?.info?.('Approved component updated: %s', component.name);
+      if (!detachedSelfUpdate) updating = false;
+      if (wasApplied && !disposed) {
+        try { ctx.logger?.info?.('Approved component updated: %s', component.name); }
+        catch { /* Host may have been disposed */ }
+      }
     }
   }
 
@@ -228,10 +295,11 @@ export function apply(ctx, config) {
     try {
       // Repository-wide manifest makes uninstalled components visible.
       // A Private repo is not treated as an empty-but-current release source.
-      const components = checkRepositoryIndex(await readJSON('index.json', controller.signal));
+      const repository = await selectRepository(controller.signal);
+      const components = repository.components;
       const rows = await Promise.all(components.map(async component => {
         const channels = await Promise.all(['released','unstable'].map(async channel => {
-          try { return await readChannel(component, channel, controller.signal); }
+          try { return await readChannel(repository.root, component, channel, controller.signal); }
           catch { return null; }
         }));
         return { ...component, released:channels[0], unstable:channels[1] };
@@ -281,24 +349,77 @@ export function apply(ctx, config) {
         (channel === 'unstable' && config.allowUnstable.get() !== true)) return;
 
     // Consume consent before any network action so restart cannot replay it.
-    if (!(await writeSettings({ requestNonce:'', updateStatus:'installing' }))) return;
-    const catalog = JSON.parse(config.catalog.get() || '{}');
-    const component = catalog.components?.find(x => x.name === name);
-    const approved = component?.[channel];
-    if (!component || !approved || approved.version !== version) {
-      await writeSettings({ updateStatus:'failed' });
-      return;
+    try {
+      if (!(await writeSettings({ requestNonce:'', updateStatus:'installing' }))) return;
+      if (disposed) return;
+      const catalog = JSON.parse(config.catalog.get() || '{}');
+      const component = catalog.components?.find(x => x.name === name);
+      const approved = component?.[channel];
+      if (!component || !approved || approved.version !== version) {
+        await writeSettings({ updateStatus:'failed' });
+        return;
+      }
+      await installComponent(component, approved, 'manual');
+    } catch (error) {
+      // An error from a previous, invalidated plugin entry must not crash DSH.
+      if (!disposed) {
+        await writeSettings({ updateStatus:'failed' });
+        try { ctx.logger?.warn?.('HUD manual update aborted: %s', String(error?.message || 'invalidated')); }
+        catch { /* Host may have been disposed */ }
+      }
     }
-    await installComponent(component, approved, 'manual');
+  }
+
+  // After a self-update the old Host can vanish before acknowledging success.
+  // The newly loaded version reconciles the result from DSH's installed facts,
+  // without trusting the previous version's post-install callbacks.
+  async function reconcileAfterReload() {
+    if (disposed || updating) return;
+    let expected;
+    if (config.requestComponent.get() === CURRENT_NAME) {
+      expected = config.requestVersion.get();
+    } else {
+      // Automatic self-updates have an attempt key instead of a manual nonce.
+      const parts = String(config.autoAttemptKey.get() || '').split(':');
+      if (parts[0] === CURRENT_NAME && ['released','unstable'].includes(parts[1])) {
+        expected = parts[2];
+      }
+    }
+    if (!SEMVER.test(expected || '')) return;
+    if (!['installing','failed','queued'].includes(config.updateStatus.get())) return;
+    try {
+      const current = (await installedRows()).find(row =>
+        row.name === CURRENT_NAME && row.installed);
+      if (disposed) return;
+      if (current?.version === expected) {
+        await writeSettings({ updateStatus: 'installed', requestNonce: '' });
+      } else if (config.updateStatus.get() === 'installing') {
+        await writeSettings({ updateStatus: 'failed', requestNonce: '' });
+      }
+    } catch {
+      // A transient startup error must never crash or claim success.
+    }
   }
 
   ctx.effect(() => {
-    void discover();
-    const poll = setInterval(() => { void discover(); }, CHECK_MS);
-    const requests = setInterval(() => { void processManualRequest(); }, REQUEST_MS);
+    const guarded = promise => {
+      Promise.resolve(promise).catch(error => {
+        if (!disposed) {
+          try { ctx.logger?.warn?.('HUD background update check failed: %s', String(error?.message || 'unknown')); }
+          catch { /* logger may already be disposed */ }
+        }
+      });
+    };
+    guarded(discover());
+    const reconcile = setTimeout(() => { if (!disposed) guarded(reconcileAfterReload()); }, 1500);
+    const poll = setInterval(() => { if (!disposed) guarded(discover()); }, CHECK_MS);
+    const requests = setInterval(() => {
+      if (!disposed) guarded(processManualRequest());
+    }, REQUEST_MS);
     return () => {
       disposed = true;
       controller.abort();
+      clearTimeout(reconcile);
       clearInterval(poll);
       clearInterval(requests);
     };

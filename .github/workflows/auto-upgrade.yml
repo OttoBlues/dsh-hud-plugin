@@ -16,7 +16,7 @@ concurrency:
 jobs:
   gate:
     name: Verify current main has passed push CI
-    if: github.repository == 'OttoBlues/dsh-plugins'
+    if: (github.repository == 'OttoBlues/dsh-plugins' || github.repository == 'OttoBlues/dsh-hud-plugin')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -28,8 +28,8 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const owner = 'OttoBlues';
-            const repo = 'dsh-plugins';
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
             const branch = await github.rest.repos.getBranch({ owner, repo, branch: 'main' });
             const sha = branch.data.commit.sha;
 
@@ -40,7 +40,7 @@ jobs:
                   source.head_branch !== 'main' ||
                   source.head_sha !== sha ||
                   source.conclusion !== 'success' ||
-                  source.head_repository?.full_name !== 'OttoBlues/dsh-plugins') {
+                  source.head_repository?.full_name !== `${owner}/${repo}`) {
                 core.info('A non-current or non-successful CI event cannot deploy.');
                 return;
               }

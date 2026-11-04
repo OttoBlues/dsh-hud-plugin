@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.0 development: reversible full-frame HUD workspace with safe self-update.
+ * DSH HUD v0.5.1 development: vector HUD workspace and on-demand channel refresh.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -30,11 +30,17 @@ const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PACKAGE = /^@local\/[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_ARCHIVE_BYTES = 25_000_000;
 const CHECK_MS = 5 * 60_000;
-const REQUEST_MS = 2000;
+const REQUEST_MS = 850; // Responsive manual checks without removing the periodic fallback.
 const TIMEOUT_MS = 20_000;
 
 export const Config = Schema.object({
   catalog: Schema.string().default(CATALOG_EMPTY).volatile(),
+  // Manual refresh request and its observable outcome (never an install request).
+  checkNonce: Schema.string().default('').volatile(),
+  checkState: Schema.string().default('idle').volatile(),
+  checkError: Schema.string().default('').volatile(),
+  checkAt: Schema.string().default('').volatile(),
+  checkOrigin: Schema.string().default('').volatile(),
   allowUnstable: Schema.boolean().default(false).volatile(),
   autoUpdateEnabled: Schema.boolean().default(false).volatile(),
   autoUpdateUnstable: Schema.boolean().default(false).volatile(),
@@ -164,7 +170,7 @@ function selectRelease(entry, acceptUnstable) {
 }
 
 export function apply(ctx, config) {
-  let disposed = false, checking = false, updating = false;
+  let disposed = false, checking = false, updating = false, manualChecking = false;
   let lastNonce = '';
   const controller = new AbortController();
   const editor = ctx.get('configEditor'), entry = ctx.fiber?.entry;
@@ -291,26 +297,47 @@ export function apply(ctx, config) {
     }
   }
 
-  async function discover() {
-    if (disposed || checking) return;
+  function diagnostic(error) {
+    return String(error?.message || 'Network/manifest verification failed')
+      .replace(/https?:\/\/\S+/gi, '[public source]').slice(0, 150);
+  }
+
+  async function discover(manual = false) {
+    if (disposed || checking) return false;
     checking = true;
     try {
-      // Repository-wide manifest makes uninstalled components visible.
-      // A Private repo is not treated as an empty-but-current release source.
+      // Read only the allowlisted public origin and vetted channel manifests.
       const repository = await selectRepository(controller.signal);
+      const problems = [];
       const components = repository.components;
       const rows = await Promise.all(components.map(async component => {
         const channels = await Promise.all(['released','unstable'].map(async channel => {
           try { return await readChannel(repository.root, component, channel, controller.signal); }
-          catch { return null; }
+          catch (error) {
+            // A visible manual check must distinguish a missing channel from
+            // "up to date"; an absent stable release index is NOT a success.
+            if (manual) problems.push(component.id + '/' + channel + ': ' + diagnostic(error));
+            return null;
+          }
         }));
         return { ...component, released:channels[0], unstable:channels[1] };
       }));
       const catalog = { schema:3, source:'public', components:rows };
+      const patch = {};
       if (JSON.stringify(catalog) !== config.catalog.get()) {
-        await writeSettings({ catalog: JSON.stringify(catalog) });
+        patch.catalog = JSON.stringify(catalog);
       }
-      if (config.autoUpdateEnabled.get() === true && !disposed && !updating) {
+      if (manual) {
+        patch.checkState = problems.length ? 'partial' : 'success';
+        patch.checkError = problems.join(' | ').slice(0, 480);
+        patch.checkAt = new Date().toISOString();
+        patch.checkOrigin = repository.root.includes('/dsh-hud-plugin/') ? 'canonical' : 'legacy';
+      }
+      if (Object.keys(patch).length) await writeSettings(patch);
+
+      // Clicking "check" must never trigger an installation, even when
+      // automatic-update preferences are enabled.
+      if (!manual && config.autoUpdateEnabled.get() === true && !disposed && !updating) {
         const installed = await installedRows();
         for (const component of rows) {
           const row = installed.find(x => x.name === component.name && x.installed);
@@ -328,19 +355,42 @@ export function apply(ctx, config) {
           break; // One package change per periodic update check.
         }
       }
-    } catch {
-      // Public discovery unavailable, including the pre-public Private phase.
+      return true;
+    } catch (error) {
+      // Do not turn a failed manual lookup into a false "up-to-date" state.
       const offline = '{"schema":3,"source":"unavailable","components":[]}';
-      if (!disposed && config.catalog.get() !== offline) {
-        await writeSettings({ catalog: offline }).catch(() => {});
+      const patch = {};
+      if (!disposed && config.catalog.get() !== offline) patch.catalog = offline;
+      if (manual) {
+        patch.checkState = 'failed';
+        patch.checkError = diagnostic(error);
+        patch.checkAt = new Date().toISOString();
+        patch.checkOrigin = '';
       }
+      if (!disposed && Object.keys(patch).length) await writeSettings(patch);
+      return false;
     } finally {
       checking = false;
     }
   }
 
+  async function processCheckRequest() {
+    if (disposed || checking || updating || manualChecking) return;
+    const nonce = config.checkNonce.get();
+    if (typeof nonce !== 'string' || !nonce) return;
+    manualChecking = true;
+    try {
+      if (!(await writeSettings({
+        checkNonce:'', checkState:'checking', checkError:''
+      }))) return;
+      await discover(true);
+    } finally {
+      manualChecking = false;
+    }
+  }
+
   async function processManualRequest() {
-    if (disposed || updating) return;
+    if (disposed || updating || manualChecking) return;
     const nonce = config.requestNonce.get();
     if (!nonce || typeof nonce !== 'string' || nonce === lastNonce) return;
     lastNonce = nonce;
@@ -416,7 +466,10 @@ export function apply(ctx, config) {
     const reconcile = setTimeout(() => { if (!disposed) guarded(reconcileAfterReload()); }, 1500);
     const poll = setInterval(() => { if (!disposed) guarded(discover()); }, CHECK_MS);
     const requests = setInterval(() => {
-      if (!disposed) guarded(processManualRequest());
+      if (!disposed) {
+        guarded(processCheckRequest());
+        guarded(processManualRequest());
+      }
     }, REQUEST_MS);
     return () => {
       disposed = true;

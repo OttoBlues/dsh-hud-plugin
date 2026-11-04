@@ -224,26 +224,36 @@ window.__ModuleLoader__.load({
                 values.requestVersion === latest?.version &&
                 (values.updateStatus === 'queued' || values.updateStatus === 'installing') &&
                 !!values.requestNonce;
-              return h('div',{key:component.name,style:surface,'data-hud-component':component.name},
-                h('div',{style:{display:'flex',gap:15,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}},
+              const rightAction = isPending
+                ? h('span',{role:'status',style:tiny},
+                    t(values.updateStatus==='installing'?'installing':'queued'))
+                : eligible
+                  ? confirm===key
+                    ? h(React.Fragment,null,
+                        h('span',{style:{...tiny,maxWidth:245}},t('confirmText')),
+                        btn(t('cancel'),()=>setConfirm(''),saving),
+                        btn(t('confirm'),()=>{void queue(component,latest);},saving))
+                    : btn(installed?t('update'):t('install'),()=>setConfirm(key),saving)
+                  : h('span',{style:tiny},latest?t('latest'):t('unavailable'));
+              return h('div',{key:component.name,style:surface,
+                'data-hud-component':component.name},
+                h('div',{style:{display:'flex',gap:15,alignItems:'center',
+                  justifyContent:'space-between',flexWrap:'wrap'}},
                   h('div',{style:{flex:'1 1 300px',minWidth:175}},
                     h('div',{style:{display:'flex',alignItems:'center',gap:9}},
                       h('strong',{style:{fontSize:15}},component.title),
                       h('span',{style:tiny},installed?t('installed'):t('notInstalled'))),
                     h('p',{style:{...tiny,margin:'5px 0 9px'}},component.description),
-                    h('div',{style:tiny},t('current')+': '+(current||'—')+
+                    h('div',{style:tiny},
+                      t('current')+': '+(current||'—')+
                       '   ·   '+t('released')+': '+(stable?.version||'—')+
-                      (values.allowUnstable===true?'   ·   '+t('unstable')+': '+(experimental?.version||'—'):''))
+                      (values.allowUnstable===true?
+                        '   ·   '+t('unstable')+': '+(experimental?.version||'—'):''))
                   ),
                   h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},
-                    isPending?h('span',{role:'status',style:tiny},t(values.updateStatus==='installing'?'installing':'queued')):
-                    eligible ? (confirm===key ?
-                      h(React.Fragment,null,
-                        h('span',{style:{...tiny,maxWidth:245}},t('confirmText')),
-                        btn(t('cancel'),()=>setConfirm(''),saving),
-                        btn(t('confirm'),()=>{void queue(component,latest);},saving)):
-                      btn(installed?t('update'):t('install'),()=>setConfirm(key),saving)):
-                      h('span',{style:tiny},latest?t('latest'):t('unavailable'))));
+                    rightAction)
+                )
+              );
             })),
             known.length===0?h('p',{style:tiny},t('noComponents')):null
           ),

@@ -111,7 +111,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.5.2')])});
+  const ui=setup({catalog:catalog([own('0.5.3')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -194,7 +194,7 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   const preview=find(overlay,x=>x.props?.['data-dsh-hud-preview']==='true')[0];
   assert.ok(preview);
   assert.equal(preview.props.style.pointerEvents,'none');
-  assert.equal(preview.props['data-dsh-hud-version'],'0.5.1');
+  assert.equal(preview.props['data-dsh-hud-version'],'0.5.2');
 });
 
 test('component center shows the renamed repository rather than legacy UI copy',()=>{
@@ -286,18 +286,48 @@ test('HUD Escape and manager entry both keep DSH navigation usable',async()=>{
 });
 
 
-test('vector cockpit uses traced angular panels, faint grid, and a scope reticle',()=>{
+test('cockpit UI uses fixed-pixel nested panels with no distorted SVG rails',()=>{
   const ui=setup({hudMode:true});
   const overlay=renderWorkspace(ui);
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.1');
-  assert.match(JSON.stringify(overlay.props.style),/backgroundSize/);
-  assert.ok(find(overlay,x=>x.props?.['data-hud-vector-frame']===true).length>=4);
-  assert.ok(find(overlay,x=>x.props?.['data-hud-traces']===true).length>=4);
-  assert.equal(find(overlay,x=>x.props?.['data-hud-scope']===true).length,1);
-  const manager=ui.render('main');
-  assert.equal(manager.props['data-hud-visual'],'vector-051');
-  assert.ok(find(manager,x=>x.props?.['data-hud-vector-frame']===true).length>=2);
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.2');
+  assert.equal(overlay.props.style.pointerEvents,'auto');
+  const panels=find(overlay,x=>x.props?.['data-hud-cockpit-panel']===true);
+  assert.ok(panels.length>=4,'hero, metrics and Session modules stay separate');
+  assert.ok(panels.every(x=>/12px/.test(x.props.style.clipPath)));
+  const liners=find(overlay,x=>x.props?.['data-hud-panel-liner']===true);
+  assert.equal(liners.length,panels.length);
+  assert.ok(liners.every(x=>x.props.style.inset===2 &&
+    /10px/.test(x.props.style.clipPath) &&
+    x.props.style.pointerEvents==='none'));
+  assert.equal(find(overlay,x=>x.props?.['data-hud-traces']===true).length,0);
+  assert.equal(find(overlay,x=>x.props?.['data-hud-scope']===true).length,0);
+  assert.ok(find(overlay,x=>x.props?.['data-hud-header-rule']===true).length===1);
 });
+
+test('component center inherits DSH colors, keeps native cards and controls',()=>{
+  const ui=setup({catalog:catalog([own('0.5.3')])});
+  const tree=ui.render('main');
+  assert.equal(tree.props['data-hud-management-theme'],'dsh-native');
+  assert.equal(tree.props.style.background,'transparent');
+  assert.equal(tree.props.style.color,'inherit');
+  assert.equal(tree.props.style.backgroundImage,undefined);
+  assert.equal(find(tree,x=>x.props?.['data-hud-cockpit-panel']===true).length,0);
+  const card=find(tree,x=>x.props?.['data-hud-component']==='@local/dsh-hud')[0];
+  assert.ok(card);
+  assert.equal(card.props.style.borderRadius,12);
+  assert.match(card.props.style.background,/var\(--surface-secondary/);
+  const panel=find(tree,x=>x.props?.['data-hud-check-panel']===true)[0];
+  assert.ok(panel);
+  assert.equal(panel.type,'section');
+  assert.equal(panel.props.style.borderRadius,12);
+  const check=find(panel,x=>x.props?.['data-hud-check-button']===true)[0];
+  assert.ok(check);
+  assert.equal(check.props.style.borderRadius,8);
+  const toggle=find(tree,x=>x.props?.['data-hud-setting']==='unstable')[0];
+  assert.ok(toggle);
+  assert.equal(toggle.props.style.width,16);
+});
+
 
 test('check updates button queues a manual scan without queuing a package',async()=>{
   const ui=setup({catalog:catalog([own('0.6.0','0.6.1')])});

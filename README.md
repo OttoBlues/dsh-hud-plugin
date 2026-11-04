@@ -52,3 +52,9 @@ dsh --profile hud-test --dump-config
 - 仅信任来自本仓库的 Actions 构建，先检查打包结果再安装到系统。
 
 继续阅读 `docs/ARCHITECTURE.md`、`docs/ROADMAP.md`、`docs/SETUP-WINDOWS.md`。
+
+## Windows 自托管非点击验证
+
+选择一台 Windows VM/备用电脑注册仓库级 Runner（标签 `dsh-hud-test`），以后可在 GitHub Actions 手动运行 `preflight` 或隔离安装/启动测试 `install-smoke`。配置请见 [自托管 Runner 指南](docs/SELF-HOSTED-RUNNER.md)，需要亲自确认的鼠标穿透、透明置顶等项目见 [人工验收清单](docs/MANUAL-ACCEPTANCE.md)。
+
+**不会自动从 PR 或 push 在你的电脑上运行测试。** 当前 HUD 仍是 DSH 窗口内的静态预览，不是完整原生 HUD。

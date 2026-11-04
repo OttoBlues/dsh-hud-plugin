@@ -35,3 +35,5 @@ plugins/
 从 V0.4 开始新增 `plugins/index.json`，管理仓库有哪些组件可以被独立安装或更新。`npm run verify:components` 校验它与实际 `plugins/<组件>/package.json` 一致。这个索引不代表版本已发布，具体安装权限仍由各组件的 `released/index.json` 和 `unstable/index.json` 决定。
 
 自动更新默认关闭，仅已安装组件可自动更新，正式与试验版分别设定权限；新的仓库组件不能仅因上架就自动安装。
+
+2026-11-04：仓库已设为 Public。测试更新包 `unstable/v0.4.0` 已发布，`released/` 仍为空；公开仓库不代表自动获得正式发布资格。用户仍需在 DSH 内完成匿名更新闭环验收。

@@ -1,9 +1,9 @@
 {
-  "name": "dsh-plugins-monorepo",
+  "name": "dsh-hud-plugin-monorepo",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Private DeepSeek Harness Cordis plugin monorepo",
+  "description": "Public DeepSeek Harness HUD plugin and independently versioned component registry",
   "workspaces": [
     "plugins/*"
   ],

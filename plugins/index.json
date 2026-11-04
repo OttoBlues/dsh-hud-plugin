@@ -5,7 +5,7 @@
       "id": "hud",
       "name": "@local/dsh-hud",
       "title": "DSH HUD",
-      "description": "Windows HUD preview and component management",
+      "description": "HUD component center and verified anonymous updates from OttoBlues/dsh-hud-plugin",
       "category": "interface"
     }
   ]

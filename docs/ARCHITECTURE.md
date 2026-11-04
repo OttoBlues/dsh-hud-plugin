@@ -1,64 +1,36 @@
-# DSH Plugins 整体架构（V0）
+# DSH HUD 项目架构
 
-## 多插件组织原则
-
-每一个插件都有自己的 Cordis Bundle：package.json 中的 `dsh.bundle.patch` 指向独立的 `cordis.patch.yml`；Host 入口和浏览器 Client 入口各自分离。
-
-建议后续按需要增加：
-- `plugins/hud`：增强型 HUD UI 和交互状态（已建立 V0 预览）。
-- `plugins/notifications`：通知事件的格式化与显示（未建立，不自动假设存在 DSH 通知服务）。
-- `plugins/voice`：语音输入/TTS（未建立）。
-- `plugins/observer`：屏幕观察状态显示与协作（未建立）。
-- `plugins/memory`：会话记忆相关功能（未建立）。
-
-`packages/` 仅用于插件间共享的纯工具/类型。不同插件不允许在浏览器侧绕过 DSH Controller 直接共享可变 Session 状态。
-
-## HUD 分层
+## 当前实现
 
 ```text
-DSH Host/Cordis — 原有 Agent/权限/Session/工具
-  ⇅ 正式 Remote API/Client Models（版本锁定、待核验）
-HUD Host Adapter — 按实际 DSH API 发布必要只读视图（待开发）
-  ⇅
-HUD Client — Cordis 插件、React Slots、局部 UI Store
-  ⇅
-Desktop Bridge — Electron 主进程的受限窗口控制（待开发）
-  ⇅
-Windows 桌面 — 全局透明覆盖与按键监听（待开发）
+DeepSeek Harness Host（Cordis）
+  └── @local/dsh-hud Host（plugins/hud/index.js）
+      ├── 读取公开组件目录和 released/unstable 索引
+      ├── 验证 SHA-256、版本与显式安装授权
+      └── 通过 DSH pluginManager.installBundle 安装组件
+              ⇅
+      DSH Client（plugins/hud/client.js）
+      ├── sidebar.panellist 里的独立 HUD 入口
+      ├── keyed main 管理页面和更新策略
+      └── 默认关闭的 shell.overlay 预览
 ```
 
-## 本次交付边界
+本仓库以 `OttoBlues/dsh-hud-plugin` 作为新的 UI/文档标准地址。Host V0.4.1 仍有短期迁移回退，等新匿名端点的运行验证完成后再考虑移除。
 
-- `plugins/hud` 实现：普通 DSH Web UI 内的 `shell.overlay` 预览，不添加独立 window，不监听全局输入，不访问 Session。
-- `root` 插件替换尚未实施。官方 `SlotCore` 允许按较低 priority 遮蔽既有 root，但重复声明已存在 child Slot 会报错；不能直接复制原主框架布局声明。
-- Windows 全屏透明、置顶和 click-through 属于 Electron BrowserWindow 层；透明样式不是系统级鼠标穿透。
-- `DesktopWindow` 服务不能根据社区提案直接假定官方已发布；应先检查目标版本的实际提供能力。
+## 工程和发布
 
-## 后续正式 UI 架构的三个选择
+- `plugins/index.json` 枚举组件；每个目录提供自己的 Cordis Bundle 和发布通道。
+- `plugins/hud/unstable` 用于测试包；`released` 必须经过用户批准。
+- 云端 GitHub Actions CI（Ubuntu、Windows）验证源代码、测试和包体结构；不再包含本地 self-hosted Runner、自动部署或远程 Desktop 更改。
+- 用户在 DSH 插件内部确认更新；不需要 GitHub PAT、PowerShell 或自动化 Runner。
 
-1. **优先验证插件层能力**：`shell.overlay` 作为不破坏原客户端的低风险预览。
-2. **定制专用 HUD Profile**：更换 ui-layout 或采用不冲突的专属 `hud.*` slots，保留原主界面为回退入口；必须检查 UI-renderer / layout-controller / modal / approval 依赖。
-3. **Windows 原生桌面**：审查 `apps/desktop` 是否存在稳定窗口贡献接口；若无，最小修改 Electron 外壳并以原主窗为控制面板。
+## 尚未实现
 
-## HUD 视觉要求
+Windows 系统层透明桌面覆盖、置顶、点击穿透、全局热键、可靠回退和跨屏布局仍属于后续阶段。这些能力不得仅凭页面上的 HUD 预览视为已完成。
 
-- 左上：待办列表；右上：时间/天气/系统信息；右下：最近一条消息；下中：会话、输入。
-- 默认静默：低亮、鼠标穿透、只读。
-- 按键长按 1 秒后激活：强亮、底部输入、必要区域点击交互。使用安全原生 keydown/keyup 记录长按，不能将普通 `globalShortcut` 的触发视为长按计时。
-- 消息单行显示、不带背景；不使用粗边框；中心区域不遮挡游戏/IDE。
+## 兼容与安全原则
 
-## 关键约束
-
-- Session、Run 与 Agent 状态属于 DSH，自定义 UI 仅持有渲染快照和短期交互状态。
-- 不绕过审批、权限或凭据服务。
-- 订阅由所属 Cordis Context 管理，卸载必须清理。
-- 绝不通过 DOM scraping 获取其他插件数据。
-- 静默/激活切换不应重启或取消 DSH 后台任务。
-
-## 上游对照
-
-- https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/preset/agent-preset/skills/cordis-plugin-development/references/ui-plugin.md
-- https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/preset/agent-preset/skills/cordis-plugin-development/references/practices.md
-- https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-layout/src/client/index.ts
-- https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-slots/src/index.ts
-- https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md
+- 保留 DSH 审批、权限和 Session 所有权，不通过 DOM scraping 冒充官方模型 API。
+- 更新只接受固定通道登记的压缩包及完整性校验，不从未发布的 main HEAD 直接安装。
+- 更新当前插件时，必须防止已经失效的旧 Host 继续写设置引发异常。
+- 不会因仓库更名改变插件包名 `@local/dsh-hud`。

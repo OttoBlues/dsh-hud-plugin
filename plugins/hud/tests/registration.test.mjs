@@ -107,7 +107,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.4.2')])});
+  const ui=setup({catalog:catalog([own('0.4.3')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -186,5 +186,12 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   ui.values.overlayVisible=true;
   const overlay=ui.render('shell.overlay');
   assert.equal(overlay.props.style.pointerEvents,'none');
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.4.1');
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.4.2');
+});
+
+test('component center shows the renamed repository rather than legacy UI copy',()=>{
+  const ui=setup();
+  const rendered=JSON.stringify(ui.render());
+  assert.match(rendered,/OttoBlues\/dsh-hud-plugin/);
+  assert.doesNotMatch(rendered,/OttoBlues\/dsh-plugins/);
 });

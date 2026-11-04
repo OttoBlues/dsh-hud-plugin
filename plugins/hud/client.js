@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.4.1 development Client.
+ * DSH HUD V0.4.2 development Client.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,12 +10,12 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.4.1';
+    const VERSION = '0.4.2';
     const REFRESH_MS = 5 * 60_000;
 
     const dictionaries = {
       zh: {
-        panel: 'HUD', title: 'HUD 组件中心', sub: 'OttoBlues/dsh-plugins · 组件安装、版本和更新策略',
+        panel: 'HUD', title: 'HUD 组件中心', sub: 'OttoBlues/dsh-hud-plugin · 组件安装、版本和更新策略',
         section: '仓库组件', options: '更新策略', sourceOK: '公开仓库已连接',
         sourceUnavailable: '仓库版本源暂不可匿名访问：请将 GitHub 仓库设为 Public。',
         sourceChecking: '正在读取公开组件清单…', noComponents: '当前没有可用的仓库组件',
@@ -33,7 +33,7 @@ window.__ModuleLoader__.load({
         noToken: '无需 GitHub Token · 仅下载公开通道中登记的安装包',
       },
       en: {
-        panel: 'HUD', title: 'HUD Component Center', sub: 'OttoBlues/dsh-plugins · Install, update and configure',
+        panel: 'HUD', title: 'HUD Component Center', sub: 'OttoBlues/dsh-hud-plugin · Install, update and configure',
         section: 'Repository components', options: 'Update policy', sourceOK: 'Public repository connected',
         sourceUnavailable: 'Anonymous update source unavailable. Make the GitHub repository Public to enable direct updates.',
         sourceChecking: 'Checking the public component index…', noComponents: 'No repository components are available',
@@ -154,7 +154,7 @@ window.__ModuleLoader__.load({
         const known = [...catalog.components];
         if (!known.some(x => x.name === '@local/dsh-hud')) {
           known.unshift({ id: 'hud', name:'@local/dsh-hud', title:'DSH HUD',
-            description:'Windows HUD and component center', released:null, unstable:null });
+            description:'DSH HUD · OttoBlues/dsh-hud-plugin component center', released:null, unstable:null });
         }
         const installedByName = new Map(bundles.filter(x => x.installed).map(x => [x.name,x]));
         if (!installedByName.has('@local/dsh-hud')) {

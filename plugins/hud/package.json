@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "type": "module",
-  "description": "HUD component center with lifecycle-safe updates and repository rename compatibility",
+  "description": "DSH HUD component center with verified anonymous updates (source: OttoBlues/dsh-hud-plugin)",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },

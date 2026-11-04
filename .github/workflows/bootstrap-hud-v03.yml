@@ -37,7 +37,7 @@ jobs:
             const branch = await github.rest.repos.getBranch({owner,repo,branch:'main'});
             const sha = branch.data.commit.sha;
             const commit = await github.rest.repos.getCommit({owner,repo,ref:sha});
-            if (commit.data.commit.message.trim() !== 'bootstrap: install HUD v0.3.0 unstable once') {
+            if (commit.data.commit.message.split('\n')[0].trim() !== 'bootstrap: install HUD v0.3.0 unstable once') {
               core.info('No current explicit one-time bootstrap approval.');
               return;
             }

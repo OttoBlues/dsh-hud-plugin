@@ -9,7 +9,7 @@ test('one-time bootstrapping requires an exact user-approved main commit and gre
   assert.match(flow, /workflow_run:/);
   assert.match(flow, /source|run\.head_sha !== sha/);
   assert.match(flow, /run\.conclusion !== 'success'/);
-  assert.match(flow, /commit\.data\.commit\.message\.trim\(\) !== 'bootstrap: install HUD v0\.3\.0 unstable once'/);
+  assert.match(flow, /commit\.data\.commit\.message\.split\('\\n'\)\[0\]\.trim\(\) !== 'bootstrap: install HUD v0\.3\.0 unstable once'/);
   assert.match(flow, /workflow_id:'ci\.yml'/);
   assert.match(flow, /runs-on: \[self-hosted, windows, x64, dsh-hud-test\]/);
 });

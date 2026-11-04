@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
-  "description": "DSH HUD full-frame workspace with reversible native DSH mode and component updates",
+  "description": "Vector HUD cockpit, reversible DSH mode and verified one-click component checks",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },

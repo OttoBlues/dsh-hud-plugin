@@ -1,8 +1,8 @@
 # DSH HUD V0.3 更新方式
 
-## 首次试验版引导
+## 已完成的一次性试验版引导
 
-用户明确要求将 V0.3 作为 `plugins/hud/unstable/` 试验包，通过 Windows Actions Runner **安装一次**。这是引导操作，不是正式发布；`released/` 继续保持空目录。
+V0.3 已于 **2026-11-04** 通过 [Windows Runner 运行 #41841386623](https://github.com/OttoBlues/dsh-plugins/actions/runs/41841386623) 真实安装到日常 DSH Desktop（`@local/dsh-hud@0.3.0`），同时通过临时 Web Profile 安装与启动测试。该版本仅属于 `unstable/`，**不是正式发布版**；`released/` 保持为空。
 
 该版本的 HUD 窗口内叠加层默认隐藏，避免覆盖 DSH 标题栏和聊天输入区。组件管理页面新增试验版开关，默认关闭。
 
@@ -28,10 +28,10 @@ V0.3 Host 更新器使用 **HTTPS 匿名读取公开 GitHub 仓库**：
 
 - GitHub Actions：继续自动测试、构建和严格校验发布产物；不要求长期连接用户本机。
 - DSH Host：用户点击后调用官方插件管理服务进行更新；不执行 PowerShell、`cmd.exe`、`git clone` 或不可信脚本。
-- Windows Runner：本次 V0.3 引导安装及必要的原生集成验证；引导成功后可以关闭 Runner。
+- Windows Runner：本次 V0.3 引导安装已完成。引导专用工作流和安装绕过条件已撤回；后续可以停止 Runner。保留的 Runner 手动工作流只是诊断和故障回退入口。
 
 ## 验收
 
 - V0.2 安装过，但截图存在文字与标题栏/输入区重叠；并未进入正式发布。
-- V0.3 需要分别验证：`unstable` 归档的 CI、Windows 临时安装、Desktop 持久安装、组件选项卡显示、试验版开关默认关闭及无重叠。
+- V0.3 已完成：`unstable` 归档 CI、Windows 临时安装、Desktop 持久安装与精确版本核验。仍待人工验证：组件选项卡显示、试验版开关默认关闭及无重叠。
 - 当仓库正式公开且有更高版本加入发布通道时，再验证无需 Runner 的匿名检查和点击更新。这一最后步骤当前无法在私有仓库中做端到端证明。

@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.1 development Client: vector-interface HUD and manual refresh.
+ * DSH HUD V0.5.2 development: cockpit panel geometry and DSH-native component manager.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.1';
+    const VERSION = '0.5.2';
     const REFRESH_MS = 5 * 60_000;
 
     const dictionaries = {
@@ -125,50 +125,39 @@ window.__ModuleLoader__.load({
     // Full-frame in-app HUD. The DSH AppFrame stays mounted underneath:
     // no root-slot override, global DOM mutations or session navigation hacks.
 
-    // Shared line-built panel treatment: no image assets, no invented status data.
-    // Vector corner paths are decorative and cannot intercept input.
+
+    // HUD cockpit visuals are intentionally isolated from the native DSH
+    // Component Center. All angled edges use fixed CSS pixels, never a
+    // stretched SVG viewport (the v0.5.1 distortion regression).
     const V = {
-      cyan:'#77f5f0', electric:'#7dbfe4', amber:'#f1d59b',
-      text:'#e8faff', muted:'#95b5c4', stroke:'rgba(105,235,242,.34)',
-      inner:'rgba(5,21,32,.92)',
-      cut:'polygon(13px 0,calc(100% - 13px) 0,100% 13px,100% calc(100% - 13px),calc(100% - 13px) 100%,13px 100%,0 calc(100% - 13px),0 13px)',
-      background:'linear-gradient(rgba(83,216,231,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(83,216,231,.045) 1px,transparent 1px),radial-gradient(ellipse at 74% 16%,rgba(17,78,100,.55),transparent 55%),linear-gradient(145deg,#030c15,#081927 65%,#081721)',
-      backgroundSize:'38px 38px,38px 38px,auto,auto',
+      cyan:'#77dbe0',electric:'#7baec3',amber:'#dcb781',
+      text:'#e9f3f7',muted:'#a1b6c1',
+      stroke:'rgba(99,175,194,.52)',
+      cut:'polygon(12px 0,calc(100% - 12px) 0,100% 12px,100% calc(100% - 12px),calc(100% - 12px) 100%,12px 100%,0 calc(100% - 12px),0 12px)',
+      innerCut:'polygon(10px 0,calc(100% - 10px) 0,100% 10px,100% calc(100% - 10px),calc(100% - 10px) 100%,10px 100%,0 calc(100% - 10px),0 10px)',
+      outer:'linear-gradient(150deg,#4b8fa0 0%,#2f6174 28%,#1c3c4e 75%,#376d7b 100%)',
+      inner:'linear-gradient(180deg,#1b3444 0%,#122a3b 22%,#0b1f2e 85%,#0b1a27 100%)',
+      background:'radial-gradient(ellipse at 63% 12%,rgba(42,76,90,.22),transparent 48%),linear-gradient(155deg,#05111b 0%,#071623 72%,#091825 100%)',
+      backgroundSize:'auto',
     };
-    function vectorTraces() {
-      return h('svg',{'aria-hidden':true,'data-hud-traces':true,
-        viewBox:'0 0 100 100',preserveAspectRatio:'none',
-        style:{position:'absolute',inset:0,width:'100%',height:'100%',
-          pointerEvents:'none',zIndex:0,overflow:'hidden'}},
-        h('path',{d:'M 0 20 V 13 L 13 0 H 32 M 68 0 H 87 L 100 13 V 28 M 100 72 V 87 L 87 100 H 68 M 32 100 H 13 L 0 87 V 72',
-          fill:'none',stroke:'rgba(119,245,240,.76)',strokeWidth:1.3,
-          vectorEffect:'non-scaling-stroke'}),
-        h('path',{d:'M 18 0 H 37 M 63 100 H 82 M 0 38 V 49 M 100 51 V 62',
-          fill:'none',stroke:'rgba(125,191,228,.55)',strokeWidth:1,
-          vectorEffect:'non-scaling-stroke'}));
-    }
-    function vectorFrame(tag, attributes, ...children) {
-      return h(tag,{...attributes,'data-hud-vector-frame':true,
-        style:{
-          position:'relative',overflow:'hidden',borderRadius:0,
-          clipPath:V.cut,border:'1px solid '+V.stroke,
-          background:'linear-gradient(130deg,rgba(13,37,52,.95),'+V.inner+')',
-          boxShadow:'inset 0 1px 0 rgba(131,236,241,.16),0 12px 35px rgba(0,4,14,.15)',
-          ...attributes.style,
-        }},
-        vectorTraces(),
-        ...children);
-    }
-    function scopeLines() {
-      return h('svg',{'aria-hidden':true,'data-hud-scope':true,
-        viewBox:'0 0 240 165',width:240,height:165,
-        style:{position:'absolute',right:10,top:9,opacity:.25,pointerEvents:'none'}},
-        h('circle',{cx:121,cy:82,r:57,stroke:V.cyan,fill:'none',strokeWidth:1}),
-        h('circle',{cx:121,cy:82,r:35,stroke:V.electric,fill:'none',strokeWidth:1}),
-        h('path',{d:'M 121 10 V 155 M 49 82 H 193 M 70 31 L 172 133 M 174 31 L 71 134',
-          stroke:V.cyan,strokeWidth:0.8,fill:'none'}),
-        h('path',{d:'M 121 82 L 169 49 M 118 78 H 124 V 86 H 118 Z',
-          stroke:V.amber,strokeWidth:2,fill:'none'}));
+    function cockpitPanel(tag,attributes,...children) {
+      // A solid 2px metallic housing encloses a lower recessed information
+      // cavity. Nested CSS cuts share a 45-degree / fixed-pixel geometry.
+      // No percent-based SVG perimeter drawing; no duplicated corner paths.
+      const userStyle=attributes.style||{};
+      return h(tag,{...attributes,'data-hud-cockpit-panel':true,
+        style:{position:'relative',isolation:'isolate',overflow:'hidden',
+          borderRadius:0,boxSizing:'border-box',
+          ...userStyle,clipPath:V.cut,border:0,
+          background:V.outer,
+          boxShadow:'inset 0 1px 0 rgba(172,218,226,.22)'}},
+        h('span',{'aria-hidden':true,'data-hud-panel-liner':true,
+          style:{position:'absolute',inset:2,clipPath:V.innerCut,
+            pointerEvents:'none',background:V.inner,zIndex:0}}),
+        h('span',{'aria-hidden':true,'data-hud-panel-cap':true,
+          style:{position:'absolute',left:31,top:4,width:50,height:1,
+            pointerEvents:'none',zIndex:1,background:'rgba(132,217,218,.56)'}}),
+        h('div',{style:{position:'relative',zIndex:1}},...children));
     }
 
     function HudWorkspace({t, sessions, statuses, onExit, onComponents, error}) {
@@ -195,8 +184,7 @@ window.__ModuleLoader__.load({
       const selected = rows.find(row => row.current);
       const hue = V.cyan, muted = V.muted;
       const outline = '1px solid '+V.stroke;
-      const panel = {background:'linear-gradient(115deg,rgba(8,36,49,.95),rgba(3,17,28,.93))',
-        border:outline,boxShadow:'inset 0 0 20px rgba(18,78,103,.18)'};
+      const panel = {background:V.inner,boxShadow:'inset 0 10px 30px rgba(0,0,0,.15)'};
       const pill = (label,onClick,primary=false, extra={}) => h('button',{
         type:'button',onClick,...extra,style:{font:'inherit',fontSize:13,fontWeight:600,
           color:primary?'#021921':V.text,
@@ -205,7 +193,7 @@ window.__ModuleLoader__.load({
           clipPath:'polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))',
           boxShadow:primary?'0 0 15px rgba(101,239,235,.20)':'inset 0 0 12px rgba(77,199,209,.1)',
           letterSpacing:'.06em',padding:'11px 17px',cursor:'pointer',minHeight:42,...extra.style}},label);
-      const metric = (key,value,foot) => vectorFrame('div',{key,
+      const metric = (key,value,foot) => cockpitPanel('div',{key,
         style:{...panel,padding:'18px 23px',minWidth:140,flex:'1 1 150px'}},
         h('div',{style:{fontSize:10,color:hue,letterSpacing:'.16em',
           fontFamily:'Consolas,monospace'}},'// '+key),
@@ -229,7 +217,7 @@ window.__ModuleLoader__.load({
         tabIndex:0,'data-dsh-hud-workspace':true,'data-dsh-hud-version':VERSION,
         onKeyDown:e=>{if(e.key==='Escape'){e.stopPropagation?.();onExit();}},
         style:{position:'absolute',inset:0,zIndex:30,boxSizing:'border-box',
-          backgroundColor:'#030c15',backgroundImage:V.background,
+          backgroundColor:'#06111a',backgroundImage:V.background,
           backgroundSize:V.backgroundSize,
           color:V.text,fontFamily:'system-ui, sans-serif',
           pointerEvents:'auto',overflowY:'auto',overflowX:'hidden'}},
@@ -238,7 +226,8 @@ window.__ModuleLoader__.load({
           minHeight:'100%',display:'flex',flexWrap:'wrap',gap:25}},
           h('nav',{'aria-label':t('workspaceNav'),
             style:{width:176,flex:'1 1 155px',maxWidth:185,display:'flex',flexDirection:'column',
-              gap:12,borderRight:'1px solid rgba(141,222,225,.24)',paddingRight:18}},
+              gap:12,borderRight:'1px solid rgba(122,180,193,.20)',padding:'18px 20px 17px 13px',
+              background:'linear-gradient(90deg,rgba(4,19,31,.54),rgba(12,30,43,.16))'}} ,
             h('div',{style:{padding:'4px 7px 29px'}},
               h('div',{style:{fontSize:29,fontWeight:800,letterSpacing:'.20em',
                 color:hue,textShadow:'0 0 14px rgba(98,239,242,.3)'}},'HUD'),
@@ -256,9 +245,9 @@ window.__ModuleLoader__.load({
               pill(t('returnDSH'),onExit,false,{'data-hud-nav':'dsh',
                 style:{width:'100%'}}))),
           h('div',{style:{flex:'5 1 460px',minWidth:0,display:'flex',flexDirection:'column',gap:20}},
-            h('div',{'data-hud-vector-scanline':true,
-              style:{height:2,width:'100%',
-                background:'linear-gradient(90deg,#6ce9ea 0%,#6ce9ea 17%,transparent 17%,transparent 21%,rgba(108,233,234,.5) 21%,rgba(108,233,234,.5) 48%,transparent 48%)'}}),
+            h('div',{'data-hud-header-rule':true,
+              style:{height:1,width:'100%',opacity:.75,
+                background:'linear-gradient(90deg,rgba(116,215,220,.7),rgba(116,215,220,.12) 45%,transparent)'}}),
             h('header',{style:{display:'flex',alignItems:'center',gap:16,
               justifyContent:'space-between',flexWrap:'wrap'}},
               h('div',null,
@@ -270,9 +259,8 @@ window.__ModuleLoader__.load({
                 h('time',{style:{fontSize:25,letterSpacing:'.05em',
                   fontFamily:'Consolas,monospace',color:hue},'data-hud-clock':true},clock),
                 pill(t('returnDSH'),onExit,true,{'data-hud-exit':true}))),
-            vectorFrame('section',{style:{...panel,padding:'clamp(23px,3vw,42px)',
-              background:'linear-gradient(110deg, rgba(8,42,56,.94),rgba(2,19,30,.96))'}},
-              scopeLines(),
+            cockpitPanel('section',{style:{...panel,padding:'clamp(23px,3vw,42px)',
+              background:V.inner}},
               h('div',{style:{display:'flex',gap:11,alignItems:'center'}},
                 h('span',{style:{width:8,height:8,borderRadius:'50%',
                   background:active>0?'#6ce0ba':hue,display:'inline-block'}}),
@@ -289,7 +277,7 @@ window.__ModuleLoader__.load({
               metric(t('viewMode'),'HUD',t('switchable'))),
             h('div',{style:{display:'grid',
               gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,320px),1fr))',gap:18}},
-              vectorFrame('section',{style:{...panel,padding:'22px 25px',minHeight:195}},
+              cockpitPanel('section',{style:{...panel,padding:'22px 25px',minHeight:195}},
                 h('div',{style:{fontSize:12,color:hue,letterSpacing:'.10em'}},
                   tab==='overview'?t('currentSession'):t('sessionTab')),
                 h('h3',{style:{fontSize:21,margin:'18px 0 9px',fontWeight:560}},
@@ -299,7 +287,7 @@ window.__ModuleLoader__.load({
                   tab==='overview'?t('currentHelp'):t('sessionsHelp')),
                 pill(t('openConversation'),onExit,false,
                   {'data-hud-open-conversation':true})),
-              vectorFrame('section',{style:{...panel,padding:'22px 25px',minHeight:195}},
+              cockpitPanel('section',{style:{...panel,padding:'22px 25px',minHeight:195}},
                 h('div',{style:{display:'flex',alignItems:'center',
                   justifyContent:'space-between',gap:12}},
                   h('h3',{style:{fontSize:16,fontWeight:570,margin:0,color:hue}},

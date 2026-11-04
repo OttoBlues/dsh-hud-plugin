@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.4.2 development: safe self-update lifecycle and dual-name repo migration.
+ * DSH HUD v0.5.0 development: reversible full-frame HUD workspace with safe self-update.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -40,6 +40,8 @@ export const Config = Schema.object({
   autoUpdateUnstable: Schema.boolean().default(false).volatile(),
   autoAttemptKey: Schema.string().default('').volatile(),
   overlayVisible: Schema.boolean().default(false).volatile(),
+  // Opt-in HUD working mode; DSH's frame remains mounted underneath.
+  hudMode: Schema.boolean().default(false).volatile(),
   requestComponent: Schema.string().default('').volatile(),
   requestVersion: Schema.string().default('').volatile(),
   requestChannel: Schema.string().default('released').volatile(),

@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.4.2 development source parse successfully',()=>{
+test('Host and Client v0.5.0 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -67,4 +67,17 @@ test('retired Windows Runner deployment workflows cannot be triggered',()=>{
   assert.match(ci,/runs-on: windows-2025/);
   assert.doesNotMatch(ci,/self-hosted|desktop-deploy|upload-artifact/);
   assert.equal(ci.includes('scripts/windows/'),false);
+});
+
+test('full-frame HUD is opt-in, safe to exit, and leaves native DSH root intact',()=>{
+  assert.match(host,/hudMode: Schema\.boolean\(\)\.default\(false\)\.volatile\(\)/);
+  assert.match(client,/data-dsh-hud-workspace/);
+  assert.match(client,/data-dsh-hud-switcher/);
+  assert.match(client,/data-hud-enter-mode/);
+  assert.match(client,/ctx\.layout\.selectPanel\(null\)/);
+  assert.match(client,/ctx\.layout\.selectPanel\(PANEL\)/);
+  assert.match(client,/pointerEvents:'auto'/);
+  assert.match(client,/useSessions\(x => x\)/);
+  assert.match(client,/useSessionStatus\(x => x\)/);
+  assert.doesNotMatch(client,/ctx\.slots\.inject\('root'/);
 });

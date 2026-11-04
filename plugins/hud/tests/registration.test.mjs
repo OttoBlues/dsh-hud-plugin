@@ -5,18 +5,21 @@ import vm from 'node:vm';
 
 const client = readFileSync(new URL('../client.js', import.meta.url), 'utf8');
 
-function setup(valuesOverride={}) {
+function setup(valuesOverride={}, runtime={}) {
   let module;
   vm.runInNewContext(client, {window:{__ModuleLoader__:{load(x){module=x;}}}});
   assert.equal(module?.id,'@local/dsh-hud');
-  const hooks=[]; let cursor=0;
+  const hookSets=new Map(); let cursor=0; let currentScope='root';
+  const withHooks=(key,run)=>{currentScope=key;cursor=0;return run();};
   const React={
     Fragment:'fragment',
     createElement(type,props,...children){return {type,props:props||{},children};},
     useState(initial){
+      let values=hookSets.get(currentScope);
+      if(!values){values=[];hookSets.set(currentScope,values);}
       const i=cursor++;
-      if(!(i in hooks))hooks[i]=initial;
-      return [hooks[i],next=>{hooks[i]=typeof next==='function'?next(hooks[i]):next;}];
+      if(!(i in values))values[i]=initial;
+      return [values[i],next=>{values[i]=typeof next==='function'?next(values[i]):next;}];
     },
     useEffect(){},
     useSyncExternalStore(_subscribe,get){return get();},
@@ -27,7 +30,7 @@ function setup(valuesOverride={}) {
     requestComponent:'',requestVersion:'',requestChannel:'released',
     requestNonce:'',updateStatus:'',allowUnstable:false,
     autoUpdateEnabled:false,autoUpdateUnstable:false,autoAttemptKey:'',
-    overlayVisible:false,
+    overlayVisible:false,hudMode:false,
     ...valuesOverride,
   };
   const updates=[];
@@ -37,13 +40,14 @@ function setup(valuesOverride={}) {
     async set(key,value){values[key]=value;updates.push({key,value});return true;},
     async mutate(ops){for(const op of ops){values[op.path[0]]=op.value;}updates.push({ops});return true;},
   };
-  const slots=new Map();let dictionary;
+  const slots=new Map();const navigations=[];let dictionary;
   const ctx={
     locale:{
       register(ns,dict){dictionary=dict;assert.equal(ns,'dsh.hud');return ()=>{};},
       bind(ns){assert.equal(ns,'dsh.hud');return k=>dictionary.zh[k];},
     },
     effect(setup){setup();},
+    layout:{selectPanel(id){navigations.push(id);}},
     configForms:{get(key){assert.equal(key,'dsh-hud');return form;}},
     slots:{
       inject(_seat,fn){fn();},
@@ -56,17 +60,16 @@ function setup(valuesOverride={}) {
   };
   plugin.apply(ctx);
   const render=(slot='main')=>{
-    cursor=0;
     const entry=slots.get(slot);
     if(!entry) throw new Error('Unknown slot '+slot);
     const props={t:k=>dictionary.zh[k]};
     if(slot==='shell.overlay'){
-      props.useSessions=f=>f({ids:[],byId:{}});
-      props.useSessionStatus=f=>f(new Map());
+      props.useSessions=f=>f(runtime.sessions || {ids:[],byId:{}});
+      props.useSessionStatus=f=>f(runtime.statuses || new Map());
     }
-    return entry.component(props);
+    return withHooks(slot,()=>entry.component(props));
   };
-  return {plugin,values,form,slots,render,updates};
+  return {plugin,values,form,slots,render,updates,navigations,withHooks};
 }
 function find(tree,when,result=[]) {
   if(tree==null)return result;
@@ -107,7 +110,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.4.3')])});
+  const ui=setup({catalog:catalog([own('0.5.1')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -126,7 +129,7 @@ test('repository catalog lists uninstalled components and offers install',()=>{
 });
 
 test('Experimental opt-in and all automatic settings default off',()=>{
-  const ui=setup({catalog:catalog([own('0.4.1','0.5.0')])});
+  const ui=setup({catalog:catalog([own('0.4.1','0.6.0')])});
   const tree=ui.render();
   for(const flag of ['unstable','auto','auto-unstable']){
     const node=find(tree,x=>x.type==='input'&&x.props['data-hud-setting']===flag)[0];
@@ -134,17 +137,17 @@ test('Experimental opt-in and all automatic settings default off',()=>{
     assert.equal(node.props.checked,false);
     if(flag==='auto-unstable')assert.equal(node.props.disabled,true);
   }
-  assert.doesNotMatch(JSON.stringify(tree),/试验版: 0\.5\.0/);
+  assert.doesNotMatch(JSON.stringify(tree),/试验版: 0\.6\.0/);
 });
 
 test('Experimental update requires explicit toggle and manual confirmation',async()=>{
-  const ui=setup({catalog:catalog([own('0.4.1','0.5.0')])});
+  const ui=setup({catalog:catalog([own('0.4.1','0.6.0')])});
   const flag=find(ui.render(),x=>x.type==='input'&&x.props['data-hud-setting']==='unstable')[0];
   flag.props.onChange({target:{checked:true}});
   await Promise.resolve();
   assert.equal(ui.values.allowUnstable,true);
   const first=ui.render();
-  assert.match(JSON.stringify(first),/试验版: 0\.5\.0/);
+  assert.match(JSON.stringify(first),/试验版: 0\.6\.0/);
   const update=find(first,x=>x.type==='button'&&x.children.includes('更新'))[0];
   update.props.onClick();
   const confirmation=ui.render();
@@ -154,7 +157,7 @@ test('Experimental update requires explicit toggle and manual confirmation',asyn
   await Promise.resolve();
   assert.equal(ui.values.requestComponent,'@local/dsh-hud');
   assert.equal(ui.values.requestChannel,'unstable');
-  assert.equal(ui.values.requestVersion,'0.5.0');
+  assert.equal(ui.values.requestVersion,'0.6.0');
   assert.match(ui.values.requestNonce,/^\d+$/);
 });
 
@@ -182,11 +185,15 @@ test('Automatic experimental updates require separate explicit double opt-in',as
 
 test('overlay preview remains off and does not intercept mouse events',()=>{
   const ui=setup();
-  assert.equal(ui.render('shell.overlay'),null);
+  const base=ui.render('shell.overlay');
+  assert.ok(find(base,x=>x.props?.['data-dsh-hud-switcher']===true).length===1);
+  assert.equal(find(base,x=>x.props?.['data-dsh-hud-preview']===true).length,0);
   ui.values.overlayVisible=true;
   const overlay=ui.render('shell.overlay');
-  assert.equal(overlay.props.style.pointerEvents,'none');
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.4.2');
+  const preview=find(overlay,x=>x.props?.['data-dsh-hud-preview']==='true')[0];
+  assert.ok(preview);
+  assert.equal(preview.props.style.pointerEvents,'none');
+  assert.equal(preview.props['data-dsh-hud-version'],'0.5.0');
 });
 
 test('component center shows the renamed repository rather than legacy UI copy',()=>{
@@ -194,4 +201,85 @@ test('component center shows the renamed repository rather than legacy UI copy',
   const rendered=JSON.stringify(ui.render());
   assert.match(rendered,/OttoBlues\/dsh-hud-plugin/);
   assert.doesNotMatch(rendered,/OttoBlues\/dsh-plugins/);
+});
+
+// React runs the functional component after our shallow mocked element.
+function renderWorkspace(ui) {
+  const entry=ui.render('shell.overlay');
+  assert.equal(typeof entry.type,'function');
+  return ui.withHooks('HudWorkspace',()=>entry.type(entry.props));
+}
+const flushMode=async()=>{await new Promise(resolve=>setImmediate(resolve));};
+
+test('HUD opt-in switch shows an interactive full-frame workspace without losing DSH selection',async()=>{
+  const ui=setup();
+  assert.equal(ui.values.hudMode,false);
+  const button=find(ui.render('shell.overlay'),x=>x.props?.['data-dsh-hud-switcher']===true)[0];
+  assert.ok(button);
+  button.props.onClick();
+  await flushMode();
+  assert.equal(ui.values.hudMode,true);
+  const screen=renderWorkspace(ui);
+  assert.equal(screen.props['data-dsh-hud-workspace'],true);
+  assert.equal(screen.props.style.pointerEvents,'auto');
+  assert.equal(screen.props['aria-modal'],true);
+  assert.match(JSON.stringify(screen),/返回 DSH/);
+  assert.equal(ui.navigations.length,0);
+});
+
+test('HUD exits safely to native DSH conversation without resetting Session',async()=>{
+  const ui=setup({hudMode:true});
+  const screen=renderWorkspace(ui);
+  const exit=find(screen,x=>x.props?.['data-hud-exit']===true)[0];
+  assert.ok(exit);
+  exit.props.onClick();
+  await flushMode();
+  assert.equal(ui.values.hudMode,false);
+  assert.equal(ui.navigations.at(-1),null);
+  assert.ok(find(ui.render('shell.overlay'),
+    x=>x.props?.['data-dsh-hud-switcher']===true).length===1);
+});
+
+test('HUD component center navigates to its registered main panel',async()=>{
+  const ui=setup({hudMode:true});
+  const screen=renderWorkspace(ui);
+  const manager=find(screen,x=>x.props?.['data-hud-nav']==='components')[0];
+  manager.props.onClick();
+  await flushMode();
+  assert.equal(ui.values.hudMode,false);
+  assert.equal(ui.navigations.at(-1),'dsh-hud');
+});
+
+test('HUD renders real session titles and running statuses without fabricating metrics',()=>{
+  const ui=setup({hudMode:true},{
+    sessions:{ids:['s1','s2'],byId:{
+      s1:{displayTitle:'真实项目会话',retainedBy:{mainView:1}},
+      s2:{displayTitle:'Second session'}
+    }},
+    statuses:new Map([['s1',{running:true}],['s2',{running:false}]])
+  });
+  const screen=renderWorkspace(ui);
+  const dump=JSON.stringify(screen);
+  assert.match(dump,/真实项目会话/);
+  assert.match(dump,/Second session/);
+  assert.match(dump,/进行中/);
+  assert.equal(find(screen,x=>x.props?.['data-hud-session-id']==='s1').length,1);
+  assert.match(dump,/在 DSH 继续会话/);
+});
+
+test('HUD Escape and manager entry both keep DSH navigation usable',async()=>{
+  const ui=setup({hudMode:true});
+  const screen=renderWorkspace(ui);
+  find(screen,x=>x.props?.['data-hud-tab']==='sessions')[0].props.onClick();
+  const button=find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true)[0];
+  assert.ok(button);
+  let stopped=0;
+  screen.props.onKeyDown({key:'Escape',stopPropagation(){stopped++;}});
+  await flushMode();
+  assert.equal(stopped,1);
+  assert.equal(ui.values.hudMode,false);
+  assert.equal(ui.navigations.at(-1),null);
+  button.props.onClick();
+  await flushMode();
+  assert.equal(ui.values.hudMode,true);
 });

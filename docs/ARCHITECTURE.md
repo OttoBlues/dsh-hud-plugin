@@ -34,3 +34,12 @@ Windows 系统层透明桌面覆盖、置顶、点击穿透、全局热键、可
 - 更新只接受固定通道登记的压缩包及完整性校验，不从未发布的 main HEAD 直接安装。
 - 更新当前插件时，必须防止已经失效的旧 Host 继续写设置引发异常。
 - 不会因仓库更名改变插件包名 `@local/dsh-hud`。
+
+## V0.5.0 HUD / DSH 双模式（开发中）
+
+- 复用 DSH 根作用域 `shell.overlay` 插槽，绘制覆盖 AppFrame 的 HUD 主界面。原 Frame 仍挂载，未替换官方 `root`，不损坏原有 Slot 结构。
+- 新增 `hudMode` 默认 false，用户主动点击 HUD 切换入口后才开启；关闭时原 DSH 可以正常使用。
+- 从 HUD 返回 DSH 时先关闭遮罩，再通过 `ctx.layout.selectPanel(null)` 返回原会话；组件中心切换到 `selectPanel('dsh-hud')`。
+- 数据取自 `useSessions` 和 `useSessionStatus` 标准 Client Hooks；不访问其他插件 DOM，也不伪造聊天与性能数据。
+- 当前 HUD 是 DSH 应用窗口内的互动视图，不是单独的 Windows Electron 窗口，尚不支持系统级透明、置顶及鼠标穿透。
+- 因此需要单独验证窄窗口、插件热更新、审批弹窗与返回原会话的稳定性。

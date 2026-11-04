@@ -1,5 +1,5 @@
-# Read-only Windows Desktop HUD auto-upgrade probe.
-# Reports whether a tested version may be installed; never changes the Desktop profile.
+# Read-only probe for a user-clicked component update request.
+# It never downloads arbitrary source or upgrades without a matching channel index.
 [CmdletBinding()]
 param()
 Set-StrictMode -Version Latest
@@ -7,121 +7,130 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$reportDir = Join-Path $root 'auto-results'
-New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
+$resultDir = Join-Path $root 'auto-results'
+New-Item -ItemType Directory -Path $resultDir -Force | Out-Null
 $report = [ordered]@{
-  schema = 1
-  operation = 'auto-upgrade-probe'
-  target = 'desktop'
-  created_utc = (Get-Date).ToUniversalTime().ToString('o')
-  current_version = $null
-  target_version = $null
-  state = 'unknown'
-  needed = $false
-  checks = @()
+  schema = 2; component = 'hud'; state = 'unknown'
+  current_version = $null; target_version = $null
+  channel = $null; needed = $false
+  checked_utc = (Get-Date).ToUniversalTime().ToString('o')
 }
-$stage = 'runner'
+$step = 'environment'
 $exitCode = 0
-function Record([string] $Name, [string] $State, [string] $Message) {
-  $report.checks += [ordered]@{ name = $Name; state = $State; message = $Message }
-  Write-Host ('[{0}] {1}: {2}' -f $State.ToUpperInvariant(), $Name, $Message)
-}
+
 try {
-  if ($env:GITHUB_ACTIONS -ne 'true' -or $env:GITHUB_REPOSITORY -ne 'OttoBlues/dsh-plugins' -or $env:GITHUB_REF -ne 'refs/heads/main') {
-    throw 'Only the approved main-branch Runner may run the auto-upgrade probe.'
+  if ($env:GITHUB_ACTIONS -ne 'true' -or
+      $env:GITHUB_REPOSITORY -ne 'OttoBlues/dsh-plugins' -or
+      $env:GITHUB_REF -ne 'refs/heads/main' -or
+      -not [string]::IsNullOrWhiteSpace($env:DSH_HOME)) {
+    throw 'Incorrect Runner environment.'
   }
-  if (-not [string]::IsNullOrWhiteSpace($env:DSH_HOME)) {
-    throw 'The Runner uses an ambiguous DSH_HOME; refusing automatic upgrade.'
-  }
-  Record 'runner' 'passed' 'Trusted default-profile Runner environment.'
-
-  $stage = 'desktop-cli'
-  $dsh = Get-Command dsh -ErrorAction SilentlyContinue
-  if ($null -eq $dsh -or [string]::IsNullOrWhiteSpace($dsh.Source)) { throw 'DSH CLI not found.' }
-  $dshPath = [IO.Path]::GetFullPath($dsh.Source)
-  if (-not $dshPath.EndsWith('\resources\runtime\cli\bin\dsh.cmd', [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'The available dsh is not the Desktop-bundled CLI.'
-  }
-  Record 'desktop-cli' 'passed' 'Desktop-bundled CLI is available.'
-
-  $stage = 'profile'
-  if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) { throw 'USERPROFILE not set.' }
-  $profile = Join-Path $env:USERPROFILE '.dsh\profiles\desktop'
-  $profileManifestPath = Join-Path $profile 'package.json'
-  if (-not (Test-Path -LiteralPath $profileManifestPath -PathType Leaf)) {
-    throw 'Desktop profile is not initialized for this Runner account.'
-  }
-  $profileManifest = Get-Content -LiteralPath $profileManifestPath -Raw | ConvertFrom-Json
-  if ($null -eq $profileManifest.dsh -or $null -eq $profileManifest.dsh.profile) {
-    throw 'Invalid Desktop Profile manifest.'
-  }
-  $activeBundles = @($profileManifest.dsh.profile.bundles)
-  if (-not ($activeBundles -contains '@local/dsh-hud')) {
-    $report.state = 'not-installed'
-    Record 'profile' 'skipped' 'HUD has been uninstalled; automation respects that choice.'
+  $step = 'request'
+  $base = Join-Path $env:USERPROFILE '.dsh\component-updates'
+  $requestPath = Join-Path $base 'request.json'
+  if (-not (Test-Path -LiteralPath $requestPath -PathType Leaf)) {
+    $report.state = 'no-request'
+    Write-Host '[SKIPPED] No confirmed update request was submitted from the Components tab.'
   } else {
-    $stage = 'version'
-    $targetManifest = Get-Content -LiteralPath (Join-Path $root 'plugins\hud\package.json') -Raw | ConvertFrom-Json
-    $installedPath = Join-Path $profile 'node_modules\@local\dsh-hud\package.json'
-    if (-not (Test-Path -LiteralPath $installedPath -PathType Leaf)) {
-      throw 'HUD is listed but its installed package manifest is missing.'
+    $request = Get-Content -LiteralPath $requestPath -Raw | ConvertFrom-Json
+    if ($request.schema -ne 2 -or $request.name -ne '@local/dsh-hud' -or
+        [string]$request.version -notmatch '^\d+\.\d+\.\d+$' -or
+        $request.channel -notin @('released', 'unstable') -or
+        [string]$request.sha256 -notmatch '^[a-f0-9]{64}$' -or
+        [string]$request.commit -notmatch '^[a-f0-9]{40}$') {
+      throw 'Malformed update request.'
     }
-    $installedManifest = Get-Content -LiteralPath $installedPath -Raw | ConvertFrom-Json
-    if ($targetManifest.name -ne '@local/dsh-hud' -or $installedManifest.name -ne '@local/dsh-hud') {
-      throw 'Unexpected HUD package identity.'
-    }
-    $targetText = [string]$targetManifest.version
-    $currentText = [string]$installedManifest.version
-    if ($targetText -notmatch '^\d+\.\d+\.\d+$' -or $currentText -notmatch '^\d+\.\d+\.\d+$') {
-      throw 'Automatic upgrade requires numeric X.Y.Z versions.'
-    }
-    $report.target_version = $targetText
-    $report.current_version = $currentText
-    $targetVersion = [version]$targetText
-    $currentVersion = [version]$currentText
-
-    if ($currentVersion -ge $targetVersion) {
-      $report.state = 'current'
-      Record 'version' 'passed' 'Installed version is current or newer; no update is needed.'
-    } else {
-      Record 'version' 'passed' ('New tested version available: ' + $currentText + ' to ' + $targetText + '.')
-      $stage = 'desktop-process'
-      $binDirectory = Split-Path -Path $dshPath -Parent
-      $appRoot = [IO.Path]::GetFullPath((Join-Path $binDirectory '..\..\..\..'))
-      $executableNames = @(Get-ChildItem -LiteralPath $appRoot -File -Filter '*.exe' |
-        Where-Object { $_.Name -match '(?i)DeepSeek|Harness|DSH' } |
-        ForEach-Object { $_.Name })
-      if ($executableNames.Count -eq 0) { throw 'Desktop application executable could not be identified.' }
-      $running = @(Get-CimInstance Win32_Process | Where-Object { $executableNames -contains $_.Name })
-      if ($running.Count -gt 0) {
-        $report.state = 'deferred'
-        Record 'desktop-process' 'deferred' 'Desktop is running; keep current plugin until it exits.'
+    $channel = [string]$request.channel
+    $version = [string]$request.version
+    $step = 'channel-approval'
+    if ($channel -eq 'unstable') {
+      $prefsPath = Join-Path $base 'preferences.json'
+      if (-not (Test-Path -LiteralPath $prefsPath -PathType Leaf)) {
+        $report.state = 'experimental-disabled'
       } else {
-        $report.state = 'ready'
-        $report.needed = $true
-        Record 'desktop-process' 'passed' 'Desktop is stopped; version upgrade may proceed.'
+        $prefs = Get-Content -LiteralPath $prefsPath -Raw | ConvertFrom-Json
+        if ($prefs.schema -ne 1 -or $prefs.allowUnstable -ne $true) {
+          $report.state = 'experimental-disabled'
+        }
+      }
+    }
+    if ($report.state -eq 'experimental-disabled') {
+      Write-Host '[SKIPPED] Experimental updates are disabled in DSH component settings.'
+    } else {
+      $index = Get-Content -LiteralPath (Join-Path $root ('plugins\hud\' + $channel + '\index.json')) -Raw | ConvertFrom-Json
+      if ($index.schema -ne 1 -or $index.channel -ne $channel -or
+          $index.component -ne 'hud' -or $index.package -ne '@local/dsh-hud') {
+        throw 'Invalid approved update channel.'
+      }
+      $item = @($index.releases | Where-Object { $_.version -eq $version })
+      if ($item.Count -ne 1 -or $item[0].sourceCommit -ne $request.commit -or
+          $item[0].sha256 -ne $request.sha256 -or
+          $item[0].file -ne ('v' + $version + '/local-dsh-hud-' + $version + '.tgz')) {
+        throw 'Update request does not match a reviewed release manifest.'
+      }
+      $archive = Join-Path $root ('plugins\hud\' + $channel + '\' + $item[0].file.Replace('/', '\'))
+      if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
+        throw 'Requested installable archive is missing.'
+      }
+      if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$item[0].sha256) {
+        throw 'Requested archive failed SHA-256 verification.'
+      }
+      $step = 'desktop-state'
+      $dsh = Get-Command dsh -ErrorAction SilentlyContinue
+      if ($null -eq $dsh -or [string]::IsNullOrWhiteSpace($dsh.Source) -or
+          -not $dsh.Source.EndsWith('\resources\runtime\cli\bin\dsh.cmd', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Desktop-installed DSH CLI was not found.'
+      }
+      $profile = Join-Path $env:USERPROFILE '.dsh\profiles\desktop'
+      $profileManifest = Get-Content -LiteralPath (Join-Path $profile 'package.json') -Raw | ConvertFrom-Json
+      if (-not (@($profileManifest.dsh.profile.bundles) -contains '@local/dsh-hud')) {
+        $report.state = 'not-installed'
+        Write-Host '[SKIPPED] The user removed HUD; updater will not reinstall it.'
+      } else {
+        $installed = Get-Content -LiteralPath (Join-Path $profile 'node_modules\@local\dsh-hud\package.json') -Raw | ConvertFrom-Json
+        if ($installed.name -ne '@local/dsh-hud' -or [string]$installed.version -notmatch '^\d+\.\d+\.\d+$') {
+          throw 'Installed HUD manifest is invalid.'
+        }
+        $report.current_version = [string]$installed.version
+        $report.target_version = $version
+        $report.channel = $channel
+        if ([version]$installed.version -ge [version]$version) {
+          $report.state = 'current'
+          Write-Host '[SKIPPED] Requested version already installed or superseded.'
+        } else {
+          $rootBin = Split-Path -Path $dsh.Source -Parent
+          $appRoot = [IO.Path]::GetFullPath((Join-Path $rootBin '..\..\..\..'))
+          $names = @(Get-ChildItem -LiteralPath $appRoot -File -Filter '*.exe' |
+            Where-Object { $_.Name -match '(?i)DeepSeek|Harness|DSH' } |
+            ForEach-Object { $_.Name })
+          if ($names.Count -eq 0) { throw 'Desktop executable could not be identified.' }
+          $active = @(Get-CimInstance Win32_Process |
+            Where-Object { $names -contains $_.Name })
+          if ($active.Count -gt 0) {
+            $report.state = 'deferred'
+            Write-Host '[DEFERRED] DSH is open; no install while Agent sessions may be running.'
+          } else {
+            $report.state = 'ready'
+            $report.needed = $true
+            Write-Host ('[PASSED] Explicit ' + $channel + ' update ' + $version + ' is eligible.')
+          }
+        }
       }
     }
   }
 } catch {
-  $exitCode = 1
   $report.state = 'failed'
-  Record $stage 'failed' 'Preflight failed. No personal paths or raw exceptions are uploaded.'
+  $exitCode = 1
+  Write-Host ('[FAILED] Channel update request validation at ' + $step + '; no installer was called.')
 } finally {
-  $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $reportDir 'probe.json') -Encoding UTF8
+  $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $resultDir 'probe.json') -Encoding UTF8
   if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
-    ('needed=' + ([string]$report.needed).ToLowerInvariant()) | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ASCII
-  }
-  if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
-    $summary = @(
-      '## Desktop HUD auto-upgrade check',
-      '',
-      ('State: **' + $report.state + '**'),
-      ('Target: **' + $report.target_version + '**'),
-      '',
-      'The Desktop process is never terminated and a removed plugin is never silently reinstalled.'
-    )
-    $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding UTF8
+    ('needed=' + ([string]$report.needed).ToLowerInvariant()) |
+      Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ASCII
+    ('channel=' + [string]$report.channel) |
+      Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ASCII
+    ('version=' + [string]$report.target_version) |
+      Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ASCII
   }
 }
 exit $exitCode

@@ -42,6 +42,8 @@ jobs:
           node-version: '22'
       - name: Validate DSH bundles
         run: npm run verify
+      - name: Validate released and unstable installable archives
+        run: npm run verify:channels
       - name: Run Node tests
         run: npm test
 
@@ -57,7 +59,7 @@ jobs:
       - name: Validate PowerShell syntax
         shell: powershell
         run: |
-          foreach ($file in @('./scripts/windows/self-hosted-smoke.ps1', './scripts/windows/desktop-deploy.ps1', './scripts/windows/auto-upgrade-probe.ps1')) {
+          foreach ($file in @('./scripts/windows/self-hosted-smoke.ps1', './scripts/windows/desktop-deploy.ps1', './scripts/windows/auto-upgrade-probe.ps1', './scripts/windows/stage-channels.ps1', './scripts/windows/auto-upgrade-probe.ps1')) {
             $tokens = $null
             $parseErrors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$parseErrors)
@@ -79,10 +81,12 @@ jobs:
           node-version: '22'
       - name: Validate DSH bundles
         run: npm run verify
+      - name: Validate released and unstable installable archives
+        run: npm run verify:channels
       - name: Validate PowerShell smoke script syntax
         shell: powershell
         run: |
-          foreach ($file in @('./scripts/windows/self-hosted-smoke.ps1', './scripts/windows/desktop-deploy.ps1', './scripts/windows/auto-upgrade-probe.ps1')) {
+          foreach ($file in @('./scripts/windows/self-hosted-smoke.ps1', './scripts/windows/desktop-deploy.ps1', './scripts/windows/auto-upgrade-probe.ps1', './scripts/windows/stage-channels.ps1', './scripts/windows/auto-upgrade-probe.ps1')) {
             $tokens = $null
             $parseErrors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$parseErrors)

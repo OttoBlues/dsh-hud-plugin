@@ -4,7 +4,10 @@
 [CmdletBinding()]
 param(
   [ValidateSet('check', 'install', 'upgrade', 'uninstall')]
-  [string] $Mode = 'check'
+  [string] $Mode = 'check',
+  [ValidateSet('released', 'unstable')]
+  [string] $Channel = 'released',
+  [string] $TargetVersion = ''
 )
 
 Set-StrictMode -Version Latest
@@ -54,6 +57,52 @@ function Invoke-DshQuiet([string[]] $ArgsToPass, [string] $StageName) {
 
 function Read-DesktopManifest([string] $ManifestPath) {
   return (Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json)
+}
+
+function Resolve-VettedHudPackage {
+  $index = Read-DesktopManifest (Join-Path $repositoryRoot ('plugins\hud\' + $Channel + '\index.json'))
+  if ($index.schema -ne 1 -or $index.component -ne 'hud' -or
+      $index.package -ne '@local/dsh-hud' -or $index.channel -ne $Channel) {
+    throw 'Invalid channel index.'
+  }
+  $version = if ($TargetVersion -ne '') { $TargetVersion } else { [string]$index.latest }
+  if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'No installable version in channel.' }
+  $releases = @($index.releases | Where-Object { $_.version -eq $version })
+  if ($releases.Count -ne 1) { throw 'Requested version is not listed exactly once.' }
+  $entry = $releases[0]
+  $path = 'v' + $version + '/local-dsh-hud-' + $version + '.tgz'
+  if ($entry.file -ne $path -or [string]$entry.sha256 -notmatch '^[a-f0-9]{64}$') {
+    throw 'Installer descriptor invalid.'
+  }
+  $archive = Join-Path $repositoryRoot ('plugins\hud\' + $Channel + '\' + $path.Replace('/', '\'))
+  if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw 'Reviewed archive absent.' }
+  if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.sha256) {
+    throw 'Reviewed archive SHA-256 mismatch.'
+  }
+  $base = Join-Path $env:USERPROFILE '.dsh\component-updates'
+  if ($Channel -eq 'unstable') {
+    $prefPath = Join-Path $base 'preferences.json'
+    if (-not (Test-Path -LiteralPath $prefPath -PathType Leaf)) {
+      throw 'Unstable updates are disabled.'
+    }
+    $prefs = Read-DesktopManifest $prefPath
+    if ($prefs.schema -ne 1 -or $prefs.allowUnstable -ne $true) {
+      throw 'Unstable updates are disabled.'
+    }
+  }
+  if ($TargetVersion -ne '' -or $Channel -eq 'unstable') {
+    $requestPath = Join-Path $base 'request.json'
+    if (-not (Test-Path -LiteralPath $requestPath -PathType Leaf)) {
+      throw 'Explicit update request required.'
+    }
+    $request = Read-DesktopManifest $requestPath
+    if ($request.schema -ne 2 -or $request.name -ne '@local/dsh-hud' -or
+        $request.channel -ne $Channel -or $request.version -ne $version -or
+        $request.commit -ne $entry.sourceCommit -or $request.sha256 -ne $entry.sha256) {
+      throw 'Requested update differs from vetted channel package.'
+    }
+  }
+  return @{ version = $version; bundle = $archive }
 }
 
 function Has-HudBundle($Manifest) {
@@ -132,12 +181,8 @@ try {
     if ($wasInstalled) {
       Record 'install' 'passed' 'HUD Bundle already installed; no existing Desktop configuration modified.'
     } else {
-      $hudPackage = Read-DesktopManifest (Join-Path $repositoryRoot 'plugins\hud\package.json')
-      if ($hudPackage.name -ne '@local/dsh-hud') { throw 'Unexpected HUD manifest name.' }
-      $bundle = Join-Path $repositoryRoot ('dist\local-dsh-hud-' + $hudPackage.version + '.tgz')
-      if (-not (Test-Path -LiteralPath $bundle -PathType Leaf)) {
-        throw 'The tested HUD installation tarball was not found.'
-      }
+      $release = Resolve-VettedHudPackage
+      $bundle = $release.bundle
       Invoke-DshQuiet @('plugin', '--profile', 'desktop', 'add', $bundle) 'plugin-add'
       Record 'install' 'passed' 'Official Desktop CLI installed the tested HUD Bundle.'
     }
@@ -152,15 +197,9 @@ try {
   } elseif ($Mode -eq 'upgrade') {
     $stage = 'upgrade'
     if (-not $wasInstalled) { throw 'HUD is not installed; use install, not upgrade.' }
-    $hudPackage = Read-DesktopManifest (Join-Path $repositoryRoot 'plugins\hud\package.json')
-    if ($hudPackage.name -ne '@local/dsh-hud' -or [string]::IsNullOrWhiteSpace($hudPackage.version)) {
-      throw 'Invalid HUD package name or version.'
-    }
-    $targetVersion = [string]$hudPackage.version
-    $bundle = Join-Path $repositoryRoot ('dist\local-dsh-hud-' + $targetVersion + '.tgz')
-    if (-not (Test-Path -LiteralPath $bundle -PathType Leaf)) {
-      throw 'The tested HUD upgrade tarball was not found.'
-    }
+    $release = Resolve-VettedHudPackage
+    $targetVersion = $release.version
+    $bundle = $release.bundle
     $installedManifestPath = Join-Path (Split-Path -Path $manifestPath -Parent) 'node_modules\@local\dsh-hud\package.json'
     if (-not (Test-Path -LiteralPath $installedManifestPath -PathType Leaf)) {
       throw 'Cannot resolve the old HUD package manifest.'

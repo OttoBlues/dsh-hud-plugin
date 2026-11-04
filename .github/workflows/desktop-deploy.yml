@@ -35,20 +35,14 @@ jobs:
         with:
           persist-credentials: false
           clean: true
-      - name: Set up Node for install/upgrade
+      - name: Set up Node for vetted release verification
         if: inputs.mode == 'install' || inputs.mode == 'upgrade'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify and build the HUD installable bundle
+      - name: Verify approved released/unstable install packages
         if: inputs.mode == 'install' || inputs.mode == 'upgrade'
-        run: |
-          npm run check
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run pack:hud
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run verify:pack
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        run: node scripts/verify-channels.mjs
       - name: Apply to the existing DSH Desktop profile
         run: .\scripts\windows\desktop-deploy.ps1 -Mode $env:DEPLOY_MODE
       - name: Upload non-sensitive deployment status

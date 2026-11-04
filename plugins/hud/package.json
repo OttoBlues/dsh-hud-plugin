@@ -1,9 +1,12 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Read-only session-status HUD preview for DeepSeek Harness",
+  "description": "DSH HUD with component update catalog and opt-in updater tab",
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": ">=3.18.0 <4"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -26,7 +29,9 @@
       "immediately": true,
       "inject": [
         "@deepseek-ai/dsh-client-ui-layout",
-        "@deepseek-ai/dsh-client-ui-session"
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-settings"
       ]
     }
   }

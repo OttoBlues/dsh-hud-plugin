@@ -31,7 +31,8 @@ function setup(valuesOverride={}, runtime={}) {
     requestNonce:'',updateStatus:'',allowUnstable:false,
     autoUpdateEnabled:false,autoUpdateUnstable:false,autoAttemptKey:'',
     overlayVisible:false,hudMode:false,
-    checkNonce:'',checkState:'idle',checkError:'',checkAt:'',checkOrigin:'',
+    checkNonce:'',checkQueuedAt:'',checkState:'idle',checkError:'',checkAt:'',checkOrigin:'',
+    scanAt:'',scanState:'idle',
     ...valuesOverride,
   };
   const updates=[];
@@ -111,7 +112,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.5.3')])});
+  const ui=setup({catalog:catalog([own('0.5.4')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -187,14 +188,14 @@ test('Automatic experimental updates require separate explicit double opt-in',as
 test('overlay preview remains off and does not intercept mouse events',()=>{
   const ui=setup();
   const base=ui.render('shell.overlay');
-  assert.ok(find(base,x=>x.props?.['data-dsh-hud-switcher']===true).length===1);
+  assert.equal(base,null,'Native DSH must not show a floating HUD launcher');
   assert.equal(find(base,x=>x.props?.['data-dsh-hud-preview']===true).length,0);
   ui.values.overlayVisible=true;
   const overlay=ui.render('shell.overlay');
   const preview=find(overlay,x=>x.props?.['data-dsh-hud-preview']==='true')[0];
   assert.ok(preview);
   assert.equal(preview.props.style.pointerEvents,'none');
-  assert.equal(preview.props['data-dsh-hud-version'],'0.5.2');
+  assert.equal(preview.props['data-dsh-hud-version'],'0.5.3');
 });
 
 test('component center shows the renamed repository rather than legacy UI copy',()=>{
@@ -215,8 +216,8 @@ const flushMode=async()=>{await new Promise(resolve=>setImmediate(resolve));};
 test('HUD opt-in switch shows an interactive full-frame workspace without losing DSH selection',async()=>{
   const ui=setup();
   assert.equal(ui.values.hudMode,false);
-  const button=find(ui.render('shell.overlay'),x=>x.props?.['data-dsh-hud-switcher']===true)[0];
-  assert.ok(button);
+  const button=find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true)[0];
+  assert.ok(button,'HUD entry belongs only in Component Center');
   button.props.onClick();
   await flushMode();
   assert.equal(ui.values.hudMode,true);
@@ -237,8 +238,8 @@ test('HUD exits safely to native DSH conversation without resetting Session',asy
   await flushMode();
   assert.equal(ui.values.hudMode,false);
   assert.equal(ui.navigations.at(-1),null);
-  assert.ok(find(ui.render('shell.overlay'),
-    x=>x.props?.['data-dsh-hud-switcher']===true).length===1);
+  assert.equal(ui.render('shell.overlay'),null);
+  assert.ok(find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true).length===1);
 });
 
 test('HUD component center navigates to its registered main panel',async()=>{
@@ -289,19 +290,23 @@ test('HUD Escape and manager entry both keep DSH navigation usable',async()=>{
 test('cockpit UI uses fixed-pixel nested panels with no distorted SVG rails',()=>{
   const ui=setup({hudMode:true});
   const overlay=renderWorkspace(ui);
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.2');
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.3');
   assert.equal(overlay.props.style.pointerEvents,'auto');
   const panels=find(overlay,x=>x.props?.['data-hud-cockpit-panel']===true);
   assert.ok(panels.length>=4,'hero, metrics and Session modules stay separate');
   assert.ok(panels.every(x=>/12px/.test(x.props.style.clipPath)));
+  assert.ok(panels.every(x=>x.props.style.background==='#6dcbd2'));
+  assert.equal(overlay.props.style.backgroundColor,'#071522');
   const liners=find(overlay,x=>x.props?.['data-hud-panel-liner']===true);
   assert.equal(liners.length,panels.length);
-  assert.ok(liners.every(x=>x.props.style.inset===2 &&
-    /10px/.test(x.props.style.clipPath) &&
+  assert.ok(liners.every(x=>x.props.style.inset===1 &&
+    /11px/.test(x.props.style.clipPath) &&
+    x.props.style.background==='#142b3a' &&
     x.props.style.pointerEvents==='none'));
   assert.equal(find(overlay,x=>x.props?.['data-hud-traces']===true).length,0);
   assert.equal(find(overlay,x=>x.props?.['data-hud-scope']===true).length,0);
   assert.ok(find(overlay,x=>x.props?.['data-hud-header-rule']===true).length===1);
+  assert.equal(find(overlay,x=>x.props?.['data-hud-panel-cap']===true).length,0);
 });
 
 test('component center inherits DSH colors, keeps native cards and controls',()=>{
@@ -336,7 +341,8 @@ test('check updates button queues a manual scan without queuing a package',async
   assert.equal(button.props.disabled,false);
   button.props.onClick();
   await flushMode();
-  assert.equal(ui.values.checkState,'checking');
+  assert.equal(ui.values.checkState,'queued');
+  assert.match(ui.values.checkQueuedAt,/^\d{4}-\d\d-\d\dT/);
   assert.match(ui.values.checkNonce,/^\d+-/);
   assert.equal(ui.values.requestNonce,'','Refresh must not install a bundle');
   assert.equal(ui.values.updateStatus,'');
@@ -361,4 +367,44 @@ test('check button remains available when catalog is offline',()=>{
   const button=find(ui.render('main'),x=>x.props?.['data-hud-check-button']===true)[0];
   assert.ok(button);
   assert.equal(button.props.disabled,false);
+});
+
+
+test('stale manual check becomes a visible timeout and can retry without restart',async()=>{
+  const previous=new Date(Date.now()-65_000).toISOString();
+  const ui=setup({checkNonce:'stale-host',checkState:'checking',checkQueuedAt:previous});
+  const tree=ui.render('main');
+  const button=find(tree,x=>x.props?.['data-hud-check-button']===true)[0];
+  assert.ok(button);
+  assert.equal(button.props.disabled,false,'Watchdog must re-enable button');
+  const report=find(tree,x=>x.props?.['data-hud-check-state']==='timeout')[0];
+  assert.ok(report,'Timeout visible even when Host never responds');
+  assert.match(JSON.stringify(report),/检查超时/);
+  button.props.onClick();await flushMode();
+  assert.notEqual(ui.values.checkNonce,'stale-host');
+  assert.equal(ui.values.checkState,'queued');
+  assert.notEqual(ui.values.checkQueuedAt,previous);
+});
+
+test('checks stuck across earlier HUD versions can retry with no timestamp',()=>{
+  const ui=setup({checkNonce:'pre-053',checkState:'checking',checkQueuedAt:''});
+  const tree=ui.render('main');
+  assert.equal(find(tree,x=>x.props?.['data-hud-check-button']===true)[0].props.disabled,false);
+  assert.equal(find(tree,x=>x.props?.['data-hud-check-state']==='timeout').length,1);
+});
+
+test('background scan time is surfaced in native Component Center',()=>{
+  const ui=setup({scanAt:'2026-11-05T01:00:00Z',scanState:'success'});
+  const panel=find(ui.render('main'),x=>x.props?.['data-hud-check-panel']===true)[0];
+  assert.match(JSON.stringify(panel),/后台检查/);
+});
+
+test('HUD entry stays exclusive to component center after DSH mode restore',()=>{
+  const ui=setup({overlayVisible:false,hudMode:false});
+  assert.equal(ui.render('shell.overlay'),null);
+  assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true).length,1);
+  ui.values.overlayVisible=true;
+  const preview=ui.render('shell.overlay');
+  assert.equal(find(preview,x=>x.props?.['data-dsh-hud-switcher']===true).length,0);
+  assert.equal(find(preview,x=>x.props?.['data-dsh-hud-preview']==='true').length,1);
 });

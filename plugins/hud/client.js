@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.2 development: cockpit panel geometry and DSH-native component manager.
+ * DSH HUD V0.5.3: bounded update checks, flat cockpit, component-center-only entry.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,8 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.2';
+    const VERSION = '0.5.3';
+    const CHECK_WATCHDOG_MS = 45_000;
     const REFRESH_MS = 5 * 60_000;
 
     const dictionaries = {
@@ -30,7 +31,9 @@ window.__ModuleLoader__.load({
         section: '仓库组件', options: '更新策略', sourceOK: '公开仓库已连接',
         sourceUnavailable: '仓库版本源暂不可匿名访问：请将 GitHub 仓库设为 Public。',
         sourceChecking: '正在读取公开组件清单…', noComponents: '当前没有可用的仓库组件',
-        sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkIdle:'手动触发云端版本扫描',
+        sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkQueued:'排队等待 Host 检查…',
+        checkTimeout:'检查超时：DSH 更新服务未响应，可以点击重试并查看日志',checkIdle:'手动触发云端版本扫描',
+        automaticScan:'后台检查',
         checkSuccess:'版本检查完成',checkPartial:'部分通道检查不完整',checkFailed:'版本检查失败',
         checkAt:'检查时间',checkCanonical:'当前源：dsh-hud-plugin',checkLegacy:'当前源：旧地址兼容',
         checkTip:'仅重新读取公开组件索引与发布清单，不安装任何版本。',
@@ -64,7 +67,9 @@ window.__ModuleLoader__.load({
         section: 'Repository components', options: 'Update policy', sourceOK: 'Public repository connected',
         sourceUnavailable: 'Anonymous update source unavailable. Make the GitHub repository Public to enable direct updates.',
         sourceChecking: 'Checking the public component index…', noComponents: 'No repository components are available',
-        sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkIdle:'Check public channels now',
+        sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkQueued:'Waiting for DSH Host…',
+        checkTimeout:'Check timed out: DSH update service did not respond. Retry or inspect logs.',checkIdle:'Check public channels now',
+        automaticScan:'Background check',
         checkSuccess:'Update check completed',checkPartial:'Some release channels could not be checked',
         checkFailed:'Update check failed',checkAt:'Checked at',checkCanonical:'Source: dsh-hud-plugin',
         checkLegacy:'Source: legacy compatibility',checkTip:'Read public release manifests now; no installation is triggered.',
@@ -130,15 +135,12 @@ window.__ModuleLoader__.load({
     // Component Center. All angled edges use fixed CSS pixels, never a
     // stretched SVG viewport (the v0.5.1 distortion regression).
     const V = {
-      cyan:'#77dbe0',electric:'#7baec3',amber:'#dcb781',
-      text:'#e9f3f7',muted:'#a1b6c1',
-      stroke:'rgba(99,175,194,.52)',
+      cyan:'#6dcbd2',electric:'#6dcbd2',amber:'#d2af7a',
+      line:'#6dcbd2',stroke:'#6dcbd2',panel:'#142b3a',
+      background:'#071522',text:'#e6f1f4',muted:'#a8bdc6',
       cut:'polygon(12px 0,calc(100% - 12px) 0,100% 12px,100% calc(100% - 12px),calc(100% - 12px) 100%,12px 100%,0 calc(100% - 12px),0 12px)',
-      innerCut:'polygon(10px 0,calc(100% - 10px) 0,100% 10px,100% calc(100% - 10px),calc(100% - 10px) 100%,10px 100%,0 calc(100% - 10px),0 10px)',
-      outer:'linear-gradient(150deg,#4b8fa0 0%,#2f6174 28%,#1c3c4e 75%,#376d7b 100%)',
-      inner:'linear-gradient(180deg,#1b3444 0%,#122a3b 22%,#0b1f2e 85%,#0b1a27 100%)',
-      background:'radial-gradient(ellipse at 63% 12%,rgba(42,76,90,.22),transparent 48%),linear-gradient(155deg,#05111b 0%,#071623 72%,#091825 100%)',
-      backgroundSize:'auto',
+      innerCut:'polygon(11px 0,calc(100% - 11px) 0,100% 11px,100% calc(100% - 11px),calc(100% - 11px) 100%,11px 100%,0 calc(100% - 11px),0 11px)',
+      outer:'#6dcbd2',inner:'#142b3a',
     };
     function cockpitPanel(tag,attributes,...children) {
       // A solid 2px metallic housing encloses a lower recessed information
@@ -149,14 +151,10 @@ window.__ModuleLoader__.load({
         style:{position:'relative',isolation:'isolate',overflow:'hidden',
           borderRadius:0,boxSizing:'border-box',
           ...userStyle,clipPath:V.cut,border:0,
-          background:V.outer,
-          boxShadow:'inset 0 1px 0 rgba(172,218,226,.22)'}},
+          background:V.outer}},
         h('span',{'aria-hidden':true,'data-hud-panel-liner':true,
-          style:{position:'absolute',inset:2,clipPath:V.innerCut,
-            pointerEvents:'none',background:V.inner,zIndex:0}}),
-        h('span',{'aria-hidden':true,'data-hud-panel-cap':true,
-          style:{position:'absolute',left:31,top:4,width:50,height:1,
-            pointerEvents:'none',zIndex:1,background:'rgba(132,217,218,.56)'}}),
+          style:{position:'absolute',inset:1,clipPath:V.innerCut,
+            pointerEvents:'none',background:V.panel,zIndex:0}}),
         h('div',{style:{position:'relative',zIndex:1}},...children));
     }
 
@@ -184,14 +182,13 @@ window.__ModuleLoader__.load({
       const selected = rows.find(row => row.current);
       const hue = V.cyan, muted = V.muted;
       const outline = '1px solid '+V.stroke;
-      const panel = {background:V.inner,boxShadow:'inset 0 10px 30px rgba(0,0,0,.15)'};
+      const panel = {background:V.panel};
       const pill = (label,onClick,primary=false, extra={}) => h('button',{
         type:'button',onClick,...extra,style:{font:'inherit',fontSize:13,fontWeight:600,
-          color:primary?'#021921':V.text,
-          background:primary?'linear-gradient(90deg,#58d9e4,#9ef7eb)':'rgba(8,43,56,.55)',
-          border:primary?'1px solid rgba(130,250,247,.85)':outline,borderRadius:0,
+          color:primary?V.background:V.text,
+          background:primary?V.line:V.panel,
+          border:outline,borderRadius:0,
           clipPath:'polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))',
-          boxShadow:primary?'0 0 15px rgba(101,239,235,.20)':'inset 0 0 12px rgba(77,199,209,.1)',
           letterSpacing:'.06em',padding:'11px 17px',cursor:'pointer',minHeight:42,...extra.style}},label);
       const metric = (key,value,foot) => cockpitPanel('div',{key,
         style:{...panel,padding:'18px 23px',minWidth:140,flex:'1 1 150px'}},
@@ -199,11 +196,11 @@ window.__ModuleLoader__.load({
           fontFamily:'Consolas,monospace'}},'// '+key),
         h('strong',{style:{display:'block',fontSize:33,marginTop:12,
           fontWeight:600,fontVariantNumeric:'tabular-nums',letterSpacing:'.04em'}},value),
-        h('div',{style:{height:1,width:48,background:V.cyan,margin:'9px 0 8px',opacity:.65}}),
+        h('div',{style:{height:1,width:48,background:V.line,margin:'9px 0 8px'}}),
         h('div',{style:{fontSize:12,color:muted,marginTop:5}},foot));
       const sessionRow = row => h('div',{key:row.id,'data-hud-session-id':String(row.id),
         style:{display:'flex',gap:12,alignItems:'center',justifyContent:'space-between',
-          padding:'12px 0',borderBottom:'1px solid rgba(141,222,225,.10)'}},
+          padding:'12px 0',borderBottom:'1px solid '+V.line}},
         h('div',{style:{minWidth:0,flex:1}},
           h('div',{style:{fontSize:14,overflow:'hidden',textOverflow:'ellipsis',
             whiteSpace:'nowrap',fontWeight:540}},row.title),
@@ -217,8 +214,7 @@ window.__ModuleLoader__.load({
         tabIndex:0,'data-dsh-hud-workspace':true,'data-dsh-hud-version':VERSION,
         onKeyDown:e=>{if(e.key==='Escape'){e.stopPropagation?.();onExit();}},
         style:{position:'absolute',inset:0,zIndex:30,boxSizing:'border-box',
-          backgroundColor:'#06111a',backgroundImage:V.background,
-          backgroundSize:V.backgroundSize,
+          backgroundColor:V.background,
           color:V.text,fontFamily:'system-ui, sans-serif',
           pointerEvents:'auto',overflowY:'auto',overflowX:'hidden'}},
         h('div',{style:{maxWidth:1640,margin:'0 auto',
@@ -226,12 +222,12 @@ window.__ModuleLoader__.load({
           minHeight:'100%',display:'flex',flexWrap:'wrap',gap:25}},
           h('nav',{'aria-label':t('workspaceNav'),
             style:{width:176,flex:'1 1 155px',maxWidth:185,display:'flex',flexDirection:'column',
-              gap:12,borderRight:'1px solid rgba(122,180,193,.20)',padding:'18px 20px 17px 13px',
-              background:'linear-gradient(90deg,rgba(4,19,31,.54),rgba(12,30,43,.16))'}} ,
+              gap:12,borderRight:'1px solid '+V.line,padding:'18px 20px 17px 13px',
+              background:V.background}} ,
             h('div',{style:{padding:'4px 7px 29px'}},
               h('div',{style:{fontSize:29,fontWeight:800,letterSpacing:'.20em',
-                color:hue,textShadow:'0 0 14px rgba(98,239,242,.3)'}},'HUD'),
-              h('div',{style:{height:1,background:'linear-gradient(90deg,#65e9ef,transparent)',
+                color:hue}},'HUD'),
+              h('div',{style:{height:1,background:V.line,
                 margin:'13px 0 8px'}}),
               h('div',{style:{fontSize:9,color:muted,letterSpacing:'.14em',
                 fontFamily:'Consolas,monospace'}},'VECTOR / INTERFACE')),
@@ -246,8 +242,8 @@ window.__ModuleLoader__.load({
                 style:{width:'100%'}}))),
           h('div',{style:{flex:'5 1 460px',minWidth:0,display:'flex',flexDirection:'column',gap:20}},
             h('div',{'data-hud-header-rule':true,
-              style:{height:1,width:'100%',opacity:.75,
-                background:'linear-gradient(90deg,rgba(116,215,220,.7),rgba(116,215,220,.12) 45%,transparent)'}}),
+              style:{height:1,width:'100%',
+                background:V.line}}),
             h('header',{style:{display:'flex',alignItems:'center',gap:16,
               justifyContent:'space-between',flexWrap:'wrap'}},
               h('div',null,
@@ -263,13 +259,13 @@ window.__ModuleLoader__.load({
               background:V.inner}},
               h('div',{style:{display:'flex',gap:11,alignItems:'center'}},
                 h('span',{style:{width:8,height:8,borderRadius:'50%',
-                  background:active>0?'#6ce0ba':hue,display:'inline-block'}}),
+                  background:V.line,display:'inline-block'}}),
                 h('span',{style:{fontSize:12,color:hue,letterSpacing:'0.12em'}},
                   t('liveStatus'))),
               h('h2',{style:{fontSize:'clamp(26px,3.1vw,41px)',lineHeight:1.2,
                 margin:'22px 0 12px',fontWeight:580,position:'relative',
-                textShadow:'0 0 12px rgba(88,220,235,.14)'}},t('heroTitle')),
-              h('div',{style:{fontSize:14,color:'#c1d6df',lineHeight:1.7,
+                textShadow:'none'}},t('heroTitle')),
+              h('div',{style:{fontSize:14,color:V.muted,lineHeight:1.7,
                 maxWidth:650}},t('heroHelp'))),
             h('div',{style:{display:'flex',flexWrap:'wrap',gap:15}},
               metric(t('sessionCount'),String(rows.length),t('fromDSH')),
@@ -296,7 +292,7 @@ window.__ModuleLoader__.load({
                 rows.length?h('div',{style:{marginTop:8}},...rows.slice(0,tab==='overview'?5:12).map(sessionRow)):
                   h('p',{style:{color:muted,fontSize:13,marginTop:21}},
                     t('noSessions')))),
-            h('footer',{style:{marginTop:'auto',borderTop:'1px solid rgba(141,222,225,.15)',
+            h('footer',{style:{marginTop:'auto',borderTop:'1px solid '+V.line,
               paddingTop:20,display:'flex',gap:16,flexWrap:'wrap',
               alignItems:'center',justifyContent:'space-between'}},
               h('span',{style:{fontSize:12,color:muted}},t('readOnlyBoundary')),
@@ -362,20 +358,9 @@ window.__ModuleLoader__.load({
             h(OverlayLabel,{title:'DSH',body:t('noToken'),
               side:{right:32,bottom:128,textAlign:'right'}})));
         }
-        children.push(h('button',{key:'switcher',type:'button',
-          'data-dsh-hud-switcher':true,'aria-label':t('enterHud'),
-          onClick:()=>{void setMode(true);},
-          style:{position:'absolute',top:76,right:16,zIndex:31,
-            pointerEvents:'auto',fontFamily:'system-ui,sans-serif',fontSize:12,
-            fontWeight:650,letterSpacing:'.08em',padding:'9px 13px',
-            borderRadius:0,clipPath:V.cut,color:V.cyan,border:'1px solid '+V.stroke,
-            background:'rgba(4,24,36,.94)',boxShadow:'0 0 18px rgba(69,236,235,.12)',
-            cursor:'pointer'}},'◇ HUD'));
-        if (error) children.push(h('div',{key:'error',role:'alert',
-          style:{position:'absolute',top:118,right:16,
-            color:'#efb2b2',background:'#2f181e',fontSize:12,padding:9,
-            borderRadius:8,pointerEvents:'auto'}},error));
-        return h(React.Fragment,null,...children);
+        // No floating HUD launcher inside native DSH; the Component Center
+        // is the sole entry point. Optional read-only preview remains safe.
+        return children.length ? h(React.Fragment,null,...children) : null;
       };
     }
 
@@ -398,6 +383,11 @@ window.__ModuleLoader__.load({
         const [saving, setSaving] = React.useState(false);
         const [error, setError] = React.useState('');
         const [requestingCheck, setRequestingCheck] = React.useState(false);
+        const [watchNow, setWatchNow] = React.useState(Date.now());
+        React.useEffect(() => {
+          const tick=setInterval(()=>setWatchNow(Date.now()),1000);
+          return ()=>clearInterval(tick);
+        },[]);
         React.useEffect(() => {
           let alive = true;
           async function refreshInstalled() {
@@ -466,17 +456,31 @@ window.__ModuleLoader__.load({
 
 
         const checkState = values.checkState || 'idle';
-        const busyCheck = requestingCheck || !!values.checkNonce || checkState === 'checking';
-        const lastChecked = typeof values.checkAt === 'string' && !Number.isNaN(Date.parse(values.checkAt))
+        const queuedTime = Date.parse(values.checkQueuedAt || '');
+        const pendingCheck = !!values.checkNonce ||
+          checkState === 'queued' || checkState === 'checking';
+        // Old hung requests lack checkQueuedAt, so they can be retried too.
+        const checkTimedOut = pendingCheck &&
+          (!Number.isFinite(queuedTime) ||
+            watchNow - queuedTime >= CHECK_WATCHDOG_MS);
+        const busyCheck = requestingCheck || (pendingCheck && !checkTimedOut);
+        const checkDisplayState = checkTimedOut ? 'timeout' : checkState;
+        const lastChecked = typeof values.checkAt === 'string' &&
+          !Number.isNaN(Date.parse(values.checkAt))
           ? new Date(values.checkAt).toLocaleTimeString(undefined,
               {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+        const lastBackgroundCheck = typeof values.scanAt === 'string' &&
+          !Number.isNaN(Date.parse(values.scanAt))
+          ? new Date(values.scanAt).toLocaleTimeString(undefined,
+              {hour:'2-digit',minute:'2-digit'}) : '';
         const requestCheck = async () => {
           if (busyCheck) return;
           setRequestingCheck(true);setError('');
           try {
             const accepted = await form.mutate([
               {op:'set',path:['checkNonce'],value:String(Date.now())+'-'+Math.random().toString(36).slice(2)},
-              {op:'set',path:['checkState'],value:'checking'},
+              {op:'set',path:['checkQueuedAt'],value:new Date().toISOString()},
+              {op:'set',path:['checkState'],value:'queued'},
               {op:'set',path:['checkError'],value:''},
             ]);
             if (accepted === false) throw new Error('The update check request was rejected.');
@@ -486,7 +490,9 @@ window.__ModuleLoader__.load({
             setRequestingCheck(false);
           }
         };
-        const checkLabel = checkState === 'checking' ? t('checkingNow')
+        const checkLabel = checkTimedOut ? t('checkTimeout')
+          : checkState === 'queued' ? t('checkQueued')
+          : checkState === 'checking' ? t('checkingNow')
           : checkState === 'success' ? t('checkSuccess')
           : checkState === 'partial' ? t('checkPartial')
           : checkState === 'failed' ? t('checkFailed') : t('checkIdle');
@@ -499,7 +505,7 @@ window.__ModuleLoader__.load({
             background:'transparent',color:'inherit',width:'100%'}},
         h('div',{style:{maxWidth:980,margin:'0 auto'}},
           h('div',{style:{height:3,width:40,borderRadius:3,marginBottom:18,
-            background:'linear-gradient(90deg,#4cabb3,rgba(76,171,179,.06))'}}),
+            background:'#6dcbd2'}}),
           h('div',{style:{display:'flex',gap:16,alignItems:'center',
             justifyContent:'space-between',flexWrap:'wrap'}},
             h('h1',{style:{fontSize:25,margin:'0 0 7px',fontWeight:650}},t('title')),
@@ -520,23 +526,24 @@ window.__ModuleLoader__.load({
                   'data-hud-source':catalog.source,role:'status'},
                   catalog.source === 'public'?t('sourceOK'):
                     catalog.source==='checking'?t('sourceChecking'):t('sourceUnavailable')),
-                h('div',{'data-hud-check-state':checkState,role:'status',
+                h('div',{'data-hud-check-state':checkDisplayState,role:'status',
                   style:{fontSize:12,marginTop:7,
-                    color:checkState==='failed'||checkState==='partial'?'#ad722a':'var(--text-secondary,#777)'}},
+                    color:checkTimedOut||checkState==='failed'||checkState==='partial'?'#ad722a':'var(--text-secondary,#777)'}},
                   checkLabel,
                   lastChecked?' · '+t('checkAt')+' '+lastChecked:'',
-                  originLabel?' · '+originLabel:'')),
+                  originLabel?' · '+originLabel:'',
+                   lastBackgroundCheck?' · '+t('automaticScan')+' '+lastBackgroundCheck:'')),
               h('button',{type:'button','data-hud-check-button':true,
                 disabled:busyCheck,onClick:()=>{void requestCheck();},
                 style:{...actionStyle(busyCheck),minWidth:140,fontWeight:600}},
                 busyCheck?t('checkingNow'):t('checkNow'))),
             h('div',{style:{...tiny,marginTop:13}},t('checkTip')),
-            (checkState==='failed'||checkState==='partial') && values.checkError
+            (checkTimedOut || checkState==='failed'||checkState==='partial') && (checkTimedOut || values.checkError)
               ? h('div',{role:'alert','data-hud-check-error':true,
                   style:{fontSize:12,marginTop:10,color:'#a06e34',
                     padding:'10px 12px',background:'rgba(165,118,54,.065)',
                     borderLeft:'2px solid #c09b5f',
-                    overflowWrap:'anywhere'}},values.checkError)
+                    overflowWrap:'anywhere'}},checkTimedOut?t('checkTimeout'):values.checkError)
               : null),
 
           h('section',{style:{marginTop:31}},

@@ -45,7 +45,8 @@ function setup(overrides={}) {
     catalog:'{"schema":3,"source":"checking","components":[]}',
     allowUnstable:false,autoUpdateEnabled:false,autoUpdateUnstable:false,
     autoAttemptKey:'',overlayVisible:false,
-    checkNonce:'',checkState:'idle',checkError:'',checkAt:'',checkOrigin:'',
+    checkNonce:'',checkQueuedAt:'',checkState:'idle',checkError:'',checkAt:'',checkOrigin:'',
+    scanAt:'',scanState:'idle',
     requestComponent:'',requestVersion:'',requestChannel:'released',
     requestNonce:'',updateStatus:'',
     ...overrides.values,
@@ -322,4 +323,31 @@ test('explicit check never triggers a package replacement even if auto-update is
     assert.equal(s.values.checkState,'success');
     assert.equal(s.calls.installed.length,0);
   } finally{s.stop();}
+});
+
+
+test('a timed-out previous nonce is not replayed after a successful manual check',async()=>{
+  const s=setup({unstable:'0.5.3'});
+  try{
+    await flush();
+    await s.check();
+    assert.equal(s.values.checkState,'success');
+    const count=s.calls.http.length;
+    // The manual callback can fire again; consumed nonce must not re-fetch.
+    await s.refresh();
+    assert(s.calls.http.length>count,'Periodic scan must still work');
+    assert.equal(s.values.scanState,'success');
+    assert.match(s.values.scanAt,/^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(s.values.checkNonce,'');
+  }finally{s.stop();}
+});
+
+test('a failed channel never becomes a false successful background scan',async()=>{
+  const s=setup({failUnstable:true});
+  try{
+    await flush();
+    assert.equal(s.values.scanState,'partial');
+    await s.check();
+    assert.equal(s.values.checkState,'partial');
+  }finally{s.stop();}
 });

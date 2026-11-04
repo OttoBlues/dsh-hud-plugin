@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "HUD preview for DeepSeek Harness in-window shell overlay",
+  "description": "Read-only session-status HUD preview for DeepSeek Harness",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -25,7 +25,8 @@
       "platform": "web",
       "immediately": true,
       "inject": [
-        "@deepseek-ai/dsh-client-ui-layout"
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-session"
       ]
     }
   }

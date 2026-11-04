@@ -3,12 +3,6 @@ name: DSH component channel update worker
 # Only user-requested packages already listed in released/ or unstable/ may
 # install. Main source, unapproved packages and PR code are NEVER install inputs.
 on:
-  workflow_run:
-    workflows: ['DSH plugins CI']
-    types: [completed]
-    branches: [main]
-  schedule:
-    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
 
 permissions:

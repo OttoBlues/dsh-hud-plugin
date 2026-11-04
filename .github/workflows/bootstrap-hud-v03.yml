@@ -16,7 +16,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: dsh-hud-self-hosted
+  group: dsh-hud-v03-bootstrap
   cancel-in-progress: false
 
 jobs:

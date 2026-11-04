@@ -53,7 +53,7 @@ jobs:
       - name: Validate PowerShell syntax
         shell: powershell
         run: |
-          foreach ($file in @('./scripts/windows/self-hosted-smoke.ps1', './scripts/windows/desktop-deploy.ps1')) {
+          foreach ($file in @('./scripts/windows/self-hosted-smoke.ps1', './scripts/windows/desktop-deploy.ps1', './scripts/windows/auto-upgrade-probe.ps1')) {
             $tokens = $null
             $parseErrors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$parseErrors)
@@ -78,7 +78,7 @@ jobs:
       - name: Validate PowerShell smoke script syntax
         shell: powershell
         run: |
-          foreach ($file in @('./scripts/windows/self-hosted-smoke.ps1', './scripts/windows/desktop-deploy.ps1')) {
+          foreach ($file in @('./scripts/windows/self-hosted-smoke.ps1', './scripts/windows/desktop-deploy.ps1', './scripts/windows/auto-upgrade-probe.ps1')) {
             $tokens = $null
             $parseErrors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$parseErrors)

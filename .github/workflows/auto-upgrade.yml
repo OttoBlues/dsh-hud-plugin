@@ -1,0 +1,120 @@
+name: DSH HUD auto-upgrade
+
+# An explicitly opted-in, CI-gated maintenance workflow for this private repository.
+# On a successful main push CI: check immediately. If Desktop is open,
+# hourly scheduled retries will apply the upgrade after the user normally exits.
+on:
+  workflow_run:
+    workflows: ['DSH plugins CI']
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: dsh-hud-self-hosted
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Verify current main has passed push CI
+    if: github.repository == 'OttoBlues/dsh-plugins'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      approved: ${{ steps.check.outputs.approved }}
+      sha: ${{ steps.check.outputs.sha }}
+    steps:
+      - id: check
+        name: Validate repository, branch and green CI
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = 'OttoBlues';
+            const repo = 'dsh-plugins';
+            const branch = await github.rest.repos.getBranch({ owner, repo, branch: 'main' });
+            const sha = branch.data.commit.sha;
+
+            if (context.eventName === 'workflow_run') {
+              const source = context.payload.workflow_run;
+              if (!source ||
+                  source.event !== 'push' ||
+                  source.head_branch !== 'main' ||
+                  source.head_sha !== sha ||
+                  source.conclusion !== 'success' ||
+                  source.head_repository?.full_name !== 'OttoBlues/dsh-plugins') {
+                core.info('A non-current or non-successful CI event cannot deploy.');
+                return;
+              }
+            }
+
+            const checks = await github.rest.actions.listWorkflowRuns({
+              owner, repo,
+              workflow_id: 'ci.yml',
+              branch: 'main',
+              event: 'push',
+              head_sha: sha,
+              per_page: 30
+            });
+            const verified = checks.data.workflow_runs.some(run =>
+              run.head_sha === sha &&
+              run.event === 'push' &&
+              run.status === 'completed' &&
+              run.conclusion === 'success'
+            );
+            if (!verified) {
+              core.info('Current main does not yet have a successful push CI run.');
+              return;
+            }
+            core.setOutput('sha', sha);
+            core.setOutput('approved', 'true');
+
+  windows-auto-upgrade:
+    name: Probe and upgrade Desktop without interrupting running DSH
+    needs: gate
+    if: needs.gate.outputs.approved == 'true'
+    runs-on: [self-hosted, windows, x64, dsh-hud-test]
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+          clean: true
+      - id: probe
+        name: Check installed version and Desktop process without changes
+        run: .\scripts\windows\auto-upgrade-probe.ps1
+      - uses: actions/setup-node@v4
+        if: steps.probe.outputs.needed == 'true'
+        with:
+          node-version: '22'
+      - name: Build verified current HUD version
+        if: steps.probe.outputs.needed == 'true'
+        run: |
+          npm run check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run pack:hud
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run verify:pack
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upgrade existing Desktop HUD Bundle
+        if: steps.probe.outputs.needed == 'true'
+        run: .\scripts\windows\desktop-deploy.ps1 -Mode upgrade
+      - name: Upload non-sensitive probe and deployment reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hud-auto-upgrade-${{ github.run_id }}
+          path: |
+            auto-results/*.json
+            deploy-results/*.json
+          if-no-files-found: warn
+          retention-days: 7

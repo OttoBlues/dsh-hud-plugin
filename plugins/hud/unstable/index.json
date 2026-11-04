@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.3.0",
+  "latest": "0.4.0",
   "releases": [
     {
       "version": "0.3.0",
@@ -15,6 +15,17 @@
         "result": "success"
       },
       "note": "One-time user-requested trial for actual DSH Desktop testing; not a stable release"
+    },
+    {
+      "version": "0.4.0",
+      "file": "v0.4.0/local-dsh-hud-0.4.0.tgz",
+      "sha256": "7fc23e0d7d6fe9742bd327f112c8589e759d58aa9f9634efd1b8810161eedcc3",
+      "sourceCommit": "61a036560d47d6273fed27255a04828ca3b37ebd",
+      "test": {
+        "ciRun": "41850543533",
+        "result": "success"
+      },
+      "note": "An explicitly requested unstable version for anonymous in-app update verification after repository becomes Public"
     }
   ]
 }

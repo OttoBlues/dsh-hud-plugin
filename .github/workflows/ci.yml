@@ -8,6 +8,8 @@ on:
       - 'package.json'
       - 'plugins/**'
       - 'scripts/**'
+      - 'docs/**'
+      - 'README.md'
   pull_request:
     branches: [main]
     paths:
@@ -15,6 +17,8 @@ on:
       - 'package.json'
       - 'plugins/**'
       - 'scripts/**'
+      - 'docs/**'
+      - 'README.md'
   workflow_dispatch:
 
 permissions:

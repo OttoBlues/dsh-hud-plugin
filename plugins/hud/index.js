@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.9: reliable verified component installation and native Host readiness.
+ * DSH HUD v0.5.10: independently activating Host, late-bound services and settings.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -15,7 +15,10 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-export const inject = ['pluginManager','connection','webServer'];
+// Critical: a mandatory inject across three independently-composed Host
+// services can leave this bundle's entire Host pending while its Client loads.
+// Settings and status must activate even before the Connection/Manager services.
+export const inject = [];
 // Keep the previous name as a temporary migration fallback. Once the user
 // renames the repository, old raw URLs are NOT assumed to keep redirecting.
 const ROOTS = [
@@ -23,7 +26,7 @@ const ROOTS = [
   'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins',
 ];
 const CURRENT_NAME = '@local/dsh-hud';
-const HOST_VERSION = '0.5.9';
+const HOST_VERSION = '0.5.10';
 const CATALOG_EMPTY = '{"schema":3,"source":"checking","components":[]}';
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const HEX40 = /^[a-f0-9]{40}$/i;
@@ -237,8 +240,13 @@ export function apply(ctx, config) {
     }
   }
 
+  function pluginManager() {
+    const manager = ctx.get('pluginManager');
+    if (!manager) throw new Error('DSH Plugin Manager service is not available yet.');
+    return manager;
+  }
   async function installedRows() {
-    const rows = await ctx.pluginManager.listBundles();
+    const rows = await pluginManager().listBundles();
     if (!Array.isArray(rows)) throw new Error('DSH plugin inventory unavailable.');
     return rows;
   }
@@ -293,7 +301,7 @@ export function apply(ctx, config) {
         // Self-update can unload this Host before the manager's promise
         // settles. Never write old-instance config or query inventory after
         // replacing this very bundle. The next Host startup reconciles status.
-        const task = ctx.pluginManager.installBundle(target, {
+        const task = pluginManager().installBundle(target, {
           enabled: true, saveExact: true,
         });
         Promise.resolve(task).then(
@@ -322,7 +330,7 @@ export function apply(ctx, config) {
         return true; // accepted for processing, NOT proof of installation
       }
 
-      const result = await ctx.pluginManager.installBundle(target, {
+      const result = await pluginManager().installBundle(target, {
         enabled: true, saveExact: true,
       });
       if (disposed) return false;
@@ -688,8 +696,10 @@ export function apply(ctx, config) {
     }
   }
 
-  ctx.effect(() => {
-    const unregisterNativeRpc = ctx.connection.rpc.handle('/hud-native',
+  // Register only when Connection is actually served. Do not hold up Host
+  // startup / Config exposure on an optional, later-mounted HTTP transport.
+  ctx.inject(['connection'], scope => {
+    scope.effect(() => scope.connection.rpc.handle('/hud-native',
       (endpoint, payload, signal, peer) => endpoint === 'open'
         ? openNativeHud(payload, signal, peer)
         : endpoint === 'prepare-install'
@@ -701,7 +711,13 @@ export function apply(ctx, config) {
                   autoAt:runtime.autoAt,autoState:runtime.autoState,
                   autoError:runtime.autoError}}
               : rpcFail('hud/forbidden','Owner access required.'))
-            : Promise.resolve(rpcFail('hud/unknown-command','Unsupported native HUD command.')));
+            : Promise.resolve(rpcFail('hud/unknown-command','Unsupported native HUD command.'))),
+      'hud: authenticated native startup, verified packages, health status');
+  });
+
+  // Anonymous discovery and the legacy updater have no hard service injects:
+  // they can be used even when pluginManager/Connection loads later.
+  ctx.effect(() => {
     const guarded = promise => {
       Promise.resolve(promise).catch(error => {
         if (!disposed) {
@@ -740,7 +756,6 @@ export function apply(ctx, config) {
       disposed = true;
       nativeHudWindow?.close();
       nativeHudWindow = null;
-      void unregisterNativeRpc();
       controller.abort();
       clearTimeout(reconcile);
       clearInterval(poll);

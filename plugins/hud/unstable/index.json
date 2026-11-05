@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.5.9",
+  "latest": "0.5.10",
   "releases": [
     {
       "version": "0.3.0",
@@ -158,6 +158,17 @@
         "result": "success"
       },
       "note": "Explicitly requested U059 Windows independent frameless HUD experiment. Verified direct installer through stable DSH Plugin Manager, automatic update ledger and native Host readiness diagnostics; U059 Desktop UAT pending."
+    },
+    {
+      "version": "0.5.10",
+      "file": "v0.5.10/local-dsh-hud-0.5.10.tgz",
+      "sha256": "0679a112fc18d545cc3ee5376a9644ed29277661d3ed870800c554c56fa55e4c",
+      "sourceCommit": "2d892773d77029289ea889b13b98e69c63d55b37",
+      "test": {
+        "ciRun": "42016577025",
+        "result": "success"
+      },
+      "note": "Explicitly requested U0510 Windows independent frameless HUD experiment. Host starts native RPC without optional Plugin Manager, GitHub public scanning begins automatically, update-policy writes report accepted or denied; U0510 Desktop UAT pending."
     }
   ]
 }

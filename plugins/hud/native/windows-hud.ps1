@@ -8,6 +8,7 @@ param(
   [int]$HostPid = 0,
   [ValidateSet('zh','en')][string]$Language = 'zh',
   [switch]$SelfTest,
+  [switch]$SelfTestWindow,
   [switch]$RestoreOnly
 )
 
@@ -161,6 +162,25 @@ if ($window.WindowStyle -ne [Windows.WindowStyle]::None -or
 }
 if ($SelfTest) {
   [Console]::Out.WriteLine('HUD_SELF_TEST_OK')
+  exit 0
+}
+
+# CI: exercise the actual WPF ShowDialog/ContentRendered path without
+# touching any real DSH window. Timeout closes the temporary test window.
+if ($SelfTestWindow) {
+  $script:rendered = $false
+  $guard = New-Object System.Windows.Threading.DispatcherTimer
+  $guard.Interval = [TimeSpan]::FromSeconds(6)
+  $guard.Add_Tick({ $guard.Stop(); $window.Close() })
+  $window.Add_ContentRendered({
+    $script:rendered = $true
+    [Console]::Out.WriteLine('HUD_WPF_RENDERED_OK')
+    $window.Close()
+  })
+  $guard.Start()
+  [void]$window.ShowDialog()
+  $guard.Stop()
+  if (-not $script:rendered) { throw 'WPF never reached ContentRendered in CI.' }
   exit 0
 }
 if ($ShellPid -lt 1 -or $HostPid -lt 1) { throw 'Invalid DSH Desktop / Host PID.' }

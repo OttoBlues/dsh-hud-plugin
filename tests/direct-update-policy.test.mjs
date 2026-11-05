@@ -139,7 +139,7 @@ test('a transient missing ConfigEditor cannot permanently consume a check reques
   assert.match(host,/retryCheckAfter = Date\.now\(\) \+ 3_000/);
   assert.match(host,/lastCheckNonce = nonce;/);
   assert.match(host,/if \(!completed && !disposed && config\.checkNonce\.get\(\) === nonce\)/);
-  assert.match(host,/HUD manual check could not be claimed/);
+  assert.match(host,/HUD Host received manual check request/);
 });
 
 

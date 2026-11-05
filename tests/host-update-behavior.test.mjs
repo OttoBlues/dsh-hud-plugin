@@ -92,7 +92,7 @@ function setup(overrides={}) {
         Object.assign(values,next);calls.writes.push(next);
       }};
     },
-    logger:{warn:(...x)=>calls.logs.push(x.join(' ')),info(){}},
+    logger:{warn:(...x)=>calls.logs.push(x.join(' ')),info:(...x)=>calls.logs.push(x.join(' '))},
     pluginManager:{
       async listBundles(){calls.list++;return inventory;},
       async installBundle(path,opts){

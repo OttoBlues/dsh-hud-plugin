@@ -191,7 +191,7 @@ export function apply(ctx, config) {
   let lastMissingEditorWarning = 0;
   const controller = new AbortController();
   const cacheRoot = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'approved-component-packages');
-  const autoLedgerPath = join(cacheRoot, '.hud-auto-attempt.json');
+  const autoLedgerFor = id => join(cacheRoot,id,'.auto-attempt.json');
   const runtime = {scanAt:'',scanState:'idle',scanError:'',autoAt:'',autoState:'idle',autoError:''};
 
   async function writeSettings(patch) {
@@ -431,18 +431,19 @@ export function apply(ctx, config) {
           // dispose the Host BEFORE installBundle is even called.
           let previous = '';
           try {
-            const record = JSON.parse(await readFile(autoLedgerPath,'utf8'));
+            const record = JSON.parse(await readFile(autoLedgerFor(component.id),'utf8'));
             previous = typeof record.key === 'string' ? record.key : '';
           } catch { /* First attempt or a truncated old ledger. */ }
           if (previous === key || config.autoAttemptKey.get() === key) continue;
           // A failed network/manifest read must not burn the auto-update attempt.
           const verifiedTarget=await verifiedPackagePath(component,approved,signal);
           if (disposed) break;
-          await mkdir(cacheRoot,{recursive:true,mode:0o700});
-          const temporaryLedger=autoLedgerPath+'.'+process.pid+'.tmp';
+          await mkdir(join(cacheRoot,component.id),{recursive:true,mode:0o700});
+          const ledgerPath=autoLedgerFor(component.id);
+          const temporaryLedger=ledgerPath+'.'+process.pid+'.tmp';
           await writeFile(temporaryLedger,JSON.stringify({key,at:new Date().toISOString()}),
             {mode:0o600});
-          await rename(temporaryLedger,autoLedgerPath);
+          await rename(temporaryLedger,ledgerPath);
           runtime.autoAt=new Date().toISOString();
           runtime.autoState='submitted'; // pending, not proof of success
           runtime.autoError='';
@@ -707,6 +708,17 @@ export function apply(ctx, config) {
         }
       });
     };
+    guarded((async()=>{
+      try {
+        const record=JSON.parse(await readFile(autoLedgerFor('hud'),'utf8'));
+        const parts=String(record.key||'').split(':');
+        if(parts[0]===CURRENT_NAME && SEMVER.test(parts[2]||'')){
+          const row=(await installedRows()).find(item=>item.name===CURRENT_NAME && item.installed);
+          runtime.autoAt=typeof record.at==='string'?record.at:'';
+          runtime.autoState=row?.version===parts[2]?'installed':'unconfirmed';
+        }
+      }catch { /* Fresh profile has no previous automatic attempt. */ }
+    })());
     guarded(discover());
     // Volatile configuration writes from the DSH client are observable
     // without remounting this plugin. Listen immediately; the 850 ms timer

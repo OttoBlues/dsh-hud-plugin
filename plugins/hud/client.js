@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.5: flat cockpit and Loader-entry backed release scans.
+ * DSH HUD V0.5.6: independent read-only release checks and safe Host-owned installs.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.5';
+    const VERSION = '0.5.6';
     const CHECK_WATCHDOG_MS = 45_000;
     const REFRESH_MS = 5 * 60_000;
 
@@ -112,6 +112,88 @@ window.__ModuleLoader__.load({
             typeof row.title === 'string' && typeof row.description === 'string'),
         };
       } catch { return { source: 'unavailable', components: [] }; }
+    }
+
+
+    // V0.5.6: a release check is a READ, not a profile configuration edit.
+    // DSH configForms.mutate(...) is an authenticated settings persistence
+    // operation, not an RPC transport for transient commands. Keep installs
+    // in the Host; only public, fixed GitHub metadata is read here.
+    const PUBLIC_ROOT = 'https://raw.githubusercontent.com/OttoBlues/dsh-hud-plugin/main/plugins';
+    const VERSION_RE = /^\d+\.\d+\.\d+$/;
+    const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+    const PACKAGE_RE = /^@local\/[a-z0-9][a-z0-9-]{0,63}$/;
+    const HASH_RE = /^[a-f0-9]{64}$/i;
+    const COMMIT_RE = /^[a-f0-9]{40}$/i;
+    async function publicJson(path) {
+      // path is derived only from our own fixed names or validated slugs.
+      if (!/^(index\.json|[a-z0-9][a-z0-9-]{0,63}\/(unstable|released)\/index\.json)$/.test(path)) {
+        throw new Error('Unsafe component index path.');
+      }
+      if (typeof fetch !== 'function') throw new Error('Browser fetch is unavailable.');
+      const response=await fetch(PUBLIC_ROOT+'/'+path,{
+        method:'GET',mode:'cors',redirect:'error',credentials:'omit',
+        cache:'no-store',signal:AbortSignal.timeout(14_000),
+      });
+      if (!response.ok) throw new Error(path+': HTTP '+response.status);
+      const body=await response.text();
+      if(body.length>100_000)throw new Error(path+': index exceeded size limit.');
+      return JSON.parse(body);
+    }
+    function publicRelease(value,component,channel){
+      if(value?.schema!==1 || value.component!==component.id ||
+         value.package!==component.name || value.channel!==channel ||
+         !Array.isArray(value.releases) || value.releases.length>128) {
+        throw new Error(component.id+'/'+channel+': invalid channel.');
+      }
+      if(value.latest===null && value.releases.length===0)return null;
+      if(typeof value.latest!=='string'||!VERSION_RE.test(value.latest)){
+        throw new Error(component.id+'/'+channel+': invalid version.');
+      }
+      const results=value.releases.filter(x=>x?.version===value.latest);
+      if(results.length!==1)throw new Error(component.id+'/'+channel+': ambiguous latest.');
+      const item=results[0],file='v'+item.version+'/local-dsh-'+component.id+'-'+item.version+'.tgz';
+      if(item.file!==file||!HASH_RE.test(item.sha256||'')||
+         !COMMIT_RE.test(item.sourceCommit||'')){
+        throw new Error(component.id+'/'+channel+': invalid archive facts.');
+      }
+      if(channel==='released' &&
+        (item.acceptance?.decision!=='approved'||!/^U\d{2,3}$/.test(item.acceptance?.check||''))){
+        throw new Error(component.id+'/released: missing acceptance.');
+      }
+      if(channel==='unstable' &&
+        (item.test?.result!=='success'||!/^\d+$/.test(item.test?.ciRun||''))){
+        throw new Error(component.id+'/unstable: missing green CI.');
+      }
+      return {channel,version:item.version,file,sha256:item.sha256.toLowerCase(),
+        commit:item.sourceCommit.toLowerCase()};
+    }
+    async function checkPublicReleases(){
+      const root=await publicJson('index.json');
+      if(root?.schema!==1||!Array.isArray(root.components)||root.components.length>32) {
+        throw new Error('Invalid repository component index.');
+      }
+      const names=new Set(),ids=new Set(),problems=[];
+      const components=await Promise.all(root.components.map(async component=>{
+        if(!SLUG_RE.test(component?.id||'')||!PACKAGE_RE.test(component?.name||'')||
+          typeof component.title!=='string'||component.title.length<1||component.title.length>90||
+          typeof component.description!=='string'||component.description.length>300||
+          names.has(component.name)||ids.has(component.id)){
+          throw new Error('Invalid component registry row.');
+        }
+        names.add(component.name);ids.add(component.id);
+        const results=await Promise.all(['released','unstable'].map(async channel=>{
+          try { return publicRelease(await publicJson(component.id+'/'+channel+'/index.json'),
+            component,channel); }
+          catch(error){problems.push(component.id+'/'+channel+': '+
+            String(error?.message||'request failed').slice(0,110));return null;}
+        }));
+        return {id:component.id,name:component.name,title:component.title,
+          description:component.description,released:results[0],unstable:results[1]};
+      }));
+      return {catalog:JSON.stringify({schema:3,source:'public',components}),
+        state:problems.length?'partial':'success',
+        error:problems.join(' | ').slice(0,450)};
     }
 
     const overlayStyle = {

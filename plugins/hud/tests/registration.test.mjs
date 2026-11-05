@@ -389,8 +389,8 @@ const publicIndex={schema:1,components:[{
 const stableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
   channel:'released',latest:null,releases:[]};
 const unstableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
-  channel:'unstable',latest:'0.5.8',releases:[{
-    version:'0.5.8',file:'v0.5.7/local-dsh-hud-0.5.7.tgz',
+  channel:'unstable',latest:'0.5.9',releases:[{
+    version:'0.5.9',file:'v0.5.9/local-dsh-hud-0.5.9.tgz',
     sha256:'f'.repeat(64),sourceCommit:'a'.repeat(40),
     test:{result:'success',ciRun:'123456'},
   }]};

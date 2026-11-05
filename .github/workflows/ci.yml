@@ -66,6 +66,9 @@ jobs:
       - name: Smoke-test native Windows WPF HUD window (without showing it)
         shell: powershell
         run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -STA -File ./plugins/hud/native/windows-hud.ps1 -SelfTest
+      - name: Verify actual WPF window renders and closes without DSH side effects
+        shell: powershell
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -STA -File ./plugins/hud/native/windows-hud.ps1 -SelfTestWindow
 
   publish-hud-v058:
     name: Publish immutable HUD v0.5.8 Unstable package (no Desktop deployment)

@@ -82,7 +82,7 @@ function setup(overrides={}) {
         async edit(entry,transform){
         if(entry!==editableEntry)throw new Error('Wrong Loader Entry object');
         const next=transform({...values});
-        if(failCheckClaimOnce && next.checkState==='checking' && next.checkNonce){
+        if(failCheckClaimOnce && next.checkState==='success' && next.checkAt){
           failCheckClaimOnce=false;
           throw new Error('Simulated transient ConfigEditor lock');
         }
@@ -374,7 +374,7 @@ test('a failed channel never becomes a false successful background scan',async()
 });
 
 
-test('a failed ConfigEditor check claim does not permanently consume the request nonce',async()=>{
+test('a failed ConfigEditor result commit does not permanently consume the request nonce',async()=>{
   const s=setup({rejectCheckClaimOnce:true});
   try{
     await flush(); // initial catalog discovery with a working editor
@@ -383,14 +383,14 @@ test('a failed ConfigEditor check claim does not permanently consume the request
     s.values.checkState='queued';
     await s.checkCallback();
     assert.equal(s.values.checkNonce,'retry-nonce');
-    assert.equal(s.values.checkState,'queued','Host failed before acknowledging the request');
+    assert.equal(s.values.checkState,'queued','Host could not publish its result');
     assert(s.calls.logs.some(x=>/Simulated transient ConfigEditor lock/.test(x)));
     // One 3-second retry backoff, then the SAME nonce must resume.
     s.advance(3_100);
     await s.checkCallback();
     assert.equal(s.values.checkNonce,'');
     assert.equal(s.values.checkState,'success');
-    assert(s.calls.http.length>initialHttp,'The abandoned check must now fetch GitHub');
+    assert(s.calls.http.length>initialHttp,'A failed result write must allow another GitHub scan');
   }finally{s.stop();}
 });
 

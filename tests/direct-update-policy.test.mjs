@@ -159,7 +159,7 @@ test('manual release scanning persists results in one authoritative settings edi
 });
 
 test('native window launch uses official Connection RPC, never volatile settings as a command bus',()=>{
-  assert.match(host,/inject = \['pluginManager','connection'\]/);
+  assert.match(host,/inject = \['pluginManager','connection','webServer'\]/);
   assert.match(host,/ctx\.connection\.rpc\.handle\('\/hud-native'/);
   assert.match(host,/peer\?\.principal\?\.kind !== 'owner'/);
   assert.match(client,/ctx\.connection\.rpc\.call\('\/hud-native', 'open'/);

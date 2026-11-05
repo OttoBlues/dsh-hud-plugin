@@ -102,3 +102,7 @@ V0.5.3 报告的手动检查超时已有一条**确认的源码故障路径**：
 ## V0.5.8 启动超时修复候选
 
 用户报告 V0.5.7 独立 HUD 无窗口、触发超时。本版不再把独立窗口启动请求放进 DSH ConfigForms/Host 队列，而是调用 DSH 正式 Connection RPC，等待真实 WPF READY 并显示错误码；继续限制只能从 HUD 组件中心启动。Windows 主窗口查找改为确认 Electron 父进程、Chromium 窗口类型和唯一性，不再依赖可变标题。V0.5.8 已通过 GitHub Linux/Windows CI（含 WPF 实际渲染），固定包已登记 Unstable；真实 Windows U058 仍需人工验收。[具体修复与验收](docs/HUD-NATIVE-WINDOW-V058.md)。
+
+## HUD v0.5.9 重复更新和独立 HUD Host 路由修复（U059 候选）
+
+用户报告 v0.5.8 在同一 DSH 进程中连续更新时状态永久卡在「已确认，正在安装」，重启后版本生效，HUD 独立窗口启动请求返回 HTTP 405。v0.5.9 修改为 Host 按固定公开通道验证 SHA-256 安装包后，由 DSH 官方插件管理器直接执行安装；不再用插件 Loader 配置写入承担临时安装队列。后台自动更新采用按组件、版本和哈希去重的本地尝试账本。组件中心区分正在安装、实际失败、状态未知和必须重启，并探测运行 Host 版本，解释 404/405 的修复步骤。此功能仍需 Windows DSH Desktop 的人工 U059 验证；正式版 Released 不变。详见 [U059 修复与验收](docs/HUD-INSTALL-RELIABILITY-V059.md)。

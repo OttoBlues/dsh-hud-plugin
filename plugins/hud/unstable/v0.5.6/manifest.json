@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "component": "hud",
+  "package": "@local/dsh-hud",
+  "channel": "unstable",
+  "version": "0.5.6",
+  "file": "local-dsh-hud-0.5.6.tgz",
+  "sha256": "451315a7cb6c9b11a56542aa823bcd43408e7fa39cef5bf899f5cd691a44dc82",
+  "sourceCommit": "01e088db5cfe2dc2eaf72a23e1b4ac0ca58e26b4",
+  "test": {
+    "ciRun": "41972165734",
+    "result": "success"
+  },
+  "verification": {
+    "sourceCi": "41972165734",
+    "role": "U056 decoupled read-only public channel check; browser CORS/install UAT pending",
+    "approvedAsStable": false
+  }
+}

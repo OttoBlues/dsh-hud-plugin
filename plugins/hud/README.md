@@ -8,7 +8,7 @@
 - 自动更新默认关闭，试验版订阅与自动试验版需要独立授权；窗口内 HUD 预览默认关闭。
 - 历史 V0.4.0 曾出现自更新宿主异常，V0.4.1 引入 Host 生命周期保护。
 
-**已发布：** Unstable V0.5.5；Released 为空。用户截图确认已在 Windows Desktop 安装 V0.4.1。
+**已发布：** Unstable V0.5.6；Released 为空。用户截图确认已在 Windows Desktop 安装 V0.4.1。
 
 **当前版本：** V0.4.2 已根据明确要求制作 Unstable 固定包，更新中英文 HUD 仓库说明与组件目录，移除不再需要的本地 Runner 管线。安装需要人工确认，不能把 CI 通过等同于 Desktop 无崩溃验收。
 
@@ -43,3 +43,7 @@
 ## V0.5.5 Loader 条目兼容与手动检查（Unstable）
 
 用 ConfigEditor 的 `entries()` 获取当前 profile 可编辑的 `dsh-hud` Loader entry，避免与 Host 纤程快捷条目不一致。实时监听 `loader/volatile-update`，并在扫描完成时一次性提交结果，规避多次配置重组。用户需在 Windows Desktop 中实际验证能检测到新版本、不显示长时间 Host 队列。原 HUD 纯色视觉、DSH 组件中心与自动更新授权均不改变。
+
+## V0.5.6 浏览器只读检查（Unstable）
+
+组件中心“检查更新”直接获取固定 GitHub Raw 源的公开 JSON 文件，校验来源、包名、版本、CI、源码提交与 SHA-256，无需通过 DSH Host 改写设置传递命令。浏览器网络/CORS 异常会明确提示，不应继续显示等待 Host。该按钮永不下载或安装插件；更新安装仍由 Host 负责。U056 需要用户实际安装后验证跨域访问与升级操作。

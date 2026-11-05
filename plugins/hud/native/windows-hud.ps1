@@ -1,5 +1,5 @@
 <#
-DSH HUD v0.5.7 Windows native window.
+DSH HUD v0.5.8 Windows native window, direct RPC startup diagnostics.
 This file is bundled with @local/dsh-hud. It executes no remote code.
 Its only window controls are "Return to DSH", Escape and Alt+F4.
 #>
@@ -40,12 +40,9 @@ public static class DshHudWin32 {
       StringBuilder cls = new StringBuilder(256);
       GetClassName(hwnd, cls, cls.Capacity);
       if (!cls.ToString().StartsWith("Chrome_WidgetWin_", StringComparison.Ordinal)) return true;
-      StringBuilder title = new StringBuilder(512);
-      GetWindowText(hwnd, title, title.Capacity);
-      string name = title.ToString();
-      if (name.IndexOf("DeepSeek Harness", StringComparison.OrdinalIgnoreCase) < 0 &&
-          !name.Equals("DSH", StringComparison.OrdinalIgnoreCase) &&
-          !name.StartsWith("DSH ", StringComparison.OrdinalIgnoreCase)) return true;
+      // Desktop's BrowserWindow title can follow the current document/session.
+      // Verify PID, Chromium class, visible state and actual size instead of
+      // requiring a hardcoded caption that varies across DSH versions.
       Rect area;
       if (!GetWindowRect(hwnd, out area) || (area.Right-area.Left) < 500 ||
           (area.Bottom-area.Top) < 300) return true;
@@ -109,7 +106,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
                 BorderThickness="1" FontSize="14" FontWeight="SemiBold"
                 Width="140" Height="42" Cursor="Hand" Margin="20,0,0,0"/>
         <StackPanel x:Name="TitleDragArea" Cursor="SizeAll">
-          <TextBlock Text="DSH // HUD 0.5.7" Foreground="#6DCBD2" FontSize="12" FontFamily="Consolas"/>
+          <TextBlock Text="DSH // HUD 0.5.8" Foreground="#6DCBD2" FontSize="12" FontFamily="Consolas"/>
           <TextBlock x:Name="WindowHeading" Text="HUD 独立工作台" FontSize="30" FontWeight="SemiBold" Margin="0,7,0,0"/>
         </StackPanel>
       </DockPanel>
@@ -171,7 +168,10 @@ if ($null -eq (Get-Process -Id $ShellPid -ErrorAction SilentlyContinue)) {
   throw 'DSH Desktop shell process is unavailable.'
 }
 $target = [DshHudWin32]::FindShell($ShellPid, $false)
-if ($target -eq [IntPtr]::Zero) { throw 'Expected exactly one visible DSH Desktop app window.' }
+if ($target -eq [IntPtr]::Zero) {
+  [Console]::Out.WriteLine('ERROR: No unique visible large Chromium DSH window belongs to Electron Shell PID ' + $ShellPid + '. Verify the DSH Desktop shell/Host process relationship and main window visibility.')
+  exit 3
+}
 
 # Native window receives ONLY an initial read-only snapshot on its private stdin.
 # This avoids leaking session titles through command lines, URLs or temporary files.

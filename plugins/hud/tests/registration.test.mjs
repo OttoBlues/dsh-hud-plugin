@@ -8,7 +8,7 @@ const client = readFileSync(new URL('../client.js', import.meta.url), 'utf8');
 function setup(valuesOverride={}, runtime={}) {
   let module;
   vm.runInNewContext(client, {
-    window:{__ModuleLoader__:{load(x){module=x;}}},
+    window:{__ModuleLoader__:{load(x){module=x;}},sessionStorage:runtime.sessionStorage},
     fetch:runtime.fetch || (async()=>{throw new Error('Browser fetch unavailable');}),
     AbortSignal,AbortController,setTimeout,clearTimeout,
   });
@@ -486,4 +486,51 @@ test('HUD entry stays exclusive to component center after DSH mode restore',()=>
   const preview=ui.render('shell.overlay');
   assert.equal(find(preview,x=>x.props?.['data-dsh-hud-switcher']===true).length,0);
   assert.equal(find(preview,x=>x.props?.['data-dsh-hud-preview']==='true').length,1);
+});
+
+
+test('two sequential manual upgrades run through DSH Manager in one Desktop session',async()=>{
+  const ui=setup({allowUnstable:true,catalog:catalog([own('0.4.1','0.6.0')])});
+  const install=async()=>{
+    const tree=ui.render('main');
+    find(tree,x=>x.type==='button'&&x.children.includes('更新'))[0].props.onClick();
+    find(ui.render('main'),x=>x.type==='button'&&x.children.includes('确认'))[0].props.onClick();
+    await flushMode();
+  };
+  await install();
+  assert.equal(ui.installCalls.length,1);
+  ui.values.catalog=catalog([own('0.4.1','0.6.1')]);
+  await install();
+  assert.equal(ui.installCalls.length,2);
+  assert.equal(ui.rpcCalls.filter(x=>x.endpoint==='prepare-install').length,2);
+  assert.equal(ui.updates.length,0,'No version install state was written to Loader settings');
+});
+
+test('HTTP 405 on native launch gives Host-restart guidance instead of Windows-platform blame',async()=>{
+  const ui=setup({},{
+    nativeRpc:async()=>{throw new Error('transport failure for /hud-native/open: HTTP 405');},
+  });
+  find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true)[0].props.onClick();
+  await flushMode();
+  const messages=find(ui.render('main'),x=>x.props?.['data-hud-native-error']===true);
+  assert.equal(messages.length,1);
+  assert.match(JSON.stringify(messages),/完全退出 DSH Desktop/);
+  assert.match(JSON.stringify(messages),/HTTP 405/);
+});
+
+test('stale pending install never stays queued forever or silently retries',()=>{
+  const bag=new Map([['dsh-hud-install-pending',JSON.stringify({
+    name:'@local/dsh-hud',version:'0.6.0',startedAt:Date.now()-240_000,
+    stage:'unconfirmed',
+  })]]);
+  const ui=setup({allowUnstable:true,catalog:catalog([own('0.4.1','0.6.0')])},{
+    sessionStorage:{getItem:key=>bag.get(key)||null,
+      setItem:(key,value)=>bag.set(key,value),removeItem:key=>bag.delete(key)},
+  });
+  const tree=ui.render('main');
+  assert.equal(find(tree,x=>x.props?.['data-hud-install-stale']===true).length,1);
+  const reset=find(tree,x=>x.props?.['data-hud-clear-pending']===true)[0];
+  assert.ok(reset,'User must explicitly clear stale state after checking DSH Plugins');
+  reset.props.onClick();
+  assert.equal(bag.has('dsh-hud-install-pending'),false);
 });

@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.5.9 development source parse successfully',()=>{
+test('Host and Client v0.5.10 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -35,11 +35,11 @@ test('only listed released/unstable archives can be installed',()=>{
   assert.match(host,/item\.acceptance\?\.decision !== 'approved'/);
   assert.match(host,/item\.test\?\.result !== 'success'/);
   assert.match(host,/createHash\('sha256'\)\.update\(bytes\)\.digest\('hex'\)/);
-  assert.match(host,/ctx\.pluginManager\.installBundle\(target, \{/);
+  assert.match(host,/pluginManager\(\)\.installBundle\(target, \{/);
   assert.match(host,/saveExact: true/);
   assert.match(host,/const nonce = config\.requestNonce\.get\(\)/);
   assert.match(host,/requestNonce:'', updateStatus:'installing'/);
-  assert.match(host,/ctx\.pluginManager\.listBundles\(\)/);
+  assert.match(host,/pluginManager\(\)\.listBundles\(\)/);
   assert.match(host,/AbortSignal\.timeout\(TIMEOUT_MS\)/);
 });
 test('auto updates default off and experimental auto needs 3 explicit opt-ins',()=>{
@@ -162,7 +162,7 @@ test('manual release scanning persists results in one authoritative settings edi
 });
 
 test('native window launch uses official Connection RPC, never volatile settings as a command bus',()=>{
-  assert.match(host,/inject = \['pluginManager','connection','webServer'\]/);
+  assert.match(host,/inject = \['connection'\]/);
   assert.match(host,/ctx\.connection\.rpc\.handle\('\/hud-native'/);
   assert.match(host,/peer\?\.principal\?\.kind !== 'owner'/);
   assert.match(client,/ctx\.connection\.rpc\.call\('\/hud-native', 'open'/);
@@ -201,4 +201,29 @@ test('manual install receives official DSH application result or displays unconf
   assert.match(host,/runtime\.scanAt/);
   assert.doesNotMatch(host.slice(host.indexOf('async function discover('),
     host.indexOf('async function processCheckRequest()')),/if \(!manual\)\s*await writeSettings/);
+});
+
+
+test('HUD Host has only one mandatory service and does not block settings on optional Plugin Manager',()=>{
+  assert.match(host,/export const inject = \['connection'\]/);
+  assert.match(host,/ctx\.get\('pluginManager'\)/);
+  assert.match(host,/ctx\.connection\.rpc\.handle\('\/hud-native'/);
+  assert.doesNotMatch(host,/export const inject = \[[^\]]*'pluginManager'/);
+  assert.doesNotMatch(host,/export const inject = \[[^\]]*'webServer'/);
+});
+test('public index is fetched on initial page mount without writing Host config',()=>{
+  assert.match(client,/React\.useEffect\(\(\)=>\{void requestCheck\(\);\},\[\]\)/);
+  assert.match(client,/state:'checking',at:'',error:''/);
+  assert.match(client,/data-hud-source':checkState==='checking'/);
+  assert.match(client,/sourceNetworkError/);
+  assert.doesNotMatch(client,/Make the GitHub repository Public to enable direct updates/);
+});
+test('all update-policy controls show writable state and explicit settings failure',()=>{
+  assert.match(client,/data-hud-policy-health/);
+  assert.match(client,/data-hud-policy-error/);
+  assert.match(client,/data-hud-policy-saved/);
+  assert.match(client,/current\.status!=='ready'\|\|current\.writable!==true/);
+  assert.match(client,/if\(accepted!==true\)throw/);
+  const main=client.slice(client.indexOf("function makeMainPage("));
+  assert.doesNotMatch(main,/value=>form\.set\('autoUpdate/);
 });

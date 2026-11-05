@@ -70,8 +70,8 @@ jobs:
         shell: powershell
         run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -STA -File ./plugins/hud/native/windows-hud.ps1 -SelfTestWindow
 
-  publish-hud-v059:
-    name: Publish immutable HUD v0.5.9 Unstable package (no Desktop deployment)
+  publish-hud-v0510:
+    name: Publish immutable HUD v0.5.10 Unstable package (no Desktop deployment)
     needs: [linux-check, windows-build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
@@ -85,20 +85,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Package explicitly requested v0.5.9 exactly once
+      - name: Package explicitly requested v0.5.10 exactly once
         env:
           SOURCE_COMMIT: ${{ github.sha }}
           CI_RUN_ID: ${{ github.run_id }}
-        run: node scripts/publish-unstable-v059.mjs
+        run: node scripts/publish-unstable-v0510.mjs
       - name: Verify all original and new release archives
         run: npm run verify:channels
       - name: Record validated Unstable package without changing Released
         shell: bash
         run: |
-          if ! git ls-files --error-unmatch plugins/hud/unstable/v0.5.9/manifest.json >/dev/null 2>&1; then
+          if ! git ls-files --error-unmatch plugins/hud/unstable/v0.5.10/manifest.json >/dev/null 2>&1; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add plugins/hud/unstable/index.json plugins/hud/unstable/v0.5.9/
-            git commit -m "release(unstable): publish immutable HUD v0.5.9 reliable install lifecycle"
+            git add plugins/hud/unstable/index.json plugins/hud/unstable/v0.5.10/
+            git commit -m "release(unstable): publish immutable HUD v0.5.10 settings and native Host bootstrap"
             git push origin HEAD:main
           fi

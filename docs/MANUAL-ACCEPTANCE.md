@@ -85,3 +85,7 @@
 ## V0.5.8 用户现场失败与 V0.5.9 U059
 
 用户明确报告在同一 DSH Desktop 进程中，手动更新和自动试验版更新可能卡在「已确认，正在安装」，退出后重新启动才显示版本更新完成；独立 HUD 启动返回 HTTP 405。不得将 v0.5.8 的 Windows CI 通过误记为 Desktop 实际验收通过。v0.5.9 把一次性安装从 Host ConfigEditor 队列移交给 DSH 官方 Plugin Manager，并提供 Host 运行版本诊断、明确的重启/未确认状态。请按 [U059 验收矩阵](HUD-INSTALL-RELIABILITY-V059.md) 完成实机复测。
+
+## U0510 用户报告和下次验收
+
+用户 v0.5.9 截图证明 Host 已安装版本显示 v0.5.9 但 /hud-native/status 和 /hud-native/open 均返回 HTTP 405；首次展示公开仓库误报不允许匿名访问；更新策略四个复选框无法保存。U059 的原生窗口及策略保存均未通过，必须下次真实 Windows Desktop 人工验收。v0.5.10 对应修复矩阵见 [HUD-SETTINGS-BOOTSTRAP-V0510.md](HUD-SETTINGS-BOOTSTRAP-V0510.md)。

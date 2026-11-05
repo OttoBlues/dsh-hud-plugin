@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.9: reliable verified component installation and native Host readiness.
+ * DSH HUD v0.5.10: minimize required Host services; self-contained update settings and native RPC.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -15,7 +15,12 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-export const inject = ['pluginManager','connection','webServer'];
+// The client-side plugin can exist while the optional Plugin Manager has not yet
+// registered. Requiring both it and webServer here deadlocks the HUD Host
+// on some Desktop profiles: the Client remains visible but native RPC falls
+// through to the SPA fallback (HTTP 405), and Settings has no HUD namespace.
+// Connection is the only prerequisite for the authenticated native endpoint.
+export const inject = ['connection'];
 // Keep the previous name as a temporary migration fallback. Once the user
 // renames the repository, old raw URLs are NOT assumed to keep redirecting.
 const ROOTS = [
@@ -23,7 +28,7 @@ const ROOTS = [
   'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins',
 ];
 const CURRENT_NAME = '@local/dsh-hud';
-const HOST_VERSION = '0.5.9';
+const HOST_VERSION = '0.5.10';
 const CATALOG_EMPTY = '{"schema":3,"source":"checking","components":[]}';
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const HEX40 = /^[a-f0-9]{40}$/i;
@@ -237,8 +242,16 @@ export function apply(ctx, config) {
     }
   }
 
+  function pluginManager() {
+    // This service is optional for native window and settings availability.
+    // A pending/unavailable manager must not prevent HUD Host activation.
+    const manager = ctx.get('pluginManager');
+    if (!manager) throw new Error('DSH Plugin Manager is not ready in this Host.');
+    return manager;
+  }
+
   async function installedRows() {
-    const rows = await ctx.pluginManager.listBundles();
+    const rows = await pluginManager().listBundles();
     if (!Array.isArray(rows)) throw new Error('DSH plugin inventory unavailable.');
     return rows;
   }
@@ -293,7 +306,7 @@ export function apply(ctx, config) {
         // Self-update can unload this Host before the manager's promise
         // settles. Never write old-instance config or query inventory after
         // replacing this very bundle. The next Host startup reconciles status.
-        const task = ctx.pluginManager.installBundle(target, {
+        const task = pluginManager().installBundle(target, {
           enabled: true, saveExact: true,
         });
         Promise.resolve(task).then(
@@ -322,7 +335,7 @@ export function apply(ctx, config) {
         return true; // accepted for processing, NOT proof of installation
       }
 
-      const result = await ctx.pluginManager.installBundle(target, {
+      const result = await pluginManager().installBundle(target, {
         enabled: true, saveExact: true,
       });
       if (disposed) return false;

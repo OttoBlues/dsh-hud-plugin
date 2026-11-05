@@ -59,3 +59,7 @@ v0.5.7 的独立 HUD 启动仍通过 ConfigForms nonce 排队给 Host，Host 重
 ## V0.5.9 多版本更新可靠性候选
 
 手动更新改为「Host 按 SHA-256 验证固定包 → DSH 官方 Plugin Manager 直接安装」，避免旧 Host ConfigEditor 命令队列被重组中断；自动更新首次验证成功后记录单次尝试，三重实验授权保持不变。组件中心直接显示安装失败、需要重启或结果未知，超过限定时间不会持续显示正在安装。新增运行中 Host 版本探测，HTTP 405 提示完整退出并重启 Desktop。U059 Windows 实机结果未验证。详见 docs/HUD-INSTALL-RELIABILITY-V059.md。
+
+## V0.5.10 冷启动 Host 与设置修复候选
+
+用户报告 v0.5.9 冷启动 /hud-native/status、open HTTP 405，初次无网络检查被误报 GitHub Private，更新策略所有开关点击无响应。v0.5.10 去除插件管理器作为 Host 的强制注入（仅需 connection），让 HUD 配置和 RPC 先启动；组件中心自动运行浏览器公开源检查，保存更新策略统一报告可写状态、成功和失败。不将 CI 静态测试视为 Windows Desktop 实际通过。详见 docs/HUD-SETTINGS-BOOTSTRAP-V0510.md。

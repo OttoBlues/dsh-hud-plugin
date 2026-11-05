@@ -13,7 +13,7 @@ function setup(valuesOverride={}, runtime={}) {
     AbortSignal,AbortController,setTimeout,clearTimeout,
   });
   assert.equal(module?.id,'@local/dsh-hud');
-  const hookSets=new Map(); let cursor=0; let currentScope='root';
+  const hookSets=new Map(),effects=[]; let cursor=0; let currentScope='root';
   const withHooks=(key,run)=>{currentScope=key;cursor=0;return run();};
   const React={
     Fragment:'fragment',
@@ -32,7 +32,7 @@ function setup(valuesOverride={}, runtime={}) {
       if(!(i in values))values[i]={current:initial};
       return values[i];
     },
-    useEffect(){},
+    useEffect(callback){effects.push(callback);},
     useSyncExternalStore(_subscribe,get){return get();},
   };
   const plugin=module.factory(name=>{assert.equal(name,'react');return React;});
@@ -50,10 +50,13 @@ function setup(valuesOverride={}, runtime={}) {
   };
   const updates=[];
   const form={
-    getSnapshot(){return {value:values,writable:true,status:'ready'};},
+    getSnapshot(){return {value:values,writable:runtime.writable!==false,status:runtime.formStatus||'ready'};},
     subscribe(){return ()=>{};},
     async set(key,value){values[key]=value;updates.push({key,value});return true;},
-    async mutate(ops){for(const op of ops){values[op.path[0]]=op.value;}updates.push({ops});return true;},
+    async mutate(ops){
+      if(runtime.rejectPolicyWrite && ops.some(op=>['allowUnstable','autoUpdateEnabled','autoUpdateUnstable','overlayVisible'].includes(op.path[0])))return false;
+      for(const op of ops){values[op.path[0]]=op.value;}updates.push({ops});return true;
+    },
   };
   const slots=new Map();const navigations=[];const rpcCalls=[],installCalls=[];let dictionary;
   const ctx={
@@ -66,7 +69,7 @@ function setup(valuesOverride={}, runtime={}) {
     connection:{rpc:{async call(channel,endpoint,payload,signal){
       rpcCalls.push({channel,endpoint,payload,signal});
       if(runtime.nativeRpc)return runtime.nativeRpc({channel,endpoint,payload,signal});
-      if(endpoint==='status')return {ok:true,value:{hostVersion:'0.5.9'}};
+      if(endpoint==='status')return {ok:true,value:{hostVersion:'0.5.10'}};
       if(endpoint==='prepare-install')return {ok:true,value:{
         name:payload.name,version:payload.version,channel:payload.channel,
         sha256:'f'.repeat(64),path:'/fixture/cache/'+payload.version+'/verified.tgz',
@@ -85,7 +88,7 @@ function setup(valuesOverride={}, runtime={}) {
       async listBundles(){return {ok:true,value:[]};},
       async installBundle(path,options){
         installCalls.push({path,options});
-        const version=/\/(\d+\.\d+\.\d+)\//.exec(path)?.[1]||'0.5.9';
+        const version=/\/(\d+\.\d+\.\d+)\//.exec(path)?.[1]||'0.5.10';
         return runtime.installResult||{ok:true,value:{application:'applied',version}};
       },
     }},
@@ -101,7 +104,7 @@ function setup(valuesOverride={}, runtime={}) {
     }
     return withHooks(slot,()=>entry.component(props));
   };
-  return {plugin,values,form,slots,render,updates,navigations,rpcCalls,installCalls,withHooks};
+  return {plugin,values,form,slots,render,updates,navigations,rpcCalls,installCalls,withHooks,effects};
 }
 function find(tree,when,result=[]) {
   if(tree==null)return result;
@@ -142,7 +145,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.5.10')])});
+  const ui=setup({catalog:catalog([own('0.5.11')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -199,20 +202,20 @@ test('Automatic experimental updates require separate explicit double opt-in',as
   let tree=ui.render();
   const auto=find(tree,x=>x.type==='input'&&x.props['data-hud-setting']==='auto')[0];
   auto.props.onChange({target:{checked:true}});
-  await Promise.resolve();
+  await flushMode();
   tree=ui.render();
   assert.equal(find(tree,x=>x.props?.['data-hud-setting']==='auto-unstable')[0].props.disabled,true);
   const experimental=find(tree,x=>x.props?.['data-hud-setting']==='unstable')[0];
   experimental.props.onChange({target:{checked:true}});
-  await Promise.resolve();
+  await flushMode();
   tree=ui.render();
   const autoUnstable=find(tree,x=>x.props?.['data-hud-setting']==='auto-unstable')[0];
   assert.equal(autoUnstable.props.disabled,false);
   autoUnstable.props.onChange({target:{checked:true}});
-  await Promise.resolve();
+  await flushMode();
   assert.equal(ui.values.autoUpdateUnstable,true);
   experimental.props.onChange({target:{checked:false}});
-  await Promise.resolve();
+  await flushMode();
   assert.equal(ui.values.autoUpdateUnstable,false);
 });
 
@@ -226,7 +229,7 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   const preview=find(overlay,x=>x.props?.['data-dsh-hud-preview']==='true')[0];
   assert.ok(preview);
   assert.equal(preview.props.style.pointerEvents,'none');
-  assert.equal(preview.props['data-dsh-hud-version'],'0.5.9');
+  assert.equal(preview.props['data-dsh-hud-version'],'0.5.10');
 });
 
 test('component center shows the renamed repository rather than legacy UI copy',()=>{
@@ -349,7 +352,7 @@ test('HUD Escape and manager entry both keep DSH navigation usable',async()=>{
 test('cockpit UI uses fixed-pixel nested panels with no distorted SVG rails',()=>{
   const ui=setup({hudMode:true});
   const overlay=renderWorkspace(ui);
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.9');
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.10');
   assert.equal(overlay.props.style.pointerEvents,'auto');
   const panels=find(overlay,x=>x.props?.['data-hud-cockpit-panel']===true);
   assert.ok(panels.length>=4,'hero, metrics and Session modules stay separate');
@@ -402,8 +405,8 @@ const publicIndex={schema:1,components:[{
 const stableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
   channel:'released',latest:null,releases:[]};
 const unstableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
-  channel:'unstable',latest:'0.5.9',releases:[{
-    version:'0.5.9',file:'v0.5.9/local-dsh-hud-0.5.9.tgz',
+  channel:'unstable',latest:'0.5.11',releases:[{
+    version:'0.5.11',file:'v0.5.11/local-dsh-hud-0.5.11.tgz',
     sha256:'f'.repeat(64),sourceCommit:'a'.repeat(40),
     test:{result:'success',ciRun:'123456'},
   }]};
@@ -441,7 +444,7 @@ test('Check updates reads public GitHub directly without any Host config command
   const checked=ui.render('main');
   const status=find(checked,x=>x.props?.['data-hud-check-state']==='success')[0];
   assert.ok(status);
-  assert.match(JSON.stringify(checked),/试验版: 0\.5\.9/);
+  assert.match(JSON.stringify(checked),/试验版: 0\.5\.11/);
   assert.match(JSON.stringify(checked),/Verified metadata from the fixed public source/);
 });
 test('A broken unstable channel reports partial check and hides stale latest',async()=>{
@@ -471,7 +474,7 @@ test('The old Host queue no longer disables the new read-only Check button',()=>
   const ui=setup({checkNonce:'stale',checkState:'checking'});
   const tree=ui.render('main');
   assert.equal(find(tree,x=>x.props?.['data-hud-check-button']===true)[0].props.disabled,false);
-  assert.equal(find(tree,x=>x.props?.['data-hud-check-state']==='idle').length,1);
+  assert.equal(find(tree,x=>x.props?.['data-hud-check-state']==='checking').length,1);
 });
 test('Direct read-only Check remains usable with Host catalog unavailable',()=>{
   const ui=setup({catalog:'{"schema":3,"source":"unavailable","components":[]}'});
@@ -556,4 +559,68 @@ test('authoritative Plugin Manager failure clears pending state and allows anoth
   find(ui.render('main'),x=>x.type==='button'&&x.children.includes('确认'))[0].props.onClick();
   await flushMode();
   assert.equal(ui.installCalls.length,2,'A failed attempt may be explicitly retried');
+});
+
+
+test('startup GitHub status is checking, not a false private-repository warning',async()=>{
+  const network=mockPublicFetch();
+  const ui=setup({}, {fetch:network.fetcher});
+  const tree=ui.render('main');
+  const status=find(tree,x=>x.props?.['data-hud-source']==='checking')[0];
+  assert.ok(status);
+  assert.doesNotMatch(JSON.stringify(status),/仓库版本源暂不可匿名访问|Public.*private/i);
+  const onMount=ui.effects.find(effect=>String(effect).includes('requestCheck()'));
+  assert.equal(typeof onMount,'function','The component center must scan public indexes on mount');
+  onMount();
+  await flushMode();
+  assert.equal(network.calls.length,3);
+  const checked=ui.render('main');
+  assert.equal(find(checked,x=>x.props?.['data-hud-source']==='public').length,1);
+});
+
+test('update strategy checkboxes save independently and experimental auto requires three opt-ins',async()=>{
+  const ui=setup();
+  const checked=key=>find(ui.render('main'),x=>x.props?.['data-hud-setting']===key)[0];
+  assert.equal(checked('auto-unstable').props.disabled,true);
+  checked('unstable').props.onChange({target:{checked:true}});
+  await flushMode();
+  assert.equal(ui.values.allowUnstable,true);
+  assert.equal(checked('auto-unstable').props.disabled,true);
+  checked('auto').props.onChange({target:{checked:true}});
+  await flushMode();
+  assert.equal(ui.values.autoUpdateEnabled,true);
+  assert.equal(checked('auto-unstable').props.disabled,false);
+  checked('auto-unstable').props.onChange({target:{checked:true}});
+  await flushMode();
+  assert.equal(ui.values.autoUpdateUnstable,true);
+  checked('preview').props.onChange({target:{checked:true}});
+  await flushMode();
+  assert.equal(ui.values.overlayVisible,true);
+  assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-policy-error']===true).length,0);
+  assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-policy-saved']===true).length,1);
+});
+
+test('settings not writable must explain why checked controls cannot commit',async()=>{
+  const ui=setup({},{formStatus:'unavailable',writable:false});
+  const node=find(ui.render('main'),x=>x.props?.['data-hud-setting']==='unstable')[0];
+  node.props.onChange({target:{checked:true}});
+  await flushMode();
+  assert.equal(ui.values.allowUnstable,false);
+  assert.equal(ui.updates.length,0);
+  const error=find(ui.render('main'),x=>x.props?.['data-hud-policy-error']===true)[0];
+  assert.match(JSON.stringify(error),/unavailable/);
+  assert.match(JSON.stringify(error),/writable=false/);
+});
+
+test('a rejected Host mutation reports error rather than silently resetting all toggles',async()=>{
+  const ui=setup({}, {rejectPolicyWrite:true});
+  const node=find(ui.render('main'),x=>x.props?.['data-hud-setting']==='auto')[0];
+  node.props.onChange({target:{checked:true}});
+  await flushMode();
+  assert.equal(ui.values.autoUpdateEnabled,false);
+  assert.equal(ui.updates.length,0);
+  const errors=find(ui.render('main'),x=>x.props?.['data-hud-policy-error']===true);
+  assert.equal(errors.length,1);
+  assert.match(JSON.stringify(errors[0]),/mutate was not accepted/);
+  assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-setting']==='auto')[0].props.checked,false);
 });

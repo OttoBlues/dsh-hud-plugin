@@ -15,7 +15,7 @@ import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-export const inject = ['pluginManager','connection'];
+export const inject = ['pluginManager','connection','webServer'];
 // Keep the previous name as a temporary migration fallback. Once the user
 // renames the repository, old raw URLs are NOT assumed to keep redirecting.
 const ROOTS = [

@@ -880,9 +880,11 @@ window.__ModuleLoader__.load({
                   h('span',{'aria-hidden':true,style:{display:'inline-block',width:6,height:6,
                     borderRadius:'50%',background:'#48a5b2'}},''),t('sourceHeading')),
                 h('div',{style:{marginTop:7,fontSize:13},
-                  'data-hud-source':catalog.source,role:'status'},
-                  catalog.source === 'public'?t('sourceOK'):
-                    catalog.source==='checking'?t('sourceChecking'):t('sourceUnavailable')),
+                  'data-hud-source':checkState==='checking'?'checking':
+                    checkState==='failed'?'failed':catalog.source,role:'status'},
+                  checkState==='checking'||checkState==='idle'?t('sourceChecking'):
+                    checkState==='failed'?t('sourceNetworkError'):
+                      catalog.source==='public'?t('sourceOK'):t('sourceUnavailable')),
                 h('div',{'data-hud-check-state':checkState,role:'status',
                   style:{fontSize:12,marginTop:7,
                     color:checkState==='failed'||checkState==='partial'?'#ad722a':'var(--text-secondary,#777)'}},
@@ -962,19 +964,33 @@ window.__ModuleLoader__.load({
 
           h('section',{style:{marginTop:36}},
             h('h2',{style:{fontSize:18,margin:'0 0 8px',fontWeight:650}},t('options')),
+            h('div',{'data-hud-policy-health':true,role:'status',
+              style:{...tiny,color:snapshot.status==='ready' && snapshot.writable===true?
+                'var(--text-secondary,#777)':'#b84b4b',margin:'8px 0'}},
+              snapshot.status==='ready'&&snapshot.writable===true?t('policyReady'):
+                t('policyNotReady')+' ('+String(snapshot.status)+
+                  ', writable='+String(snapshot.writable)+')'),
+            policySaving?h('p',{'data-hud-policy-saving':true,role:'status',style:tiny},
+              t('policySaving')):null,
+            policyError?h('p',{'data-hud-policy-error':true,role:'alert',
+              style:{color:'#b84b4b',fontSize:13,margin:'8px 0'}},policyError):null,
+            policyNotice?h('p',{'data-hud-policy-saved':true,role:'status',style:tiny},
+              policyNotice):null,
             h('div',{style:surface},
-              toggle(t('allowUnstable'),t('allowUnstableHelp'),values.allowUnstable,
-                async value=>{
-                  await form.mutate([{op:'set',path:['allowUnstable'],value},
-                    ...(value?[]:[{op:'set',path:['autoUpdateUnstable'],value:false}])]);
-                },false,'unstable'),
-              toggle(t('autoUpdate'),t('autoUpdateHelp'),values.autoUpdateEnabled,
-                value=>form.set('autoUpdateEnabled',value),false,'auto'),
-              toggle(t('autoUnstable'),t('autoUnstableHelp'),values.autoUpdateUnstable,
-                value=>form.set('autoUpdateUnstable',value),
-                values.allowUnstable!==true || values.autoUpdateEnabled!==true,'auto-unstable'),
-              toggle(t('preview'),t('previewHelp'),values.overlayVisible,
-                value=>form.set('overlayVisible',value),false,'preview')
+              toggle(t('allowUnstable'),t('allowUnstableHelp'),policyValue('allowUnstable'),
+                value=>writePolicy([{op:'set',path:['allowUnstable'],value},
+                  ...(value?[]:[{op:'set',path:['autoUpdateUnstable'],value:false}])]),
+                policySaving,'unstable'),
+              toggle(t('autoUpdate'),t('autoUpdateHelp'),policyValue('autoUpdateEnabled'),
+                value=>writePolicy([{op:'set',path:['autoUpdateEnabled'],value}]),
+                policySaving,'auto'),
+              toggle(t('autoUnstable'),t('autoUnstableHelp'),policyValue('autoUpdateUnstable'),
+                value=>writePolicy([{op:'set',path:['autoUpdateUnstable'],value}]),
+                policySaving || !policyValue('allowUnstable') || !policyValue('autoUpdateEnabled'),
+                'auto-unstable'),
+              toggle(t('preview'),t('previewHelp'),policyValue('overlayVisible'),
+                value=>writePolicy([{op:'set',path:['overlayVisible'],value}]),
+                policySaving,'preview')
             )
           ),
           error?h('p',{role:'alert',style:{color:'#b84b4b'}},error):null,

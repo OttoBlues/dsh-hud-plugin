@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.5: locate addressable Loader entry and react to volatile check requests.
+ * DSH HUD v0.5.7: add opt-in native Windows HUD without exposing Electron IPC.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -9,6 +9,7 @@
  * This is a *development* source, not an accepted released/ build.
  */
 import Schema from '@deepseek-ai/schemastery';
+import { launchWindowsHud } from './native-window.js';
 import { createHash } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -53,6 +54,11 @@ export const Config = Schema.object({
   overlayVisible: Schema.boolean().default(false).volatile(),
   // Opt-in HUD working mode; DSH's frame remains mounted underneath.
   hudMode: Schema.boolean().default(false).volatile(),
+  nativeHudRequestNonce: Schema.string().default('').volatile(),
+  nativeHudSnapshot: Schema.string().default('').volatile(),
+  nativeHudLanguage: Schema.string().default('zh').volatile(),
+  nativeHudState: Schema.string().default('idle').volatile(),
+  nativeHudError: Schema.string().default('').volatile(),
   requestComponent: Schema.string().default('').volatile(),
   requestVersion: Schema.string().default('').volatile(),
   requestChannel: Schema.string().default('released').volatile(),
@@ -178,6 +184,9 @@ export function apply(ctx, config) {
   let disposed = false, checking = false, updating = false, manualChecking = false;
   let lastNonce = '';
   let lastCheckNonce = '';
+  // Never replay an old window-launch request after a Host hot reload.
+  let lastNativeHudNonce = String(config.nativeHudRequestNonce.get() || '');
+  let nativeHudWindow = null;
   let retryCheckAfter = 0;
   let lastMissingEditorWarning = 0;
   const controller = new AbortController();
@@ -493,6 +502,45 @@ export function apply(ctx, config) {
     }
   }
 
+
+  function processNativeHudRequest() {
+    if (disposed) return;
+    const nonce = config.nativeHudRequestNonce.get();
+    if (typeof nonce !== 'string' || !nonce || nonce === lastNativeHudNonce) return;
+    lastNativeHudNonce = nonce;
+    if (nativeHudWindow) return; // one native window at a time
+    try {
+      nativeHudWindow = launchWindowsHud({
+        snapshot: config.nativeHudSnapshot.get(),
+        language: config.nativeHudLanguage.get(),
+        onReady: () => {
+          if (disposed) { nativeHudWindow?.close(); return; }
+          // Only a ready, visible native window may cause the Client to
+          // leave Component Center and reveal the original DSH session.
+          void writeSettings({ nativeHudState:'open', nativeHudError:'' })
+            .then(saved => { if (!saved) nativeHudWindow?.close(); })
+            .catch(() => nativeHudWindow?.close());
+        },
+        onExit: ({ready,error}) => {
+          nativeHudWindow = null;
+          if (disposed) return;
+          void writeSettings({
+            nativeHudState: ready ? 'closed' : 'failed',
+            nativeHudError: ready ? '' :
+              String(error || 'Windows native HUD could not open.').slice(0,240),
+          }).catch(() => {});
+        },
+      });
+    } catch (error) {
+      if (!disposed) {
+        void writeSettings({
+          nativeHudState:'failed',
+          nativeHudError:String(error?.message || 'Native HUD is unavailable.').slice(0,240),
+        }).catch(() => {});
+      }
+    }
+  }
+
   // After a self-update the old Host can vanish before acknowledging success.
   // The newly loaded version reconciles the result from DSH's installed facts,
   // without trusting the previous version's post-install callbacks.
@@ -539,6 +587,7 @@ export function apply(ctx, config) {
     // remains as a fallback for runtimes without the event.
     ctx.on?.('loader/volatile-update', () => {
       if (!disposed && config.checkNonce.get()) guarded(processCheckRequest());
+      if (!disposed) processNativeHudRequest();
     });
     const reconcile = setTimeout(() => { if (!disposed) guarded(reconcileAfterReload()); }, 1500);
     const poll = setInterval(() => { if (!disposed) guarded(discover()); }, CHECK_MS);
@@ -546,10 +595,13 @@ export function apply(ctx, config) {
       if (!disposed) {
         guarded(processCheckRequest());
         guarded(processManualRequest());
+        processNativeHudRequest();
       }
     }, REQUEST_MS);
     return () => {
       disposed = true;
+      nativeHudWindow?.close();
+      nativeHudWindow = null;
       controller.abort();
       clearTimeout(reconcile);
       clearInterval(poll);

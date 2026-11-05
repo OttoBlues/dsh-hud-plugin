@@ -271,7 +271,7 @@ test('auto update of a released version only after user opt in, one attempt per 
     assert.equal(s.calls.installed.length,1);
     assert.equal(s.values.updateStatus,'');
     assert.equal(s.values.autoAttemptKey,'','No pre-install ConfigEditor changes');
-    assert(s.calls.cached.some(x=>x.path.includes('.hud-auto-attempt.json')));
+    assert(s.calls.cached.some(x=>x.path.includes('.auto-attempt.json')));
     assert.equal((await s.status()).value.autoState,'restart-required');
     await s.refresh();
     assert.equal(s.calls.installed.length,1);
@@ -623,7 +623,7 @@ test('background automatic update uses no pre-install ConfigEditor and does not 
     await flush();
     assert.equal(s.calls.installed.length,1);
     assert.equal(s.calls.writes.length,0);
-    assert(s.calls.cached.some(x=>x.path.includes('.hud-auto-attempt.json')));
+    assert(s.calls.cached.some(x=>x.path.includes('.auto-attempt.json')));
     await s.refresh();
     assert.equal(s.calls.installed.length,1);
   } finally{s.stop();}

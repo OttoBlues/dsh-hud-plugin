@@ -8,7 +8,7 @@
 - 自动更新默认关闭，试验版订阅与自动试验版需要独立授权；窗口内 HUD 预览默认关闭。
 - 历史 V0.4.0 曾出现自更新宿主异常，V0.4.1 引入 Host 生命周期保护。
 
-**已发布：** Unstable V0.5.10（修复 HUD Host 依赖、设置保存诊断与公开版本自动检查，U0510 实机待验收）；Released 为空。用户截图确认已在 Windows Desktop 安装 V0.4.1。
+**源码候选：** V0.5.12 修复设置写权限判定、独立窗口 PID 与 WPF 冷启动超时；Unstable 可安装版本以 `unstable/index.json` 为准，Released 仍为空。
 
 **历史发布：** V0.4.2 完成仓库更名与本地 Runner 退役。后续 v0.5.x 已增加 DSH 组件中心、只读公开更新检查与独立 HUD 候选。安装仍须人工确认，不能将 CI 视为 Desktop 无崩溃验收。
 
@@ -63,3 +63,11 @@ v0.5.7 的独立 HUD 启动仍通过 ConfigForms nonce 排队给 Host，Host 重
 ## V0.5.10 冷启动 Host 与设置修复（Unstable）
 
 用户报告 v0.5.9 冷启动 /hud-native/status、open HTTP 405，初次无网络检查被误报 GitHub Private，更新策略所有开关点击无响应。v0.5.10 去除插件管理器作为 Host 的强制注入（仅需 connection），让 HUD 配置和 RPC 先启动；组件中心自动运行浏览器公开源检查，保存更新策略统一报告可写状态、成功和失败。不将 CI 静态测试视为 Windows Desktop 实际通过。详见 docs/HUD-SETTINGS-BOOTSTRAP-V0510.md。
+
+## V0.5.11 修复尝试（未发布）
+
+`settings.describe.writable=true` 时允许设置提交，即使共享快照的状态暂时是 `unavailable`；DSH Host 实际拒绝时仍显示错误。独立 HUD 将 Shell PID 默认指向当前 DSH 主进程；WPF 只匹配 `Chrome_WidgetWin_1` 主窗，忽略同进程 Chromium 隐藏辅助窗，恢复失败会明确报错。脚本带 UTF-8 BOM，确保 Windows PowerShell 5.1 正确读取中文字符串。真实 DSH 保存开关、打开窗口和返回主界面的验收待完成。
+
+## V0.5.12 冷启动超时修复候选
+
+本机 WPF 冷启动耗时约 17 秒，超过 V0.5.11 的 16 秒 Host 启动限时。Host 等待 READY 的上限提高到 45 秒，Client RPC 等待上限提高到 55 秒；超时后迟到 READY 不会报告成功，并会触发 DSH 窗口恢复。真实 DSH 策略保存、窗口打开和返回仍待验收。

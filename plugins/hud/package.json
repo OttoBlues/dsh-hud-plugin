@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.5.10",
+  "version": "0.5.12",
   "private": true,
   "type": "module",
-  "description": "Independent HUD Host boot with writable settings, immediate anonymous GitHub checks and native RPC diagnostics",
+  "description": "HUD settings and Windows native window startup recovery fixes",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },

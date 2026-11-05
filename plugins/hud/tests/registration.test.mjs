@@ -69,7 +69,7 @@ function setup(valuesOverride={}, runtime={}) {
     connection:{rpc:{async call(channel,endpoint,payload,signal){
       rpcCalls.push({channel,endpoint,payload,signal});
       if(runtime.nativeRpc)return runtime.nativeRpc({channel,endpoint,payload,signal});
-      if(endpoint==='status')return {ok:true,value:{hostVersion:'0.5.10'}};
+      if(endpoint==='status')return {ok:true,value:{hostVersion:'0.5.12'}};
       if(endpoint==='prepare-install')return {ok:true,value:{
         name:payload.name,version:payload.version,channel:payload.channel,
         sha256:'f'.repeat(64),path:'/fixture/cache/'+payload.version+'/verified.tgz',
@@ -88,7 +88,7 @@ function setup(valuesOverride={}, runtime={}) {
       async listBundles(){return {ok:true,value:[]};},
       async installBundle(path,options){
         installCalls.push({path,options});
-        const version=/\/(\d+\.\d+\.\d+)\//.exec(path)?.[1]||'0.5.10';
+        const version=/\/(\d+\.\d+\.\d+)\//.exec(path)?.[1]||'0.5.12';
         return runtime.installResult||{ok:true,value:{application:'applied',version}};
       },
     }},
@@ -145,7 +145,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.5.11')])});
+  const ui=setup({catalog:catalog([own('0.5.13')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -229,7 +229,7 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   const preview=find(overlay,x=>x.props?.['data-dsh-hud-preview']==='true')[0];
   assert.ok(preview);
   assert.equal(preview.props.style.pointerEvents,'none');
-  assert.equal(preview.props['data-dsh-hud-version'],'0.5.10');
+  assert.equal(preview.props['data-dsh-hud-version'],'0.5.12');
 });
 
 test('component center shows the renamed repository rather than legacy UI copy',()=>{
@@ -352,7 +352,7 @@ test('HUD Escape and manager entry both keep DSH navigation usable',async()=>{
 test('cockpit UI uses fixed-pixel nested panels with no distorted SVG rails',()=>{
   const ui=setup({hudMode:true});
   const overlay=renderWorkspace(ui);
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.10');
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.12');
   assert.equal(overlay.props.style.pointerEvents,'auto');
   const panels=find(overlay,x=>x.props?.['data-hud-cockpit-panel']===true);
   assert.ok(panels.length>=4,'hero, metrics and Session modules stay separate');
@@ -405,8 +405,8 @@ const publicIndex={schema:1,components:[{
 const stableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
   channel:'released',latest:null,releases:[]};
 const unstableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
-  channel:'unstable',latest:'0.5.11',releases:[{
-    version:'0.5.11',file:'v0.5.11/local-dsh-hud-0.5.11.tgz',
+  channel:'unstable',latest:'0.5.12',releases:[{
+    version:'0.5.12',file:'v0.5.12/local-dsh-hud-0.5.12.tgz',
     sha256:'f'.repeat(64),sourceCommit:'a'.repeat(40),
     test:{result:'success',ciRun:'123456'},
   }]};
@@ -444,7 +444,7 @@ test('Check updates reads public GitHub directly without any Host config command
   const checked=ui.render('main');
   const status=find(checked,x=>x.props?.['data-hud-check-state']==='success')[0];
   assert.ok(status);
-  assert.match(JSON.stringify(checked),/试验版: 0\.5\.11/);
+  assert.match(JSON.stringify(checked),/试验版: 0\.5\.12/);
   assert.match(JSON.stringify(checked),/Verified metadata from the fixed public source/);
 });
 test('A broken unstable channel reports partial check and hides stale latest',async()=>{
@@ -610,6 +610,21 @@ test('settings not writable must explain why checked controls cannot commit',asy
   const error=find(ui.render('main'),x=>x.props?.['data-hud-policy-error']===true)[0];
   assert.match(JSON.stringify(error),/unavailable/);
   assert.match(JSON.stringify(error),/writable=false/);
+});
+
+test('settings save when DSH declares them writable before status becomes ready',async()=>{
+  const ui=setup({}, {formStatus:'unavailable',writable:true});
+  let tree=ui.render('main');
+  const health=find(tree,x=>x.props?.['data-hud-policy-health']===true)[0];
+  assert.match(JSON.stringify(health),/DSH 设置可写/);
+  const node=find(tree,x=>x.props?.['data-hud-setting']==='unstable')[0];
+  node.props.onChange({target:{checked:true}});
+  await flushMode();
+  tree=ui.render('main');
+  assert.equal(ui.values.allowUnstable,true);
+  assert.equal(ui.updates.length,1);
+  assert.equal(find(tree,x=>x.props?.['data-hud-policy-error']===true).length,0);
+  assert.equal(find(tree,x=>x.props?.['data-hud-policy-saved']===true).length,1);
 });
 
 test('a rejected Host mutation reports error rather than silently resetting all toggles',async()=>{

@@ -1,4 +1,4 @@
-<#
+﻿<#
 DSH HUD v0.5.8 Windows native window, direct RPC startup diagnostics.
 This file is bundled with @local/dsh-hud. It executes no remote code.
 Its only window controls are "Return to DSH", Escape and Alt+F4.
@@ -40,10 +40,9 @@ public static class DshHudWin32 {
       if (pid != shellPid || (!includeHidden && !IsWindowVisible(hwnd))) return true;
       StringBuilder cls = new StringBuilder(256);
       GetClassName(hwnd, cls, cls.Capacity);
-      if (!cls.ToString().StartsWith("Chrome_WidgetWin_", StringComparison.Ordinal)) return true;
-      // Desktop's BrowserWindow title can follow the current document/session.
-      // Verify PID, Chromium class, visible state and actual size instead of
-      // requiring a hardcoded caption that varies across DSH versions.
+      // Electron's main BrowserWindow uses Chrome_WidgetWin_1. Ignore hidden
+      // Chrome_WidgetWin_0 helpers owned by the same process during recovery.
+      if (!string.Equals(cls.ToString(), "Chrome_WidgetWin_1", StringComparison.Ordinal)) return true;
       Rect area;
       if (!GetWindowRect(hwnd, out area) || (area.Right-area.Left) < 500 ||
           (area.Bottom-area.Top) < 300) return true;
@@ -57,12 +56,20 @@ public static class DshHudWin32 {
 '@
 
 if ($RestoreOnly) {
-  if ($ShellPid -gt 0) {
-    $target = [DshHudWin32]::FindShell($ShellPid, $true)
-    if ($target -ne [IntPtr]::Zero) {
-      [void][DshHudWin32]::ShowWindow($target, 9)
-      [void][DshHudWin32]::SetForegroundWindow($target)
-    }
+  if ($ShellPid -lt 1) {
+    [Console]::Out.WriteLine('ERROR: Invalid DSH Shell PID for restore.')
+    exit 4
+  }
+  $target = [DshHudWin32]::FindShell($ShellPid, $true)
+  if ($target -eq [IntPtr]::Zero) {
+    [Console]::Out.WriteLine('ERROR: No unique DSH main window could be restored.')
+    exit 4
+  }
+  [void][DshHudWin32]::ShowWindow($target, 9)
+  [void][DshHudWin32]::SetForegroundWindow($target)
+  if (-not [DshHudWin32]::IsWindowVisible($target)) {
+    [Console]::Out.WriteLine('ERROR: DSH main window remains hidden after restore.')
+    exit 5
   }
   [Console]::Out.WriteLine('RESTORED')
   exit 0

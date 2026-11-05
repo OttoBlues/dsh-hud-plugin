@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.10: auto public checks, resilient settings and Host bootstrap.
+ * DSH HUD V0.5.12: writable settings and native window startup recovery.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.10';
+    const VERSION = '0.5.12';
     let nativeSessionSnapshot = { capturedAt:'', sessions:[] };
     // User-triggered checks do not use Host settings as a command queue.
     const REFRESH_MS = 5 * 60_000;
@@ -643,7 +643,7 @@ window.__ModuleLoader__.load({
         const writePolicy=async ops=>{
           if(policyAttempt.current)return;
           const current=form.getSnapshot();
-          if(current.status!=='ready'||current.writable!==true){
+          if(current.writable!==true){
             setPolicyError(t('policyNotReady')+' ('+String(current.status)+
               ', writable='+String(current.writable)+') '+t('policyHelp'));
             setPolicyNotice('');
@@ -680,7 +680,7 @@ window.__ModuleLoader__.load({
           setNativeLaunching(true);
           setNativeFailure('');
           const abort = new AbortController();
-          const timeout = setTimeout(() => abort.abort(), 22_000);
+          const timeout = setTimeout(() => abort.abort(), 55_000);
           try {
             // Transient RPC: never write a launch nonce into ConfigForms.
             // WPF returns READY only after the new window has rendered and
@@ -965,9 +965,9 @@ window.__ModuleLoader__.load({
           h('section',{style:{marginTop:36}},
             h('h2',{style:{fontSize:18,margin:'0 0 8px',fontWeight:650}},t('options')),
             h('div',{'data-hud-policy-health':true,role:'status',
-              style:{...tiny,color:snapshot.status==='ready' && snapshot.writable===true?
+              style:{...tiny,color:snapshot.writable===true?
                 'var(--text-secondary,#777)':'#b84b4b',margin:'8px 0'}},
-              snapshot.status==='ready'&&snapshot.writable===true?t('policyReady'):
+              snapshot.writable===true?t('policyReady'):
                 t('policyNotReady')+' ('+String(snapshot.status)+
                   ', writable='+String(snapshot.writable)+')'),
             policySaving?h('p',{'data-hud-policy-saving':true,role:'status',style:tiny},

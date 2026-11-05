@@ -7,8 +7,8 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.10 试验源码**（保留 V0.5.6 的只读 GitHub 检查，并新增 Windows 独立无边框 WPF HUD）。
-- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.10**。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.12 修复候选源码**（策略写权限判定、Windows 窗口 PID 与冷启动超时修复）。
+- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包；可安装版本以通道索引为准。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
 
@@ -110,3 +110,11 @@ V0.5.3 报告的手动检查超时已有一条**确认的源码故障路径**：
 ## V0.5.10 Host 启动、设置与 GitHub 自动检查修复（Unstable）
 
 修复 v0.5.9 Desktop 报告的冷启动 HTTP 405（Host 未注册原生 RPC）、策略复选框无错误复位和初次仓库状态误报 Private。Host 只硬依赖 Connection，插件管理器按需获取；组件中心自动只读扫描公开版本源，策略保存显示 ConfigForms 的 ready/writable/失败原因。见 [U0510 文档](docs/HUD-SETTINGS-BOOTSTRAP-V0510.md)。
+
+## V0.5.11 更新策略与独立 HUD 窗口修复尝试（未发布）
+
+设置写入只按 DSH `settings.describe.writable` 判定；`status=unavailable` 且 `writable=true` 时仍允许提交，Host 拒绝时继续显示真实错误。Windows 独立 HUD 将窗口匹配 PID 指向拥有 DSH BrowserWindow 的主进程，只匹配 `Chrome_WidgetWin_1` 主窗，忽略同进程隐藏辅助窗；恢复目标不唯一或仍隐藏时明确报错。WPF 脚本带 UTF-8 BOM，兼容 DSH 调用的 Windows PowerShell 5.1。CI 在 Linux/Windows 检查通过后生成不可变 Unstable 包；本机 DSH 操作与返回流程仍须实测，Released 不变。
+
+## V0.5.12 独立窗口冷启动修复候选
+
+本机冷启动 WPF 实测约 17 秒，超过 V0.5.11 的 16 秒 Host 限时。Host 等待上限提高到 45 秒，Client RPC 等待上限提高到 55 秒；READY 若在超时后到达会被拒绝并触发 DSH 主窗恢复，避免迟到窗口被误报为成功。更新策略写权限和主窗 PID 修复继续保留。DSH 真实开关保存、独立窗口打开及返回仍待用户验收。

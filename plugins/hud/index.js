@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.10: minimize required Host services; self-contained update settings and native RPC.
+ * DSH HUD v0.5.12: writable update settings and native window startup recovery.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -28,7 +28,7 @@ const ROOTS = [
   'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins',
 ];
 const CURRENT_NAME = '@local/dsh-hud';
-const HOST_VERSION = '0.5.10';
+const HOST_VERSION = '0.5.12';
 const CATALOG_EMPTY = '{"schema":3,"source":"checking","components":[]}';
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const HEX40 = /^[a-f0-9]{40}$/i;

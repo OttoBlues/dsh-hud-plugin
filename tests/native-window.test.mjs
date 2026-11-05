@@ -1,8 +1,31 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { launchWindowsHud, safeNativeSnapshot } from '../plugins/hud/native-window.js';
+import { HUD_STARTUP_TIMEOUT_MS, launchWindowsHud, safeNativeSnapshot } from '../plugins/hud/native-window.js';
+
+const windowsHudScript=readFileSync(new URL('../plugins/hud/native/windows-hud.ps1',import.meta.url),'utf8');
+const hudClientSource=readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
+
+test('WPF helper has a UTF-8 BOM for Windows PowerShell 5.1',()=>{
+  const bytes=readFileSync(new URL('../plugins/hud/native/windows-hud.ps1',import.meta.url));
+  assert.equal(bytes.subarray(0,3).toString('hex'),'efbbbf');
+});
+
+test('WPF window recovery targets only the DSH main BrowserWindow and reports failures',()=>{
+  const script=windowsHudScript.replace(/^\uFEFF/,'');
+  assert.match(script,/string\.Equals\(cls\.ToString\(\),\s*"Chrome_WidgetWin_1"/);
+  assert.doesNotMatch(script,/StartsWith\("Chrome_WidgetWin_"/);
+  assert.match(script,/ERROR: No unique DSH main window could be restored/);
+  assert.match(script,/ERROR: DSH main window remains hidden after restore/);
+});
+
+test('Client RPC wait leaves time for the Host WPF startup deadline',()=>{
+  const clientTimeoutMs=55_000;
+  assert(clientTimeoutMs>HUD_STARTUP_TIMEOUT_MS);
+  assert.match(hudClientSource,/setTimeout\(\(\) => abort\.abort\(\), 55_000\)/);
+});
 
 function mockSpawner() {
   const launched=[];
@@ -73,6 +96,44 @@ test('Windows launch uses fixed script and stdin, never session data in shell ar
   assert.equal(exit.ready,true);
   assert.equal(exit.error,'');
   assert.equal(launched.length,1,'A normal return must not spawn a recovery process');
+});
+
+test('default shell PID is the DSH process that owns its BrowserWindow',()=>{
+  const {spawnProcess,launched}=mockSpawner();
+  const native=launchWindowsHud({platform:'win32',spawnProcess});
+  const args=launched[0].args;
+  assert.equal(args[args.indexOf('-ShellPid')+1],String(process.pid));
+  assert.equal(args[args.indexOf('-HostPid')+1],String(process.pid));
+  native.close();
+  launched[0].child.emit('exit',0,null);
+});
+
+test('cold WPF startup may report READY after the former 16-second limit',async()=>{
+  assert(HUD_STARTUP_TIMEOUT_MS>16_000);
+  const {spawnProcess,launched}=mockSpawner();
+  let ready=0;
+  const native=launchWindowsHud({platform:'win32',spawnProcess,
+    startupTimeoutMs:100,shutdownGraceMs:50,onReady:()=>ready++});
+  await new Promise(resolve=>setTimeout(resolve,25));
+  launched[0].child.stdout.write('READY\n');
+  assert.equal(ready,1);
+  assert.equal(native.isReady(),true);
+  native.close();
+  launched[0].child.emit('exit',0,null);
+});
+
+test('a READY received after startup timeout is rejected and DSH recovery runs',async()=>{
+  const {spawnProcess,launched}=mockSpawner();
+  let ready=0,outcome;
+  launchWindowsHud({platform:'win32',shellPid:222,hostPid:333,spawnProcess,
+    startupTimeoutMs:10,shutdownGraceMs:100,onReady:()=>ready++,onExit:data=>{outcome=data;}});
+  await new Promise(resolve=>setTimeout(resolve,20));
+  launched[0].child.stdout.write('READY\n');
+  assert.equal(ready,0);
+  assert.equal(outcome.ready,false);
+  assert.match(outcome.error,/startup timed out after 1 s/);
+  assert.equal(launched.length,2);
+  assert(launched[1].args.includes('-RestoreOnly'));
 });
 
 test('abnormal exit after ready invokes dedicated recovery helper',()=>{

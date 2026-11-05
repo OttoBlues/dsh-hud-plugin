@@ -19,6 +19,8 @@
 | M3.1.8 | V0.5.8 独立 HUD 启动 RPC 与诊断修复 | Unstable 已发布，CI 通过；用户报告运行中 HTTP 405，U058 独立窗口启动未通过 |
 | M3.1.9 | V0.5.9 多次安装、自动试验版状态及 Host 路由健康诊断 | Unstable 已发布；用户反馈冷启动仍 HTTP 405、所有策略复选框无法保存；U059 不通过 |
 | M3.1.10 | V0.5.10 Host 最小必需注入、公共源自动检查及策略保存反馈 | Unstable 已发布；Linux/Windows CI 全绿（含 WPF 渲染），U0510 Desktop 实机验收待完成 |
+| M3.1.11 | V0.5.11 更新策略可写判定与独立 HUD 主窗口 PID 修复 | 未发布修复尝试；WPF 冷启动约 17 秒，超过原 16 秒限时 |
+| M3.1.12 | V0.5.12 修复 WPF 冷启动超限与迟到 READY 状态竞争 | 本机 WPF 冷启动约 17 秒；Host/Client 等待限时延长，Desktop 开关和窗口操作待用户验收 |
 | M3.2 | HUD 聊天输入、完整会话选择与审批 | 待开发，需要官方 UI/Session 接口对接 |
 | M3.3 | HUD 静默与激活布局 | 待开发 |
 | M4 | Windows 透明置顶、键盘唤醒、点击穿透和深度 Electron 窗口集成 | 待开发；V0.5.7 WPF 独立窗口不等于 M4 完成 |
@@ -70,3 +72,11 @@ DSH 一次进程仅允许升级一次并非官方限制。由用户报告的多�
 ## V0.5.10 修复计划
 
 v0.5.9 的用户截图进一步证明公开源初始化假不可用、HUD Host 路由 HTTP 405、复选框无反馈不可保存。v0.5.10 缩减 Host 必需服务并显式显示设置写入状态，自动初始化公共 GitHub 只读扫描，见 [U0510 验收](HUD-SETTINGS-BOOTSTRAP-V0510.md)。
+
+## V0.5.11 更新策略与独立窗口修复尝试（未发布）
+
+针对本机观察到的 `status=unavailable, writable=true` 仍无法保存，以及 WPF 辅助窗体按 `process.ppid` 搜索而命中 Explorer 的故障，改为仅依据 DSH `writable` 描述决定提交许可，并以当前 DSH 进程 PID 定位拥有 BrowserWindow 的窗口。恢复时只匹配 `Chrome_WidgetWin_1` 主窗，忽略同进程隐藏辅助窗；无唯一目标或窗口仍隐藏时不再报告成功。另为中文 WPF 脚本添加 UTF-8 BOM，避免 Windows PowerShell 5.1 按本地代码页解析。自动化回归、Windows WPF 自检和 U0511 DSH 实机操作分别记录，不以构建结果替代实测。
+
+## V0.5.12 独立窗口冷启动超时修复
+
+本机 WPF 冷启动约 17 秒才输出 READY，超过 V0.5.11 的 16 秒 Host 超时，并可能在强制关闭计时器前误接收迟到 READY。Host 等待提高至 45 秒，Client RPC 等待提高至 55 秒；超时后收到的 READY 会被拒绝、结束辅助进程并尝试恢复 DSH 主窗。策略保存、真实独立窗口打开与返回仍需用户在当前 DSH 验收。

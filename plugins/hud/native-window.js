@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 const HUD_SCRIPT = fileURLToPath(new URL('./native/windows-hud.ps1', import.meta.url));
 const MAX_SESSIONS = 16;
 const TITLE_LIMIT = 100;
+export const HUD_STARTUP_TIMEOUT_MS = 45_000;
 
 export function safeNativeSnapshot(raw) {
   let parsed;
@@ -26,8 +27,8 @@ export function safeNativeSnapshot(raw) {
 
 export function launchWindowsHud({
   snapshot = '', language = 'zh', onReady = () => {}, onExit = () => {},
-  platform = process.platform, shellPid = process.ppid, hostPid = process.pid,
-  spawnProcess = spawn,
+  platform = process.platform, shellPid = process.pid, hostPid = process.pid,
+  spawnProcess = spawn, startupTimeoutMs = HUD_STARTUP_TIMEOUT_MS, shutdownGraceMs = 2_000,
 } = {}) {
   if (platform !== 'win32') throw new Error('Independent HUD requires DSH Desktop on Windows.');
   if (!Number.isSafeInteger(shellPid) || shellPid <= 0 ||
@@ -43,11 +44,13 @@ export function launchWindowsHud({
   const child = spawnProcess('powershell.exe', args, {
     windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
   });
-  let ready = false, finished = false, output = '', failure = '', stderr = '';
+  let ready = false, finished = false, startupTimedOut = false;
+  let output = '', failure = '', stderr = '', timeout, forcedStopTimer;
   const reportExit = (reason) => {
     if (finished) return;
     finished = true;
     clearTimeout(timeout);
+    clearTimeout(forcedStopTimer);
     if (!ready && !failure) failure = String(reason || 'Native HUD did not report READY.');
     // In case WPF was terminated instead of closing normally, a second fixed
     // helper restores the hidden DSH window. It never executes client input.
@@ -66,15 +69,17 @@ export function launchWindowsHud({
     if (finished || child.stdin?.destroyed) return;
     try { child.stdin.end('EXIT\n'); } catch { /* Child already exited. */ }
   };
-  const timeout = setTimeout(() => {
+  timeout = setTimeout(() => {
     if (!ready && !finished) {
-      failure = 'Native HUD startup timed out (16 s).';
+      startupTimedOut = true;
+      failure = 'Native HUD startup timed out after ' +
+        Math.ceil(startupTimeoutMs / 1000) + ' s.';
       stop();
       // A missing PowerShell/WPF startup must not leave a dangling helper.
-      const forced = setTimeout(() => { if (!finished) child.kill(); }, 2_000);
-      forced.unref?.();
+      forcedStopTimer = setTimeout(() => { if (!finished) child.kill(); }, shutdownGraceMs);
+      forcedStopTimer.unref?.();
     }
-  }, 16_000);
+  }, startupTimeoutMs);
   timeout.unref?.();
 
   child.stdout?.on('data', chunk => {
@@ -82,6 +87,10 @@ export function launchWindowsHud({
     output = (output + chunk.toString('utf8')).slice(-4096);
     for (const line of output.split(/\r?\n/).slice(0, -1)) {
       if (line.trim() === 'READY' && !ready) {
+        if (startupTimedOut) {
+          child.kill();
+          return;
+        }
         ready = true;
         clearTimeout(timeout);
         onReady();

@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.5.10 development source parse successfully',()=>{
+test('Host and Client v0.5.12 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -222,7 +222,7 @@ test('all update-policy controls show writable state and explicit settings failu
   assert.match(client,/data-hud-policy-health/);
   assert.match(client,/data-hud-policy-error/);
   assert.match(client,/data-hud-policy-saved/);
-  assert.match(client,/current\.status!=='ready'\|\|current\.writable!==true/);
+  assert.match(client,/current\.writable!==true/);
   assert.match(client,/if\(accepted!==true\)throw/);
   const main=client.slice(client.indexOf("function makeMainPage("));
   assert.doesNotMatch(main,/value=>form\.set\('autoUpdate/);

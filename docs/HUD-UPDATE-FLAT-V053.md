@@ -52,3 +52,11 @@
 ## Unstable 候选发布状态
 
 V0.5.3 包已登记在 `plugins/hud/unstable/v0.5.3`，源码提交 `c7e261f21a7267387556da6b8e08eb68f3b8d17a`，托管 Linux/Windows CI `41913217218` 成功，固定 SHA-256 验证的归档与版本索引一致。用户尚未进行 U053 本机验收，Released 通道仍为空。
+
+## V0.5.4 补充：V0.5.3 永久等待 Host 的确定性代码路径
+
+用户的 Windows 截图和较早的 crash logs 无法提供本次超时的实际异常堆栈。但对 V0.5.3 发布代码审计确认：`processCheckRequest` 在写入 `checking` 成功之前就将 `lastCheckNonce` 设为当前请求，若 `writeSettings` 返回 false，同一请求会永久被后续计时器拒绝；`ConfigEditor` 及 Loader entry 又在 apply() 时只检索一次，如果当时服务未就绪则不会恢复。两者均可能导致用户报告的“排队等待 Host 检查 → 45 秒超时”。
+
+V0.5.4 采取：每次写配置重新检索服务与 entry，缺失时写 Host 警告；仅在请求状态写入成功后记录 nonce；失败使用 3 秒退避后继续尝试相同请求，避免永久丢失；不把未能写回 DSH 的扫描误标为成功。增加模拟配置编辑器初始不可用、临时拒绝写入、恢复后同一个 nonce 成功的自动化回归测试。
+
+此项并不证明用户设备唯一故障原因已经确定。下一步还应在 DSH Host 实机记录这些警告与请求阶段，验证修复。

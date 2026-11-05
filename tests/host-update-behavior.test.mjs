@@ -54,6 +54,9 @@ function setup(overrides={}) {
   const calls={http:[],installed:[],list:0,writes:[],logs:[],cached:[]};
   const inventory=overrides.inventory || [{name:NAME,installed:true,version:'0.4.0'}];
   const callbacks=[], startTimers=[];let dispose=()=>{};
+  let editorReady=overrides.editorInitiallyAvailable!==false;
+  let failCheckClaimOnce=overrides.rejectCheckClaimOnce===true;
+  let clock=Date.now();
   const field=()=>({default(){return this;},volatile(){return this;}});
   const Schema={string:field,boolean:field,object:f=>f};
   const fetch=async(url,opts)=>{
@@ -72,9 +75,13 @@ function setup(overrides={}) {
   const ctx={
     fiber:{entry:{id:'hud'}},
     get(name){
-      if(name!=='configEditor')return;
+      if(name!=='configEditor'||!editorReady)return;
       return{async edit(_entry,transform){
         const next=transform({...values});
+        if(failCheckClaimOnce && next.checkState==='checking' && next.checkNonce){
+          failCheckClaimOnce=false;
+          throw new Error('Simulated transient ConfigEditor lock');
+        }
         if(overrides.rejectManualConfigWrite && next.updateStatus==='installing' && next.requestNonce===''){
           throw new Error('Configuration entry is no longer available');
         }
@@ -100,8 +107,12 @@ function setup(overrides={}) {
     },
     effect:fn=>{dispose=fn();},
   };
+  class TestDate extends Date {
+    constructor(...args){super(...(args.length?args:[clock]));}
+    static now(){return clock;}
+  }
   const sandbox={
-    Schema,createHash,Buffer,AbortController,AbortSignal,fetch,join,
+    Schema,createHash,Buffer,AbortController,AbortSignal,fetch,join,Date:TestDate,
     homedir:()=>'/home',process:{env:{},pid:999},
     mkdir:async()=>{},writeFile:async(path,data)=>{calls.cached.push({path,data});},
     rename:async()=>{},
@@ -127,7 +138,11 @@ function setup(overrides={}) {
     check:async()=>{values.checkNonce='check-'+(++id);values.checkState='checking';
       callbacks[1]();await flush();},
     refresh:async()=>{callbacks[0]();await flush();},
-    reconcile:async()=>{startTimers[0]?.();await flush();},stop:()=>dispose()};
+    reconcile:async()=>{startTimers[0]?.();await flush();},
+    checkCallback:async()=>{callbacks[1]();await flush();},
+    enableEditor:()=>{editorReady=true;},
+    advance:ms=>{clock+=ms;},
+    stop:()=>dispose()};
 }
 
 test('public repository index exposes components with released and unstable channels',async()=>{
@@ -349,5 +364,61 @@ test('a failed channel never becomes a false successful background scan',async()
     assert.equal(s.values.scanState,'partial');
     await s.check();
     assert.equal(s.values.checkState,'partial');
+  }finally{s.stop();}
+});
+
+
+test('a failed ConfigEditor check claim does not permanently consume the request nonce',async()=>{
+  const s=setup({rejectCheckClaimOnce:true});
+  try{
+    await flush(); // initial catalog discovery with a working editor
+    const initialHttp=s.calls.http.length;
+    s.values.checkNonce='retry-nonce';
+    s.values.checkState='queued';
+    await s.checkCallback();
+    assert.equal(s.values.checkNonce,'retry-nonce');
+    assert.equal(s.values.checkState,'queued','Host failed before acknowledging the request');
+    assert(s.calls.logs.some(x=>/Simulated transient ConfigEditor lock/.test(x)));
+    // One 3-second retry backoff, then the SAME nonce must resume.
+    s.advance(3_100);
+    await s.checkCallback();
+    assert.equal(s.values.checkNonce,'');
+    assert.equal(s.values.checkState,'success');
+    assert(s.calls.http.length>initialHttp,'The abandoned check must now fetch GitHub');
+  }finally{s.stop();}
+});
+
+test('a ConfigEditor that loads after the HUD Host starts can process pending updates',async()=>{
+  const s=setup({editorInitiallyAvailable:false});
+  try{
+    await flush();
+    assert.equal(s.values.catalog.includes('"source":"checking"'),true,
+      'Initial scan cannot publish facts while editor service is unavailable');
+    s.values.checkNonce='pending-before-service';
+    s.values.checkState='queued';
+    await s.checkCallback();
+    assert.equal(s.values.checkState,'queued');
+    assert(s.calls.logs.some(x=>/ConfigEditor or loader entry unavailable/.test(x)));
+    s.enableEditor();
+    s.advance(3_100);
+    await s.checkCallback();
+    assert.equal(s.values.checkState,'success');
+    assert.equal(s.values.checkNonce,'');
+    assert.equal(JSON.parse(s.values.catalog).source,'public');
+  }finally{s.stop();}
+});
+
+test('manual scan completion is not reported when its catalog/status edit fails',async()=>{
+  const s=setup({rejectCheckClaimOnce:true});
+  try{
+    await flush();
+    s.values.checkNonce='result-must-be-real';
+    s.values.checkState='queued';
+    await s.checkCallback();
+    assert.notEqual(s.values.checkState,'success');
+    assert.equal(s.values.checkNonce,'result-must-be-real');
+    s.advance(3_100);
+    await s.checkCallback();
+    assert.equal(s.values.checkState,'success');
   }finally{s.stop();}
 });

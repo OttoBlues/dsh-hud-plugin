@@ -108,7 +108,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
                 Foreground="#071522" Background="#6DCBD2" BorderBrush="#6DCBD2"
                 BorderThickness="1" FontSize="14" FontWeight="SemiBold"
                 Width="140" Height="42" Cursor="Hand" Margin="20,0,0,0"/>
-        <StackPanel>
+        <StackPanel x:Name="TitleDragArea" Cursor="SizeAll">
           <TextBlock Text="DSH // HUD 0.5.7" Foreground="#6DCBD2" FontSize="12" FontFamily="Consolas"/>
           <TextBlock x:Name="WindowHeading" Text="HUD 独立工作台" FontSize="30" FontWeight="SemiBold" Margin="0,7,0,0"/>
         </StackPanel>
@@ -221,6 +221,11 @@ if ($rows.Count -gt 0) {
 
 $script:hiddenShell = $false
 $window.FindName('ReturnButton').Add_Click({ $window.Close() })
+# A frameless window has no system drag bar; allow moving it via the title text,
+# without providing minimize/maximize/close controls.
+$window.FindName('TitleDragArea').Add_MouseLeftButtonDown({
+  try { $window.DragMove() } catch { }
+})
 $window.Add_PreviewKeyDown({
   if ($_.Key -eq [Windows.Input.Key]::Escape) { $window.Close() }
 })

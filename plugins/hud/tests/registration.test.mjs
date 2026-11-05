@@ -534,3 +534,26 @@ test('stale pending install never stays queued forever or silently retries',()=>
   reset.props.onClick();
   assert.equal(bag.has('dsh-hud-install-pending'),false);
 });
+
+
+test('authoritative Plugin Manager failure clears pending state and allows another manual try',async()=>{
+  const bag=new Map();
+  const ui=setup({allowUnstable:true,catalog:catalog([own('0.4.1','0.6.0')])},{
+    sessionStorage:{getItem:key=>bag.get(key)||null,
+      setItem:(key,value)=>bag.set(key,value),removeItem:key=>bag.delete(key)},
+    installResult:{ok:true,value:{application:'failed',error:{
+      code:'already-installed',diagnostic:'Target rejected by installed bundle guard',
+    }}},
+  });
+  find(ui.render('main'),x=>x.type==='button'&&x.children.includes('更新'))[0].props.onClick();
+  find(ui.render('main'),x=>x.type==='button'&&x.children.includes('确认'))[0].props.onClick();
+  await flushMode();
+  assert.equal(ui.installCalls.length,1);
+  assert.equal(bag.has('dsh-hud-install-pending'),false);
+  assert.match(JSON.stringify(ui.render('main')),/Target rejected by installed bundle guard/);
+  assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-install-pending']===true).length,0);
+  find(ui.render('main'),x=>x.type==='button'&&x.children.includes('更新'))[0].props.onClick();
+  find(ui.render('main'),x=>x.type==='button'&&x.children.includes('确认'))[0].props.onClick();
+  await flushMode();
+  assert.equal(ui.installCalls.length,2,'A failed attempt may be explicitly retried');
+});

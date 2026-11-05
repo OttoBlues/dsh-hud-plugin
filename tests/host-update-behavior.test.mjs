@@ -243,7 +243,8 @@ test('overridden result and installed-version mismatch never mean success',async
   const overridden=setup({application:'overridden'});
   try{await flush();await overridden.click();
     assert.equal(overridden.calls.installed.length,1);
-    assert.equal(overridden.values.updateStatus,'failed');
+    assert.equal((await overridden.status()).value.autoState,'failed');
+    assert.equal(overridden.values.updateStatus,'installing','Old Loader state is no longer an authoritative result');
   }finally{overridden.stop();}
   const wrong=setup({wrongInstalledVersion:true});
   try{await flush();await wrong.click();
@@ -271,7 +272,7 @@ test('auto update of a released version only after user opt in, one attempt per 
     assert.equal(s.values.updateStatus,'');
     assert.equal(s.values.autoAttemptKey,'','No pre-install ConfigEditor changes');
     assert(s.calls.cached.some(x=>x.path.includes('.hud-auto-attempt.json')));
-    assert.equal((await s.status()).value.autoState,'submitted');
+    assert.equal((await s.status()).value.autoState,'restart-required');
     await s.refresh();
     assert.equal(s.calls.installed.length,1);
   }finally{s.stop();}

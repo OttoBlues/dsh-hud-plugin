@@ -8,7 +8,7 @@
 - 自动更新默认关闭，试验版订阅与自动试验版需要独立授权；窗口内 HUD 预览默认关闭。
 - 历史 V0.4.0 曾出现自更新宿主异常，V0.4.1 引入 Host 生命周期保护。
 
-**源码候选：** V0.5.12 修复设置写权限判定、独立窗口 PID 与 WPF 冷启动超时；Unstable 可安装版本以 `unstable/index.json` 为准，Released 仍为空。
+**源码候选：** V0.5.14 将 HUD Host RPC 注册到 DSH Connection 的 owner-only `/api` Fetch 路由；Unstable 可安装版本以 `unstable/index.json` 为准，Released 仍为空。
 
 **历史发布：** V0.4.2 完成仓库更名与本地 Runner 退役。后续 v0.5.x 已增加 DSH 组件中心、只读公开更新检查与独立 HUD 候选。安装仍须人工确认，不能将 CI 视为 Desktop 无崩溃验收。
 
@@ -71,3 +71,11 @@ v0.5.7 的独立 HUD 启动仍通过 ConfigForms nonce 排队给 Host，Host 重
 ## V0.5.12 冷启动超时修复候选
 
 本机 WPF 冷启动耗时约 17 秒，超过 V0.5.11 的 16 秒 Host 启动限时。Host 等待 READY 的上限提高到 45 秒，Client RPC 等待上限提高到 55 秒；超时后迟到 READY 不会报告成功，并会触发 DSH 窗口恢复。真实 DSH 策略保存、窗口打开和返回仍待验收。
+
+## V0.5.13 Host RPC 注册上下文修复尝试
+
+曾尝试从 DSH root Context 读取 Connection，以避免插件 fiber 缺少 WebServer 导致的路由注册失败。该版本在截图所示 V0.5.12 状态后安装到 desktop Profile，但截图仍显示 V0.5.12，尚无证据确认 V0.5.13 已由当前 UI 加载，因此不视为验收通过。
+
+## V0.5.14 Connection API 路由修复候选
+
+DSH 0.2.2-rc.1 的 Connection 提供 owner-only 精确 Fetch 路由，并将路由挂到共享 `/api` 桥接。HUD 的 `open`、`status` 和 `prepare-install` 改为 `/api/hud-native.*`，不再要求 HUD fiber 注册独立 WebServer 前缀。若此前 Host fiber 因前缀路由注册失败，设置命名空间也无法进入 Settings 镜像，导致策略显示可写却被 Host 拒绝；新路由应同时恢复 Host 状态和设置保存。需在本机 DSH 验证开关保存、独立窗口打开与返回。

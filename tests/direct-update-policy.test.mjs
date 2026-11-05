@@ -7,11 +7,17 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.5.12 development source parse successfully',()=>{
+test('Host and Client v0.5.14 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
   }
+});
+test('Host RPC uses exact authenticated routes on the shared Connection API',()=>{
+  assert.match(host,/ctx\.connection\.fetch\.register\(nativeRpcRoute\('open'/);
+  assert.match(host,/path: '\/api\/' \+ method/);
+  assert.match(host,/requestBody: 'buffered'/);
+  assert.doesNotMatch(host,/\.rpc\.handle\('\/hud-native'/);
 });
 test('DSH HUD is an independent sidebar plugin, not a native Plugins tab',()=>{
   assert.match(client,/ctx\.slots\.inject\('sidebar\.panellist'/);
@@ -161,11 +167,12 @@ test('manual release scanning persists results in one authoritative settings edi
   assert.match(host,/ctx\.on\?\.\('loader\/volatile-update'/);
 });
 
-test('native window launch uses official Connection RPC, never volatile settings as a command bus',()=>{
+test('native window launch uses authenticated Connection API RPC, never volatile settings as a command bus',()=>{
   assert.match(host,/inject = \['connection'\]/);
-  assert.match(host,/ctx\.connection\.rpc\.handle\('\/hud-native'/);
+  assert.match(host,/ctx\.connection\.fetch\.register\(nativeRpcRoute\('open'/);
+  assert.match(host,/ctx\.connection\.browserPeer/);
   assert.match(host,/peer\?\.principal\?\.kind !== 'owner'/);
-  assert.match(client,/ctx\.connection\.rpc\.call\('\/hud-native', 'open'/);
+  assert.match(client,/ctx\.connection\.rpc\.call\('\/api', 'hud-native\.open'/);
   assert.match(client,/abort\.abort\(\)/);
   const launch=client.slice(client.indexOf('const launchNativeHud = async'),
     client.indexOf('const queue = async'));
@@ -176,12 +183,12 @@ test('native window launch uses official Connection RPC, never volatile settings
 
 test('direct, SHA-pinned install preparation never mutates Loader profile config',()=>{
   assert.match(host,/async function prepareInstall\(/);
-  assert.match(host,/endpoint === 'prepare-install'/);
+  assert.match(host,/nativeRpcRoute\('prepare-install',\s*\(payload, signal, peer\) => prepareInstall/);
   assert.match(host,/sha256:approved\.sha256/);
   const prepared=host.slice(host.indexOf('async function prepareInstall('),
     host.indexOf('// Use official Connection unary RPC',host.indexOf('async function prepareInstall(')));
   assert.doesNotMatch(prepared,/writeSettings\(/);
-  assert.match(client,/ctx\.connection\.rpc\.call\('\/hud-native','prepare-install'/);
+  assert.match(client,/ctx\.connection\.rpc\.call\('\/api','hud-native\.prepare-install'/);
   const manual=client.slice(client.indexOf('const queue = async'),
     client.indexOf('const checkState=directCheck.state'));
   assert.match(manual,/ctx\.remote\.pluginManager\.installBundle\(facts\.path/);
@@ -196,7 +203,7 @@ test('manual install receives official DSH application result or displays unconf
   assert.match(client,/data-hud-clear-pending/);
   assert.match(client,/data-hud-legacy-stale/);
   assert.match(client,/data-hud-host-mismatch/);
-  assert.match(host,/endpoint === 'status'/);
+  assert.match(host,/nativeRpcRoute\('status'/);
   assert.match(host,/hostVersion:HOST_VERSION/);
   assert.match(host,/runtime\.scanAt/);
   assert.doesNotMatch(host.slice(host.indexOf('async function discover('),
@@ -207,7 +214,7 @@ test('manual install receives official DSH application result or displays unconf
 test('HUD Host has only one mandatory service and does not block settings on optional Plugin Manager',()=>{
   assert.match(host,/export const inject = \['connection'\]/);
   assert.match(host,/ctx\.get\('pluginManager'\)/);
-  assert.match(host,/ctx\.connection\.rpc\.handle\('\/hud-native'/);
+  assert.match(host,/ctx\.connection\.fetch\.register\(nativeRpcRoute\('status'/);
   assert.doesNotMatch(host,/export const inject = \[[^\]]*'pluginManager'/);
   assert.doesNotMatch(host,/export const inject = \[[^\]]*'webServer'/);
 });

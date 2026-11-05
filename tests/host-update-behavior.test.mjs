@@ -65,10 +65,11 @@ function setup(overrides={}) {
     requestNonce:'',updateStatus:'',
     ...overrides.values,
   };
-  const calls={http:[],installed:[],list:0,writes:[],logs:[],cached:[],native:[]};
+  const calls={http:[],installed:[],list:0,writes:[],logs:[],cached:[],native:[],fetchRoutes:[]};
   const storedFiles=new Map();
   const inventory=overrides.inventory || [{name:NAME,installed:true,version:'0.4.0'}];
-  const callbacks=[], startTimers=[], events=new Map(),rpcRoutes=new Map();let dispose=()=>{};
+  const callbacks=[], startTimers=[], events=new Map(),rpcRoutes=new Map(),effectDisposers=[];
+  const dispose=()=>{for(const fn of effectDisposers.splice(0).reverse())fn();};
   const editableEntry={options:{id:'dsh-hud'}};
   let editorReady=overrides.editorInitiallyAvailable!==false;
   let failCheckClaimOnce=overrides.rejectCheckClaimOnce===true;
@@ -89,6 +90,7 @@ function setup(overrides={}) {
     return response('missing',404);
   };
   const ctx={
+    root:{get(){throw new Error('HUD routes must use the Connection Fetch bridge');}},
     fiber:{entry:overrides.wrongFiberEntry?{options:{id:'not-hud'}}:editableEntry},
     get(name){
       if(name==='pluginManager')return overrides.managerUnavailable ? undefined : ctx.pluginManager;
@@ -109,10 +111,15 @@ function setup(overrides={}) {
       }};
     },
     logger:{warn:(...x)=>calls.logs.push(x.join(' ')),info:(...x)=>calls.logs.push(x.join(' '))},
-    connection:{rpc:{handle(channel,callback){
-      rpcRoutes.set(channel,callback);
-      return ()=>rpcRoutes.delete(channel);
-    }}},
+    connection:{
+      browserPeer:{principal:{kind:'owner'}},
+      fetch:{register(route){
+        calls.fetchRoutes.push(route.path);
+        if(rpcRoutes.has(route.path))throw new Error('Duplicate route '+route.path);
+        rpcRoutes.set(route.path,route);
+        return ()=>rpcRoutes.delete(route.path);
+      }},
+    },
     pluginManager:{
       async listBundles(){calls.list++;return inventory;},
       async installBundle(path,opts){
@@ -129,7 +136,7 @@ function setup(overrides={}) {
         return{application,bundle:NAME,version:overrides.returnedVersion||version};
       },
     },
-    effect:fn=>{dispose=fn();},
+    effect:fn=>{const cleanup=fn();if(typeof cleanup==='function')effectDisposers.push(cleanup);},
     on:(name,fn)=>{events.set(name,fn);},
   };
   class TestDate extends Date {
@@ -137,7 +144,7 @@ function setup(overrides={}) {
     static now(){return clock;}
   }
   const sandbox={
-    Schema,createHash,Buffer,AbortController,AbortSignal,fetch,join,Date:TestDate,
+    Schema,createHash,Buffer,AbortController,AbortSignal,Request,Response,fetch,join,Date:TestDate,
     launchWindowsHud(options) {
       calls.native.push(options);
       if (overrides.nativeThrows) throw new Error('Window spawn forbidden by OS');
@@ -168,16 +175,37 @@ function setup(overrides={}) {
     callbacks[1]();
     await flush();
   }
+  async function invoke(endpoint,payload={},signal=new AbortController().signal,
+    peer={principal:{kind:'owner'}}){
+    const method='hud-native.'+endpoint;
+    const route=rpcRoutes.get('/api/'+method);
+    assert.equal(typeof route?.fetch,'function');
+    assert.equal(route.methods.length,1);
+    assert.equal(route.methods[0],'POST');
+    assert.equal(route.requestBody,'buffered');
+    if(peer?.principal?.kind!=='owner')return{ok:false,error:{
+      code:'hud/forbidden',message:'Owner access required.',
+    }};
+    const request=new Request('http://dsh.internal/api/'+method,{
+      method:'POST',headers:{'content-type':'application/json'},signal,
+      body:JSON.stringify({type:'client-request',rpcId:'fixture-rpc-id',method,payload}),
+    });
+    const response=await route.fetch(request);
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    const envelope=await response.json();
+    assert.equal(envelope.type,'server-response');
+    assert.equal(envelope.rpcId,'fixture-rpc-id');
+    return envelope.result;
+  }
   return {values,calls,inventory,click,
-    native:(data={snapshot:'{"sessions":[]}',language:'zh'},signal=new AbortController().signal,peer={principal:{kind:'owner'}})=>{
-      const handler=rpcRoutes.get('/hud-native');
-      assert.equal(typeof handler,'function');
-      return handler('open',data,signal,peer);
-    },
-    status:()=>rpcRoutes.get('/hud-native')('status',{},
-      new AbortController().signal,{principal:{kind:'owner'}}),
+    fetchRoute:path=>rpcRoutes.get(path),
+    native:(data={snapshot:'{"sessions":[]}',language:'zh'},signal=new AbortController().signal,peer={principal:{kind:'owner'}})=>
+      invoke('open',data,signal,peer),
+    status:()=>invoke('status'),
+    hasNativeRoute:()=>rpcRoutes.has('/api/hud-native.open')&&
+      rpcRoutes.has('/api/hud-native.status')&&rpcRoutes.has('/api/hud-native.prepare-install'),
     prepare:(data,signal=new AbortController().signal,peer={principal:{kind:'owner'}})=>
-      rpcRoutes.get('/hud-native')('prepare-install',data,signal,peer),
+      invoke('prepare-install',data,signal,peer),
     check:async()=>{values.checkNonce='check-'+(++id);values.checkState='checking';
       callbacks[1]();await flush();},
     refresh:async()=>{callbacks[0]();await flush();},
@@ -189,13 +217,39 @@ function setup(overrides={}) {
     stop:()=>dispose()};
 }
 
+test('native RPC registers exact authenticated Connection API routes',async()=>{
+  const s=setup();
+  try{
+    assert.equal(s.hasNativeRoute(),true);
+    assert.deepEqual(s.calls.fetchRoutes,[
+      '/api/hud-native.open','/api/hud-native.prepare-install','/api/hud-native.status',
+    ]);
+    assert.equal((await s.status()).value.hostVersion,'0.5.14');
+  }finally{
+    s.stop();
+    assert.equal(s.hasNativeRoute(),false);
+  }
+});
+
+test('native RPC rejects malformed envelopes before touching the window launcher',async()=>{
+  const s=setup();
+  try{
+    const route=s.fetchRoute('/api/hud-native.open');
+    const response=await route.fetch(new Request('http://dsh.internal/api/hud-native.open',{
+      method:'POST',headers:{'content-type':'application/json'},body:'{}',
+    }));
+    assert.equal(response.status,400);
+    assert.equal(s.calls.native.length,0);
+  }finally{s.stop();}
+});
+
 test('public repository index exposes components with released and unstable channels',async()=>{
   const s=setup({unstable:'0.4.2'});
   try{
     await flush();
     const status=await s.status();
     assert.equal(status.value.scanState,'success');
-    assert.equal(status.value.hostVersion,'0.5.12');
+    assert.equal(status.value.hostVersion,'0.5.14');
     assert.equal(s.calls.writes.length,0,'Background scanning must not recompose its own Host');
     assert(s.calls.http.some(x=>x.url.endsWith('/hud/released/index.json')));
     assert(s.calls.http.some(x=>x.url.endsWith('/hud/unstable/index.json')));
@@ -521,6 +575,7 @@ test('native HUD RPC reports READY without a Host ConfigEditor write',async()=>{
   const s=setup();
   try {
     const promise=s.native();
+    await flush();
     assert.equal(s.calls.native.length,1);
     assert.equal(s.calls.writes.filter(x=>x.nativeHudState).length,0);
     s.calls.native[0].onReady();
@@ -529,6 +584,7 @@ test('native HUD RPC reports READY without a Host ConfigEditor write',async()=>{
     assert.equal(opened.value.state,'open');
     s.calls.native[0].onExit({ready:true,error:''});
     const next=s.native();
+    await flush();
     assert.equal(s.calls.native.length,2,'Closing native window allows another launch');
     s.calls.native[1].onReady();
     await next;
@@ -551,6 +607,7 @@ test('native HUD RPC cancels pending launch and restores shell on transport abor
   try {
     const abort=new AbortController();
     const outcome=s.native(undefined,abort.signal);
+    await flush();
     assert.equal(s.calls.native.length,1);
     abort.abort();
     const result=await outcome;
@@ -568,6 +625,7 @@ test('native HUD RPC disallows non-owner and duplicate windows',async()=>{
     assert.equal(blocked.error.code,'hud/forbidden');
     assert.equal(s.calls.native.length,0);
     const opening=s.native();
+    await flush();
     assert.equal(s.calls.native.length,1);
     const duplicate=await s.native();
     assert.equal(duplicate.error.code,'hud/already-open');
@@ -614,7 +672,7 @@ test('legacy pending nonce is not replayed on reloaded Host and does not disturb
     await flush();
     await s.checkCallback();
     assert.equal(s.calls.installed.length,0,'Recomposed Host must not replay old confirmation');
-    assert.equal((await s.status()).value.hostVersion,'0.5.12');
+    assert.equal((await s.status()).value.hostVersion,'0.5.14');
   } finally{s.stop();}
 });
 
@@ -636,9 +694,10 @@ test('Host exposes native status RPC when optional Plugin Manager has not starte
   try {
     const status=await s.status();
     assert.equal(status.ok,true);
-    assert.equal(status.value.hostVersion,'0.5.12');
+    assert.equal(status.value.hostVersion,'0.5.14');
     assert.equal(s.calls.installed.length,0);
     const pending=s.native();
+    await flush();
     assert.equal(s.calls.native.length,1,'Independent HUD RPC must not depend on pluginManager');
     s.calls.native[0].onReady();
     const started=await pending;

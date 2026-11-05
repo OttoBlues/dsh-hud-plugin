@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.5.12",
+  "version": "0.5.14",
   "private": true,
   "type": "module",
-  "description": "HUD settings and Windows native window startup recovery fixes",
+  "description": "HUD authenticated API routes and settings bootstrap fix",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },

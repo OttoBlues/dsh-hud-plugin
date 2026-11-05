@@ -69,8 +69,8 @@ function setup(valuesOverride={}, runtime={}) {
     connection:{rpc:{async call(channel,endpoint,payload,signal){
       rpcCalls.push({channel,endpoint,payload,signal});
       if(runtime.nativeRpc)return runtime.nativeRpc({channel,endpoint,payload,signal});
-      if(endpoint==='status')return {ok:true,value:{hostVersion:'0.5.12'}};
-      if(endpoint==='prepare-install')return {ok:true,value:{
+      if(endpoint==='hud-native.status')return {ok:true,value:{hostVersion:'0.5.14'}};
+      if(endpoint==='hud-native.prepare-install')return {ok:true,value:{
         name:payload.name,version:payload.version,channel:payload.channel,
         sha256:'f'.repeat(64),path:'/fixture/cache/'+payload.version+'/verified.tgz',
       }};
@@ -88,7 +88,7 @@ function setup(valuesOverride={}, runtime={}) {
       async listBundles(){return {ok:true,value:[]};},
       async installBundle(path,options){
         installCalls.push({path,options});
-        const version=/\/(\d+\.\d+\.\d+)\//.exec(path)?.[1]||'0.5.12';
+        const version=/\/(\d+\.\d+\.\d+)\//.exec(path)?.[1]||'0.5.14';
         return runtime.installResult||{ok:true,value:{application:'applied',version}};
       },
     }},
@@ -145,7 +145,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.5.13')])});
+  const ui=setup({catalog:catalog([own('0.5.15')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -188,7 +188,7 @@ test('Experimental update requires explicit toggle and a direct, verified DSH in
   assert.ok(confirm);
   confirm.props.onClick();
   await flushMode();
-  assert.equal(ui.rpcCalls.filter(x=>x.endpoint==='prepare-install').length,1);
+  assert.equal(ui.rpcCalls.filter(x=>x.endpoint==='hud-native.prepare-install').length,1);
   assert.equal(ui.installCalls.length,1);
   assert.equal(ui.installCalls[0].options.saveExact,true);
   assert.equal(ui.installCalls[0].options.enabled,true);
@@ -229,7 +229,7 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   const preview=find(overlay,x=>x.props?.['data-dsh-hud-preview']==='true')[0];
   assert.ok(preview);
   assert.equal(preview.props.style.pointerEvents,'none');
-  assert.equal(preview.props['data-dsh-hud-version'],'0.5.12');
+  assert.equal(preview.props['data-dsh-hud-version'],'0.5.14');
 });
 
 test('component center shows the renamed repository rather than legacy UI copy',()=>{
@@ -260,8 +260,8 @@ test('Component Center launches through authenticated RPC and never uses ConfigF
   button.props.onClick();
   await flushMode();
   assert.equal(ui.rpcCalls.length,1);
-  assert.equal(ui.rpcCalls[0].channel,'/hud-native');
-  assert.equal(ui.rpcCalls[0].endpoint,'open');
+  assert.equal(ui.rpcCalls[0].channel,'/api');
+  assert.equal(ui.rpcCalls[0].endpoint,'hud-native.open');
   assert.equal(ui.updates.length,0,'Launch is not a config update or a Loader nonce');
   assert.equal(ui.navigations.length,0,'Never switch the DSH panel before native READY');
   const snapshot=JSON.parse(ui.rpcCalls[0].payload.snapshot);
@@ -352,7 +352,7 @@ test('HUD Escape and manager entry both keep DSH navigation usable',async()=>{
 test('cockpit UI uses fixed-pixel nested panels with no distorted SVG rails',()=>{
   const ui=setup({hudMode:true});
   const overlay=renderWorkspace(ui);
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.12');
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.14');
   assert.equal(overlay.props.style.pointerEvents,'auto');
   const panels=find(overlay,x=>x.props?.['data-hud-cockpit-panel']===true);
   assert.ok(panels.length>=4,'hero, metrics and Session modules stay separate');
@@ -405,8 +405,8 @@ const publicIndex={schema:1,components:[{
 const stableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
   channel:'released',latest:null,releases:[]};
 const unstableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
-  channel:'unstable',latest:'0.5.12',releases:[{
-    version:'0.5.12',file:'v0.5.12/local-dsh-hud-0.5.12.tgz',
+  channel:'unstable',latest:'0.5.13',releases:[{
+    version:'0.5.13',file:'v0.5.13/local-dsh-hud-0.5.13.tgz',
     sha256:'f'.repeat(64),sourceCommit:'a'.repeat(40),
     test:{result:'success',ciRun:'123456'},
   }]};
@@ -444,7 +444,7 @@ test('Check updates reads public GitHub directly without any Host config command
   const checked=ui.render('main');
   const status=find(checked,x=>x.props?.['data-hud-check-state']==='success')[0];
   assert.ok(status);
-  assert.match(JSON.stringify(checked),/试验版: 0\.5\.12/);
+  assert.match(JSON.stringify(checked),/试验版: 0\.5\.13/);
   assert.match(JSON.stringify(checked),/Verified metadata from the fixed public source/);
 });
 test('A broken unstable channel reports partial check and hides stale latest',async()=>{
@@ -505,13 +505,13 @@ test('two sequential manual upgrades run through DSH Manager in one Desktop sess
   ui.values.catalog=catalog([own('0.4.1','0.6.1')]);
   await install();
   assert.equal(ui.installCalls.length,2);
-  assert.equal(ui.rpcCalls.filter(x=>x.endpoint==='prepare-install').length,2);
+  assert.equal(ui.rpcCalls.filter(x=>x.endpoint==='hud-native.prepare-install').length,2);
   assert.equal(ui.updates.length,0,'No version install state was written to Loader settings');
 });
 
 test('HTTP 405 on native launch gives Host-restart guidance instead of Windows-platform blame',async()=>{
   const ui=setup({},{
-    nativeRpc:async()=>{throw new Error('transport failure for /hud-native/open: HTTP 405');},
+    nativeRpc:async()=>{throw new Error('transport failure for /api/hud-native.open: HTTP 405');},
   });
   find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true)[0].props.onClick();
   await flushMode();

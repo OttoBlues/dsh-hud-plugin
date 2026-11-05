@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.12: writable settings and native window startup recovery.
+ * DSH HUD V0.5.14: authenticated Connection API routes.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.12';
+    const VERSION = '0.5.14';
     let nativeSessionSnapshot = { capturedAt:'', sessions:[] };
     // User-triggered checks do not use Host settings as a command queue.
     const REFRESH_MS = 5 * 60_000;
@@ -578,7 +578,7 @@ window.__ModuleLoader__.load({
             const controller=new AbortController();
             const timeout=setTimeout(()=>controller.abort(),4_000);
             try {
-              const result=await ctx.connection.rpc.call('/hud-native','status',{},controller.signal);
+              const result=await ctx.connection.rpc.call('/api','hud-native.status',{},controller.signal);
               if (!alive) return;
               if (result?.ok && typeof result.value?.hostVersion==='string') {
                 setHostHealth({status:result.value.hostVersion===VERSION?'ready':'mismatch',
@@ -685,7 +685,7 @@ window.__ModuleLoader__.load({
             // Transient RPC: never write a launch nonce into ConfigForms.
             // WPF returns READY only after the new window has rendered and
             // the correct DSH Desktop window has been hidden.
-            const outcome = await ctx.connection.rpc.call('/hud-native', 'open', {
+            const outcome = await ctx.connection.rpc.call('/api', 'hud-native.open', {
               snapshot:JSON.stringify(nativeSessionSnapshot),
               language:t('returnDSH')==='Return to DSH'?'en':'zh',
             }, abort.signal);
@@ -716,7 +716,7 @@ window.__ModuleLoader__.load({
           try {
             // Verify the indexed SHA and commit in the Host, but execute pnpm
             // in DSH's own stable Plugin Manager, outside the HUD plugin fiber.
-            const prepared=await ctx.connection.rpc.call('/hud-native','prepare-install',{
+            const prepared=await ctx.connection.rpc.call('/api','hud-native.prepare-install',{
               id:component.id,name:component.name,version:candidate.version,
               channel:candidate.channel,
             },ctrl.signal);

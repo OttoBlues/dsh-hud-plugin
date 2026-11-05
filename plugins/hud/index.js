@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.12: writable update settings and native window startup recovery.
+ * DSH HUD v0.5.14: register Host RPCs through Connection's authenticated API.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -15,11 +15,8 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-// The client-side plugin can exist while the optional Plugin Manager has not yet
-// registered. Requiring both it and webServer here deadlocks the HUD Host
-// on some Desktop profiles: the Client remains visible but native RPC falls
-// through to the SPA fallback (HTTP 405), and Settings has no HUD namespace.
-// Connection is the only prerequisite for the authenticated native endpoint.
+// Connection owns the authenticated /api bridge. Do not register feature RPCs
+// as standalone WebServer prefixes: their Context may not own webServer.
 export const inject = ['connection'];
 // Keep the previous name as a temporary migration fallback. Once the user
 // renames the repository, old raw URLs are NOT assumed to keep redirecting.
@@ -28,7 +25,7 @@ const ROOTS = [
   'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins',
 ];
 const CURRENT_NAME = '@local/dsh-hud';
-const HOST_VERSION = '0.5.12';
+const HOST_VERSION = '0.5.14';
 const CATALOG_EMPTY = '{"schema":3,"source":"checking","components":[]}';
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const HEX40 = /^[a-f0-9]{40}$/i;
@@ -571,6 +568,53 @@ export function apply(ctx, config) {
   const rpcFail = (code, message) => ({ok:false,error:{
     code,message:String(message || 'Unknown HUD Host error.').slice(0,450),details:{},
   }});
+
+  function nativeRpcRoute(endpoint, handle) {
+    const method = 'hud-native.' + endpoint;
+    return {
+      path: '/api/' + method,
+      methods: ['POST'],
+      requestBody: 'buffered',
+      async fetch(request) {
+        let message;
+        try {
+          message = await request.json();
+        } catch {
+          return new Response('Invalid HUD RPC request.', {status:400});
+        }
+        if (!message || message.type !== 'client-request' ||
+            message.method !== method || typeof message.rpcId !== 'string' ||
+            message.rpcId.length === 0) {
+          return new Response('Invalid HUD RPC envelope.', {status:400});
+        }
+        let result;
+        try {
+          result = await handle(message.payload, request.signal, ctx.connection.browserPeer);
+        } catch (error) {
+          result = rpcFail('hud/internal', error?.message || error);
+        }
+        return Response.json({type:'server-response',rpcId:message.rpcId,result}, {
+          headers:{'cache-control':'no-store'},
+        });
+      },
+    };
+  }
+
+  ctx.effect(() => ctx.connection.fetch.register(nativeRpcRoute('open',
+    (payload, signal, peer) => openNativeHud(payload, signal, peer))),
+  'dsh-hud: /api/hud-native.open');
+  ctx.effect(() => ctx.connection.fetch.register(nativeRpcRoute('prepare-install',
+    (payload, signal, peer) => prepareInstall(payload, signal, peer))),
+  'dsh-hud: /api/hud-native.prepare-install');
+  ctx.effect(() => ctx.connection.fetch.register(nativeRpcRoute('status',
+    (_payload, _signal, peer) => Promise.resolve(peer?.principal?.kind === 'owner'
+      ? {ok:true,value:{hostVersion:HOST_VERSION,scanAt:runtime.scanAt,
+          scanState:runtime.scanState,scanError:runtime.scanError,
+          autoAt:runtime.autoAt,autoState:runtime.autoState,
+          autoError:runtime.autoError}}
+      : rpcFail('hud/forbidden','Owner access required.')))),
+  'dsh-hud: /api/hud-native.status');
+
   async function prepareInstall(payload, signal, peer) {
     if (disposed) return rpcFail('hud/host-disposed','HUD Host is shutting down.');
     if (peer?.principal?.kind !== 'owner') return rpcFail('hud/forbidden','Owner access required.');
@@ -702,19 +746,6 @@ export function apply(ctx, config) {
   }
 
   ctx.effect(() => {
-    const unregisterNativeRpc = ctx.connection.rpc.handle('/hud-native',
-      (endpoint, payload, signal, peer) => endpoint === 'open'
-        ? openNativeHud(payload, signal, peer)
-        : endpoint === 'prepare-install'
-          ? prepareInstall(payload, signal, peer)
-          : endpoint === 'status'
-            ? Promise.resolve(peer?.principal?.kind === 'owner'
-              ? {ok:true,value:{hostVersion:HOST_VERSION,scanAt:runtime.scanAt,
-                  scanState:runtime.scanState,scanError:runtime.scanError,
-                  autoAt:runtime.autoAt,autoState:runtime.autoState,
-                  autoError:runtime.autoError}}
-              : rpcFail('hud/forbidden','Owner access required.'))
-            : Promise.resolve(rpcFail('hud/unknown-command','Unsupported native HUD command.')));
     const guarded = promise => {
       Promise.resolve(promise).catch(error => {
         if (!disposed) {
@@ -753,7 +784,6 @@ export function apply(ctx, config) {
       disposed = true;
       nativeHudWindow?.close();
       nativeHudWindow = null;
-      void unregisterNativeRpc();
       controller.abort();
       clearTimeout(reconcile);
       clearInterval(poll);

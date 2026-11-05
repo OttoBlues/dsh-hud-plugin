@@ -21,6 +21,8 @@
 | M3.1.10 | V0.5.10 Host 最小必需注入、公共源自动检查及策略保存反馈 | Unstable 已发布；Linux/Windows CI 全绿（含 WPF 渲染），U0510 Desktop 实机验收待完成 |
 | M3.1.11 | V0.5.11 更新策略可写判定与独立 HUD 主窗口 PID 修复 | 未发布修复尝试；WPF 冷启动约 17 秒，超过原 16 秒限时 |
 | M3.1.12 | V0.5.12 修复 WPF 冷启动超限与迟到 READY 状态竞争 | 本机 WPF 冷启动约 17 秒；Host/Client 等待限时延长，Desktop 开关和窗口操作待用户验收 |
+| M3.1.13 | V0.5.13 修复 Connection RPC 以插件 fiber 注册、缺少 Host webServer 的问题 | 已生成并安装候选包；截图仍为 V0.5.12，无法确认其 UI 加载状态 |
+| M3.1.14 | V0.5.14 通过 DSH Connection owner-only `/api` 路由承载 HUD RPC | 自动检查、打包和本机 CLI 更新后，待用户实测策略保存与独立窗口 |
 | M3.2 | HUD 聊天输入、完整会话选择与审批 | 待开发，需要官方 UI/Session 接口对接 |
 | M3.3 | HUD 静默与激活布局 | 待开发 |
 | M4 | Windows 透明置顶、键盘唤醒、点击穿透和深度 Electron 窗口集成 | 待开发；V0.5.7 WPF 独立窗口不等于 M4 完成 |

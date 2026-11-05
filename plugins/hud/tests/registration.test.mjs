@@ -428,7 +428,7 @@ test('Check updates reads public GitHub directly without any Host config command
   const checked=ui.render('main');
   const status=find(checked,x=>x.props?.['data-hud-check-state']==='success')[0];
   assert.ok(status);
-  assert.match(JSON.stringify(checked),/试验版: 0\.5\.7/);
+  assert.match(JSON.stringify(checked),/试验版: 0\.5\.9/);
   assert.match(JSON.stringify(checked),/Verified metadata from the fixed public source/);
 });
 test('A broken unstable channel reports partial check and hides stale latest',async()=>{

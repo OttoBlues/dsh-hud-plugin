@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.8: direct authenticated native HUD startup RPC and error feedback.
+ * DSH HUD V0.5.9: verified direct installer and Host/version health diagnostics.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,10 +10,34 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.8';
+    const VERSION = '0.5.9';
     let nativeSessionSnapshot = { capturedAt:'', sessions:[] };
     // User-triggered checks do not use Host settings as a command queue.
     const REFRESH_MS = 5 * 60_000;
+    const INSTALL_PENDING_KEY = 'dsh-hud-install-pending';
+    const INSTALL_WAIT_MS = 90_000;
+    const INSTALL_STALE_MS = 120_000;
+    function readPending() {
+      try {
+        const raw=window.sessionStorage?.getItem(INSTALL_PENDING_KEY);
+        const row=raw?JSON.parse(raw):null;
+        return row && /^@local\/[a-z0-9-]+$/.test(row.name||'') &&
+          /^\d+\.\d+\.\d+$/.test(row.version||'') &&
+          Number.isFinite(row.startedAt) ? row : null;
+      } catch { return null; }
+    }
+    function persistPending(row) {
+      try {
+        if (row) window.sessionStorage?.setItem(INSTALL_PENDING_KEY,JSON.stringify(row));
+        else window.sessionStorage?.removeItem(INSTALL_PENDING_KEY);
+      } catch { /* Browser restrictions do not block in-memory progress. */ }
+    }
+    function transportDiagnostic(error, t) {
+      const detail=String(error?.message||error||'unknown').slice(0,320);
+      if (/HTTP (404|405)|\/hud-native\/(open|status|prepare-install).*HTTP/i.test(detail))
+        return t('hostMismatch')+' '+detail;
+      return detail;
+    }
 
     const dictionaries = {
       zh: {
@@ -21,6 +45,8 @@ window.__ModuleLoader__.load({
         enterHud:'打开独立 HUD 窗口',returnDSH:'返回 DSH',componentCenter:'组件中心',
         nativeOpening:'正在启动独立 HUD 窗口…',nativeFailed:'独立 HUD 启动失败，请确认正在使用 Windows DSH Desktop。',
         nativeTimeout:'独立 HUD 启动超时；可以点击重试。',nativeDescription:'Windows 无边框独立窗口 · 进入后隐藏 DSH · 返回时恢复 DSH',
+        hostMismatch:'当前 DSH Host 未加载此版本的 HUD 服务（HTTP 405/404）。请完全退出 DSH Desktop 后重新启动；仅刷新网页不够。',
+        hostVersionMismatch:'运行中的 HUD Host 与组件中心版本不一致，请完整重启 DSH 以激活更新。',
         liveStatus:'信号接入 / 实时状态',heroTitle:'任务态势中心',heroHelp:'HUD 正从 DSH 的真实会话中读取运行态势。核心命令、对话与授权仍由原生 DSH 执行。',
         sessionCount:'会话数量',runningCount:'运行中',viewMode:'显示模式',
         fromDSH:'由 DSH 提供',realtime:'实时状态',switchable:'随时可切换',
@@ -44,7 +70,15 @@ window.__ModuleLoader__.load({
         unstable: '试验版', notPublished: '未发布', update: '更新', install: '安装',
         latest: '已是最新', unavailable: '暂无可安装的新版本', queued: '已确认，准备安装…',
         installing: '正在校验并安装…', failed: '安装失败或未能验证版本，请查看 DSH 日志',
-        restart: '已完成安装，请重启 DSH', succeeded: '更新已安装',
+        restart: '已写入安装，必须重启 DSH 才能生效', succeeded: 'DSH 已确认安装版本',
+        installSubmitting:'DSH 官方插件管理器正在安装…',
+        installUnconfirmed:'安装结果尚未确认。请检查 DSH 插件清单或重启应用；不要重复提交同一版本。',
+        installChecking:'安装调用已返回，正在核对实际版本与运行中的 Host…',
+        prepareFailed:'安装包验证或提交失败：',
+        legacyStale:'旧版遗留的安装队列状态已经失效；以实际安装清单为准。',
+        autoAttempt:'后台自动安装已提交；请核对安装版本与 Host 状态。',
+        autoFailed:'后台自动安装结果未确认，请查看 DSH Host 日志。',
+        resetPending:'清除未确认记录（请先核对 DSH 插件状态）',
         confirm: '确认', cancel: '取消',
         confirmText: '只安装仓库对应通道中经过校验的 .tgz。更新期间 DSH 可能要求重启。',
         allowUnstable: '接收试验版更新', allowUnstableHelp: '默认关闭。开启后可以手动安装 unstable 中的试验包。',
@@ -58,6 +92,8 @@ window.__ModuleLoader__.load({
         enterHud:'Open independent HUD window',returnDSH:'Return to DSH',componentCenter:'Component Center',
         nativeOpening:'Starting native HUD window…',nativeFailed:'Unable to open the HUD window. Windows DSH Desktop is required.',
         nativeTimeout:'Native HUD startup timed out; you can retry.',nativeDescription:'Frameless Windows HUD · DSH is hidden on entry and restored on return',
+        hostMismatch:'The running DSH Host has not loaded this HUD service (HTTP 405/404). Completely quit and reopen DSH Desktop; refreshing the page is insufficient.',
+        hostVersionMismatch:'Running HUD Host and Component Center versions differ. Restart DSH to activate the update.',
         liveStatus:'LIVE SIGNAL / SESSION LINK',heroTitle:'MISSION CONTROL',
         heroHelp:'A live HUD workspace powered by DSH session state. Commands and permissions stay in DSH.',
         sessionCount:'SESSIONS',runningCount:'RUNNING',viewMode:'VIEW MODE',
@@ -82,7 +118,15 @@ window.__ModuleLoader__.load({
         unstable: 'Unstable', notPublished: 'Not published', update: 'Update', install: 'Install',
         latest: 'Up to date', unavailable: 'No installable new version', queued: 'Update confirmed and queued…',
         installing: 'Verifying and installing…', failed: 'Install failed or version could not be verified; check DSH logs',
-        restart: 'Installed; restart DSH', succeeded: 'Component updated',
+        restart: 'Install saved; restart DSH to activate', succeeded: 'DSH confirmed the installed version',
+        installSubmitting:'Installing with the official DSH Plugin Manager…',
+        installUnconfirmed:'Install status is unconfirmed. Check DSH Plugins or restart; do not resubmit the same version.',
+        installChecking:'Install returned; checking actual version and running Host…',
+        prepareFailed:'Archive verification or install submission failed:',
+        legacyStale:'Ignoring an obsolete queued install from an older HUD; installed inventory is authoritative.',
+        autoAttempt:'An automatic install was submitted; verify the installed and running Host versions.',
+        autoFailed:'Automatic install outcome was not confirmed; inspect Host logs.',
+        resetPending:'Clear unconfirmed record (check DSH Plugins first)',
         confirm: 'Confirm', cancel: 'Cancel',
         confirmText: 'Only SHA-256-verified channel packages are installed. A DSH restart may be required.',
         allowUnstable: 'Allow experimental updates', allowUnstableHelp: 'Off by default; enables manual updates from unstable.',
@@ -482,6 +526,12 @@ window.__ModuleLoader__.load({
         const [bundles, setBundles] = React.useState([]);
         const [confirm, setConfirm] = React.useState('');
         const [saving, setSaving] = React.useState(false);
+        const [pending,setPending] = React.useState(readPending());
+        const [installNote,setInstallNote] = React.useState('');
+        const [hostHealth,setHostHealth] = React.useState({status:'checking',version:'',autoState:'',autoError:'',scanAt:''});
+        const [inventoryReady,setInventoryReady] = React.useState(false);
+        const [now,setNow] = React.useState(Date.now());
+        const installAttempt = React.useRef(false);
         const [error, setError] = React.useState('');
         const [requestingCheck, setRequestingCheck] = React.useState(false);
         const [nativeLaunching,setNativeLaunching] = React.useState(false);
@@ -496,14 +546,53 @@ window.__ModuleLoader__.load({
           async function refreshInstalled() {
             try {
               const response = await ctx.remote.pluginManager.listBundles();
-              if (alive && response.ok && Array.isArray(response.value)) setBundles(response.value);
+              if (alive && response.ok && Array.isArray(response.value)) {
+                setBundles(response.value);setInventoryReady(true);
+              }
             } catch { /* Missing Host inventory must not fabricate installations. */ }
           }
           void refreshInstalled();
-          const timer = setInterval(() => { void refreshInstalled(); }, REFRESH_MS);
+          const timer = setInterval(() => { void refreshInstalled(); }, 5_000);
           return () => { alive = false; clearInterval(timer); };
         }, []);
 
+        React.useEffect(() => {
+          let alive=true;
+          const probe=async()=>{
+            const controller=new AbortController();
+            const timeout=setTimeout(()=>controller.abort(),4_000);
+            try {
+              const result=await ctx.connection.rpc.call('/hud-native','status',{},controller.signal);
+              if (!alive) return;
+              if (result?.ok && typeof result.value?.hostVersion==='string') {
+                setHostHealth({status:result.value.hostVersion===VERSION?'ready':'mismatch',
+                  version:result.value.hostVersion,autoState:result.value.autoState||'',
+                  autoError:result.value.autoError||'',scanAt:result.value.scanAt||''});
+              } else setHostHealth({status:'unavailable',version:'',autoState:'',autoError:'',scanAt:'',
+                error:result?.error?.message||'Host status RPC unavailable'});
+            } catch (e) {
+              if (alive) setHostHealth({status:'unavailable',version:'',autoState:'',autoError:'',scanAt:'',
+                error:String(e?.message||e).slice(0,220)});
+            } finally {clearTimeout(timeout);}
+          };
+          void probe();
+          const timer=setInterval(()=>{void probe();},30_000);
+          return ()=>{alive=false;clearInterval(timer);};
+        }, []);
+        React.useEffect(()=>{
+          const timer=setInterval(()=>setNow(Date.now()),4_000);
+          return ()=>clearInterval(timer);
+        },[]);
+        React.useEffect(()=>{
+          if (!pending || !inventoryReady || hostHealth.status!=='ready') return;
+          const actual=bundles.find(x=>x.installed && x.name===pending.name);
+          if (actual?.version===pending.version && pending.name==='@local/dsh-hud' &&
+            hostHealth.version===VERSION) {
+            persistPending(null);setPending(null);setInstallNote(t('succeeded'));
+          } else if (actual?.version===pending.version && pending.name!=='@local/dsh-hud') {
+            persistPending(null);setPending(null);setInstallNote(t('succeeded'));
+          }
+        },[inventoryReady,bundles,hostHealth.status,hostHealth.version,pending?.name,pending?.version]);
         const values = snapshot.value || {};
         const catalog = parseCatalog(localCatalog ?? values.catalog);
         const known = [...catalog.components];
@@ -512,9 +601,9 @@ window.__ModuleLoader__.load({
             description:'DSH HUD · OttoBlues/dsh-hud-plugin component center', released:null, unstable:null });
         }
         const installedByName = new Map(bundles.filter(x => x.installed).map(x => [x.name,x]));
-        if (!installedByName.has('@local/dsh-hud')) {
+        if (!inventoryReady && !installedByName.has('@local/dsh-hud')) {
           installedByName.set('@local/dsh-hud', { name:'@local/dsh-hud',
-            installed:true, version:VERSION });
+            installed:true, version:VERSION, provisional:true });
         }
         // DSH owns the component center's light/dark theme. Brand accent
         // does not replace the surrounding native management visual language.
@@ -564,8 +653,9 @@ window.__ModuleLoader__.load({
             if (outcome.value?.state !== 'open') throw new Error('Host did not report native READY.');
             try { ctx.layout.selectPanel(null); } catch { /* HUD window remains usable. */ }
           } catch (cause) {
+            const detail=transportDiagnostic(cause,t);
             setNativeFailure(abort.signal.aborted?t('nativeTimeout'):
-              t('nativeFailed')+' '+String(cause?.message||cause).slice(0,300));
+              detail.startsWith(t('hostMismatch'))?detail:t('nativeFailed')+' '+detail);
           } finally {
             clearTimeout(timeout);
             nativeAttempt.current = false;
@@ -573,30 +663,101 @@ window.__ModuleLoader__.load({
           }
         };
         const queue = async (component,candidate) => {
-          setSaving(true); setError('');
+          if(installAttempt.current)return;
+          installAttempt.current=true;
+          setSaving(true);setError('');setInstallNote('');
+          let submitted=false;
+          const ctrl=new AbortController();
+          const timer=setTimeout(()=>ctrl.abort(),33_000);
           try {
-            const result = await form.mutate([
-              {op:'set',path:['requestComponent'],value:component.name},
-              {op:'set',path:['requestVersion'],value:candidate.version},
-              {op:'set',path:['requestChannel'],value:candidate.channel},
-              {op:'set',path:['requestNonce'],value:String(Date.now())},
-              {op:'set',path:['updateStatus'],value:'queued'},
+            // Verify the indexed SHA and commit in the Host, but execute pnpm
+            // in DSH's own stable Plugin Manager, outside the HUD plugin fiber.
+            const prepared=await ctx.connection.rpc.call('/hud-native','prepare-install',{
+              id:component.id,name:component.name,version:candidate.version,
+              channel:candidate.channel,
+            },ctrl.signal);
+            if(!prepared?.ok)throw new Error(
+              String(prepared?.error?.code||'hud/prepare-rejected')+': '+
+              String(prepared?.error?.message||'No verified artifact received'));
+            const facts=prepared.value||{};
+            if(facts.name!==component.name || facts.version!==candidate.version ||
+              facts.sha256!==candidate.sha256 || facts.channel!==candidate.channel ||
+              typeof facts.path!=='string'||facts.path.length>1024) {
+              throw new Error('Verified artifact metadata did not match the approved release.');
+            }
+            const record={name:component.name,version:candidate.version,
+              channel:candidate.channel,startedAt:Date.now(),stage:'installing',
+              requestId:'hud-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)};
+            setPending(record);persistPending(record);setConfirm('');
+            submitted=true;
+            clearTimeout(timer);
+            const installation=ctx.remote.pluginManager.installBundle(facts.path,{
+              enabled:true,saveExact:true,requestId:record.requestId,
+            });
+            // The Client may hot-reload during the install; a lost callback
+            // never means pnpm failed. Do not cancel a live DSH operation.
+            let installationTimeout;
+            const outcome=await Promise.race([
+              installation,
+              new Promise(resolve=>{
+                installationTimeout=setTimeout(()=>resolve({timedOut:true}),INSTALL_WAIT_MS);
+              }),
             ]);
-            if (!result) setError(t('failed'));
-            else setConfirm('');
-          } catch { setError(t('failed')); }
-          finally {setSaving(false);}
+            clearTimeout(installationTimeout);
+            if(outcome?.timedOut) {
+              const next={...record,stage:'unconfirmed'};
+              setPending(next);persistPending(next);
+              setInstallNote(t('installUnconfirmed'));
+            } else if(!outcome?.ok) {
+              throw new Error(String(outcome?.error?.message||'Plugin Manager did not respond'));
+            } else {
+              const result=outcome.value||{};
+              if(result.application==='failed'||result.application==='cancelled') {
+                // An authoritative Plugin Manager refusal is a FAILURE, not an
+                // "unknown" install that keeps blocking future versions.
+                const reason=String(result.error?.diagnostic||result.error?.code||
+                  result.packageResult?.output||'Plugin Manager refused installation').slice(0,300);
+                setPending(null);persistPending(null);
+                setError(t('prepareFailed')+' '+reason);
+                return;
+              }
+              if(!['applied','restart-required'].includes(result.application)) {
+                throw new Error('Unknown installation outcome: '+String(result.application));
+              }
+              if(result.version && result.version!==candidate.version) {
+                throw new Error('DSH installed an unexpected version: '+result.version);
+              }
+              const next={...record,stage:result.application==='restart-required'
+                ?'restart-required':'verifying'};
+              setPending(next);persistPending(next);
+              setInstallNote(t(result.application==='restart-required'?'restart':'installChecking'));
+            }
+          }catch(cause){
+            const message=transportDiagnostic(cause,t);
+            if(submitted){
+              // Install may already have committed while the old UI was
+              // detached. The inventory/restart check must decide its fate.
+              const next={...(readPending()||{name:component.name,version:candidate.version,
+                channel:candidate.channel,startedAt:Date.now()}),stage:'unconfirmed'};
+              setPending(next);persistPending(next);
+              setInstallNote(t('installUnconfirmed')+' '+message);
+            }else setError(t('prepareFailed')+' '+message);
+          }finally{
+            clearTimeout(timer);
+            installAttempt.current=false;
+            setSaving(false);
+          }
         };
-
 
         const checkState=directCheck.state;
         const busyCheck=requestingCheck;
         const lastChecked=directCheck.at ?
           new Date(directCheck.at).toLocaleTimeString(undefined,
             {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
-        const lastBackgroundCheck=typeof values.scanAt==='string' &&
-          !Number.isNaN(Date.parse(values.scanAt)) ?
-          new Date(values.scanAt).toLocaleTimeString(undefined,
+        const backgroundAt=hostHealth.scanAt||values.scanAt;
+        const lastBackgroundCheck=typeof backgroundAt==='string' &&
+          !Number.isNaN(Date.parse(backgroundAt)) ?
+          new Date(backgroundAt).toLocaleTimeString(undefined,
             {hour:'2-digit',minute:'2-digit'}) : '';
         const requestCheck=async()=>{
           if(busyCheck)return;
@@ -646,6 +807,21 @@ window.__ModuleLoader__.load({
             t('nativeDescription')),
           nativeFailure?h('p',{role:'alert','data-hud-native-error':true,
               style:{color:'#b84b4b',marginTop:9}},nativeFailure):null,
+          hostHealth.status==='unavailable'||hostHealth.status==='mismatch'
+            ?h('p',{role:'alert','data-hud-host-mismatch':true,
+                style:{fontSize:13,color:'#b84b4b',margin:'8px 0'}},
+              hostHealth.status==='mismatch'?t('hostVersionMismatch')+
+                ' ('+hostHealth.version+' / '+VERSION+')':
+                t('hostMismatch')+' '+String(hostHealth.error||'').slice(0,180))
+            :null,
+          hostHealth.autoState==='submitted'
+            ?h('p',{role:'status','data-hud-auto-state':true,style:subtle},t('autoAttempt'))
+            :hostHealth.autoState==='restart-required'
+              ?h('p',{role:'status','data-hud-auto-state':true,style:subtle},t('restart'))
+              :hostHealth.autoState==='failed'||hostHealth.autoState==='unconfirmed'
+                ?h('p',{role:'alert','data-hud-auto-state':true,style:subtle},
+                    t('autoFailed')+' '+String(hostHealth.autoError||''))
+                :null,
           h('section',{'data-hud-check-panel':true,
             style:{...surface,padding:'20px 24px',marginTop:24}},
             h('div',{style:{display:'flex',gap:18,flexWrap:'wrap',
@@ -689,21 +865,29 @@ window.__ModuleLoader__.load({
                 ? experimental : stable;
               const eligible = latest && newer(latest.version,current);
               const key = component.name + ':' + (latest?.version || '');
-              const isPending = values.requestComponent === component.name &&
-                values.requestVersion === latest?.version &&
-                (values.updateStatus === 'queued' || values.updateStatus === 'installing') &&
-                !!values.requestNonce;
-              const rightAction = isPending
-                ? h('span',{role:'status',style:tiny},
-                    t(values.updateStatus==='installing'?'installing':'queued'))
-                : eligible
-                  ? confirm===key
-                    ? h(React.Fragment,null,
-                        h('span',{style:{...tiny,maxWidth:245}},t('confirmText')),
-                        btn(t('cancel'),()=>setConfirm(''),saving),
-                        btn(t('confirm'),()=>{void queue(component,latest);},saving))
-                    : btn(installed?t('update'):t('install'),()=>setConfirm(key),saving)
-                  : h('span',{style:tiny},latest?t('latest'):t('unavailable'));
+              const isPending = pending?.name===component.name &&
+                pending?.version===latest?.version;
+              const stale=isPending && now-pending.startedAt>INSTALL_STALE_MS;
+              const pendingReady=isPending && current===pending.version && !installed?.provisional;
+              const rightAction = isPending && !stale && !pendingReady
+                ? h('span',{role:'status','data-hud-install-pending':true,style:tiny},
+                    t(pending.stage==='restart-required'?'restart':
+                      pending.stage==='unconfirmed'?'installUnconfirmed':'installSubmitting'))
+                : isPending && pending.stage==='restart-required'
+                  ? h('span',{role:'status','data-hud-install-restart':true,style:tiny},t('restart'))
+                  : isPending && stale
+                    ? h('button',{type:'button','data-hud-clear-pending':true,
+                        style:actionStyle(false),onClick:()=>{
+                          persistPending(null);setPending(null);setInstallNote('');
+                        }},t('resetPending'))
+                  : eligible
+                    ? confirm===key
+                      ? h(React.Fragment,null,
+                          h('span',{style:{...tiny,maxWidth:245}},t('confirmText')),
+                          btn(t('cancel'),()=>setConfirm(''),saving),
+                          btn(t('confirm'),()=>{void queue(component,latest);},saving))
+                      : btn(installed?t('update'):t('install'),()=>setConfirm(key),saving)
+                    : h('span',{style:tiny},latest?t('latest'):t('unavailable'));
               return h('div',{key:component.name,style:surface,
                 'data-hud-component':component.name},
                 h('div',{style:{display:'flex',gap:15,alignItems:'center',
@@ -745,9 +929,13 @@ window.__ModuleLoader__.load({
             )
           ),
           error?h('p',{role:'alert',style:{color:'#b84b4b'}},error):null,
-          values.updateStatus==='failed'?h('p',{role:'alert',style:{color:'#b84b4b'}},t('failed')):
-          values.updateStatus==='restart-required'?h('p',{role:'status'},t('restart')):
-          values.updateStatus==='installed'?h('p',{role:'status'},t('succeeded')):null,
+          installNote?h('p',{role:'status','data-hud-install-note':true,
+              style:{fontSize:13}},installNote):null,
+          pending && now-pending.startedAt>INSTALL_STALE_MS
+            ?h('p',{role:'alert','data-hud-install-stale':true,style:subtle},
+                t(pending.stage==='restart-required'?'restart':'installUnconfirmed')):null,
+          ['queued','installing'].includes(values.updateStatus) && values.requestNonce
+            ?h('p',{role:'status','data-hud-legacy-stale':true,style:subtle},t('legacyStale')):null,
           h('p',{style:{...tiny,marginTop:25}},t('noToken'))
         ));
       };

@@ -55,3 +55,7 @@
 ## V0.5.8 启动超时修复
 
 v0.5.7 的独立 HUD 启动仍通过 ConfigForms nonce 排队给 Host，Host 重建后可能直接消费新请求而不运行。v0.5.8 改为 DSH 正式 Connection RPC，一次按钮点击即发送启动 RPC，等待 WPF READY 并返回真实失败原因；窗口匹配不再依赖可能变化的 DSH 标题。仍只支持 Windows Desktop，U058 实机验收待完成。详情见 docs/HUD-NATIVE-WINDOW-V058.md。
+
+## V0.5.9 多版本更新可靠性候选
+
+手动更新改为「Host 按 SHA-256 验证固定包 → DSH 官方 Plugin Manager 直接安装」，避免旧 Host ConfigEditor 命令队列被重组中断；自动更新首次验证成功后记录单次尝试，三重实验授权保持不变。组件中心直接显示安装失败、需要重启或结果未知，超过限定时间不会持续显示正在安装。新增运行中 Host 版本探测，HTTP 405 提示完整退出并重启 Desktop。U059 Windows 实机结果未验证。详见 docs/HUD-INSTALL-RELIABILITY-V059.md。

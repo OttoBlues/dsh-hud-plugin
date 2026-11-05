@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.8: direct authenticated Connection RPC for native HUD launch.
+ * DSH HUD v0.5.9: reliable verified component installation and native Host readiness.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -11,7 +11,7 @@
 import Schema from '@deepseek-ai/schemastery';
 import { launchWindowsHud } from './native-window.js';
 import { createHash } from 'node:crypto';
-import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -23,6 +23,7 @@ const ROOTS = [
   'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins',
 ];
 const CURRENT_NAME = '@local/dsh-hud';
+const HOST_VERSION = '0.5.9';
 const CATALOG_EMPTY = '{"schema":3,"source":"checking","components":[]}';
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const HEX40 = /^[a-f0-9]{40}$/i;
@@ -182,7 +183,7 @@ function selectRelease(entry, acceptUnstable) {
 
 export function apply(ctx, config) {
   let disposed = false, checking = false, updating = false, manualChecking = false;
-  let lastNonce = '';
+  let lastNonce = String(config.requestNonce.get() || ''); // no replay of a stale UI consent after a Host reload
   let lastCheckNonce = '';
   // Native HUD is transient process state, not a DSH Loader configuration request.
   let nativeHudWindow = null;
@@ -190,6 +191,8 @@ export function apply(ctx, config) {
   let lastMissingEditorWarning = 0;
   const controller = new AbortController();
   const cacheRoot = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'approved-component-packages');
+  const autoLedgerFor = id => join(cacheRoot,id,'.auto-attempt.json');
+  const runtime = {scanAt:'',scanState:'idle',scanError:'',autoAt:'',autoState:'idle',autoError:''};
 
   async function writeSettings(patch) {
     if (disposed) return false;
@@ -240,7 +243,39 @@ export function apply(ctx, config) {
     return rows;
   }
 
-  async function installComponent(component, approved, origin) {
+  // Resolve the fixed public channel again and pin the exact SHA-256-verified
+  // bytes to an immutable local path. This function does not edit the DSH profile.
+  async function verifiedPackagePath(component, approved, signal) {
+    // Re-fetch the channel just before use; a stale or revoked version is
+    // never installed even when it was displayed in an earlier UI snapshot.
+    const selected = await selectRepository(signal);
+    const fresh = selected.components.find(item =>
+      item.id === component.id && item.name === component.name);
+    if (!fresh) throw new Error('The component is no longer in the public registry.');
+    const latest = await readChannel(selected.root, fresh, approved.channel, signal);
+    if (!latest || latest.version !== approved.version ||
+        latest.sha256 !== approved.sha256 || latest.commit !== approved.commit) {
+      throw new Error('Update was revoked or changed; refresh its listing.');
+    }
+    const bytes = await getBytes(selected.root + '/' + component.id + '/' +
+      approved.channel + '/' + approved.file, MAX_ARCHIVE_BYTES, signal);
+    if (createHash('sha256').update(bytes).digest('hex') !== approved.sha256) {
+      throw new Error('SHA-256 mismatch; refusing package.');
+    }
+
+    // pnpm may pin the tarball path. Keep an immutable, hash-addressed local
+    // copy instead of deleting the only path after pluginManager returns.
+    const directory = join(cacheRoot, component.id, approved.version);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const target = join(directory, approved.sha256 + '.tgz');
+    const temporary = target + '.' + process.pid + '.tmp';
+    await writeFile(temporary, bytes, { mode: 0o600 });
+    await rename(temporary, target);
+
+    return target;
+  }
+
+  async function installComponent(component, approved, origin, preparedTarget = null) {
     if (updating || disposed || !approved) return false;
     updating = true;
     let wasApplied = false;
@@ -252,31 +287,7 @@ export function apply(ctx, config) {
         throw new Error('Experimental update option is disabled.');
       }
 
-      // Re-fetch the channel just before use; a stale or revoked version is
-      // never installed even when it was displayed in an earlier UI snapshot.
-      const selected = await selectRepository(controller.signal);
-      const fresh = selected.components.find(item =>
-        item.id === component.id && item.name === component.name);
-      if (!fresh) throw new Error('The component is no longer in the public registry.');
-      const latest = await readChannel(selected.root, fresh, approved.channel, controller.signal);
-      if (!latest || latest.version !== approved.version ||
-          latest.sha256 !== approved.sha256 || latest.commit !== approved.commit) {
-        throw new Error('Update was revoked or changed; refresh its listing.');
-      }
-      const bytes = await getBytes(selected.root + '/' + component.id + '/' +
-        approved.channel + '/' + approved.file, MAX_ARCHIVE_BYTES, controller.signal);
-      if (createHash('sha256').update(bytes).digest('hex') !== approved.sha256) {
-        throw new Error('SHA-256 mismatch; refusing package.');
-      }
-
-      // pnpm may pin the tarball path. Keep an immutable, hash-addressed local
-      // copy instead of deleting the only path after pluginManager returns.
-      const directory = join(cacheRoot, component.id, approved.version);
-      await mkdir(directory, { recursive: true, mode: 0o700 });
-      const target = join(directory, approved.sha256 + '.tgz');
-      const temporary = target + '.' + process.pid + '.tmp';
-      await writeFile(temporary, bytes, { mode: 0o600 });
-      await rename(temporary, target);
+      const target = preparedTarget || await verifiedPackagePath(component, approved, controller.signal);
 
       if (component.name === CURRENT_NAME) {
         // Self-update can unload this Host before the manager's promise
@@ -290,13 +301,21 @@ export function apply(ctx, config) {
             if (disposed) return;
             updating = false;
             if (!result || !['applied', 'restart-required'].includes(result.application)) {
-              void writeSettings({ updateStatus: 'failed' });
+              runtime.autoState = 'failed';
+              runtime.autoError=String(result?.error?.diagnostic||result?.error?.code||
+                'Plugin Manager rejected the update').slice(0,240);
+              ctx.logger?.warn?.('HUD self-update result: %s',runtime.autoError);
+            } else {
+              runtime.autoState=result.application==='restart-required'?'restart-required':'submitted';
+              runtime.autoError='';
             }
           },
-          () => {
+          error => {
             if (disposed) return;
             updating = false;
-            void writeSettings({ updateStatus: 'failed' });
+            runtime.autoState='failed';
+            runtime.autoError=String(error?.message||error).slice(0,240);
+            ctx.logger?.warn?.('HUD self-update promise rejected: %s',runtime.autoError);
           },
         );
         detachedSelfUpdate = true;
@@ -364,6 +383,9 @@ export function apply(ctx, config) {
         return { ...component, released:channels[0], unstable:channels[1] };
       }));
       const catalog = { schema:3, source:'public', components:rows };
+      runtime.scanAt = new Date().toISOString();
+      runtime.scanState = problems.length?'partial':'success';
+      runtime.scanError = problems.join(' | ').slice(0,450);
       // Ignore an obsolete result when the user has retried with a new nonce.
       if (manual && config.checkNonce.get() !== nonce) return false;
       const patch = {
@@ -379,7 +401,10 @@ export function apply(ctx, config) {
         patch.checkAt = new Date().toISOString();
         patch.checkOrigin = repository.root.includes('/dsh-hud-plugin/') ? 'canonical' : 'legacy';
       }
-      if (Object.keys(patch).length && !(await writeSettings(patch))) {
+      // The client now checks publicly without Host config changes. Editing
+      // scanAt on every startup used to recompose and dispose this very Host,
+      // before its RPC routes and installer could process their work.
+      if (manual && Object.keys(patch).length && !(await writeSettings(patch))) {
         // Never claim a scan completed when no version facts reached DSH UI.
         try { ctx.logger?.warn?.('HUD discovery read completed but config status write failed'); }
         catch { /* logger may be disposed */ }
@@ -401,11 +426,35 @@ export function apply(ctx, config) {
           const approved = selectRelease(component, includeExperimental);
           if (!approved || !newer(approved.version, row.version)) continue;
           const key = component.name + ':' + approved.channel + ':' + approved.version + ':' + approved.sha256;
-          if (config.autoAttemptKey.get() === key) continue;
-          // Persist the single-attempt record before mutating the package.
-          // A failed update needs manual retry; avoid continuous retry loops.
-          if (!(await writeSettings({ autoAttemptKey:key, updateStatus:'installing' }))) break;
-          await installComponent(component, approved, 'automatic');
+          // One automatic attempt per exact package/hash. The ledger is local
+          // to the DSH profile, not a volatile ConfigEditor write that can
+          // dispose the Host BEFORE installBundle is even called.
+          let previous = '';
+          try {
+            const record = JSON.parse(await readFile(autoLedgerFor(component.id),'utf8'));
+            previous = typeof record.key === 'string' ? record.key : '';
+          } catch { /* First attempt or a truncated old ledger. */ }
+          if (previous === key || config.autoAttemptKey.get() === key) continue;
+          // A failed network/manifest read must not burn the auto-update attempt.
+          const verifiedTarget=await verifiedPackagePath(component,approved,signal);
+          if (disposed) break;
+          await mkdir(join(cacheRoot,component.id),{recursive:true,mode:0o700});
+          const ledgerPath=autoLedgerFor(component.id);
+          const temporaryLedger=ledgerPath+'.'+process.pid+'.tmp';
+          await writeFile(temporaryLedger,JSON.stringify({key,at:new Date().toISOString()}),
+            {mode:0o600});
+          await rename(temporaryLedger,ledgerPath);
+          runtime.autoAt=new Date().toISOString();
+          runtime.autoState='submitted'; // pending, not proof of success
+          runtime.autoError='';
+          ctx.logger?.info?.('HUD auto-update accepted for %s %s', component.name, approved.version);
+          const accepted = await installComponent(component, approved, 'automatic',verifiedTarget);
+          if (!disposed && !accepted && runtime.autoState === 'submitted') {
+            runtime.autoState='failed';
+            runtime.autoError='Install operation did not confirm success; check DSH Plugin Manager.';
+          }
+          // Do not overwrite an authoritative failed/restart-required result
+          // reported by the detached Plugin Manager callback.
           break; // One package change per periodic update check.
         }
       }
@@ -414,7 +463,10 @@ export function apply(ctx, config) {
       // Do not turn a failed manual lookup into a false "up-to-date" state.
       if (manual && config.checkNonce.get() !== nonce) return false;
       const offline = '{"schema":3,"source":"unavailable","components":[]}';
-      const patch = {scanAt:new Date().toISOString(),scanState:'failed'};
+      runtime.scanAt=new Date().toISOString();
+      runtime.scanState='failed';
+      runtime.scanError=diagnostic(error);
+      const patch = {scanAt:runtime.scanAt,scanState:'failed'};
       if (!disposed && config.catalog.get() !== offline) patch.catalog = offline;
       if (manual) {
         patch.checkNonce = '';
@@ -423,7 +475,7 @@ export function apply(ctx, config) {
         patch.checkAt = new Date().toISOString();
         patch.checkOrigin = '';
       }
-      if (!disposed && Object.keys(patch).length) await writeSettings(patch);
+      if (manual && !disposed && Object.keys(patch).length) await writeSettings(patch);
       return false;
     } finally {
       checking = false;
@@ -501,6 +553,49 @@ export function apply(ctx, config) {
     }
   }
 
+
+
+  const rpcFail = (code, message) => ({ok:false,error:{
+    code,message:String(message || 'Unknown HUD Host error.').slice(0,450),details:{},
+  }});
+  async function prepareInstall(payload, signal, peer) {
+    if (disposed) return rpcFail('hud/host-disposed','HUD Host is shutting down.');
+    if (peer?.principal?.kind !== 'owner') return rpcFail('hud/forbidden','Owner access required.');
+    if (!payload || typeof payload !== 'object' ||
+      !SLUG.test(payload.id || '') || !PACKAGE.test(payload.name || '') ||
+      !SEMVER.test(payload.version || '') ||
+      !['released','unstable'].includes(payload.channel)) {
+      return rpcFail('hud/invalid-install','Invalid component, version or channel.');
+    }
+    if (payload.channel === 'unstable' && config.allowUnstable.get() !== true) {
+      return rpcFail('hud/unstable-disabled','Unstable channel requires explicit approval.');
+    }
+    try {
+      const scopedSignal=AbortSignal.any([
+        controller.signal,signal || controller.signal,AbortSignal.timeout(SCAN_MS),
+      ]);
+      const repository=await selectRepository(scopedSignal);
+      const component=repository.components.find(row =>
+        row.id===payload.id && row.name===payload.name);
+      if (!component) throw new Error('Component not in the fixed public registry.');
+      const approved=await readChannel(repository.root,component,payload.channel,scopedSignal);
+      if (!approved || approved.version!==payload.version) {
+        throw new Error('Requested version is not current in the verified release channel.');
+      }
+      const current=(await installedRows()).find(row=>row.name===component.name && row.installed);
+      if (!newer(approved.version,current?.version)) {
+        throw new Error('The requested package is already installed, or not newer.');
+      }
+      const target=await verifiedPackagePath(component,approved,scopedSignal);
+      if (disposed || scopedSignal.aborted) return rpcFail('hud/cancelled','Preparation was interrupted.');
+      ctx.logger?.info?.('HUD prepared SHA-256 verified %s %s',component.name,approved.version);
+      return {ok:true,value:{path:target,name:component.name,version:approved.version,
+        channel:approved.channel,sha256:approved.sha256}};
+    } catch(error) {
+      ctx.logger?.warn?.('HUD prepare-install failed: %s',String(error?.message||error));
+      return rpcFail('hud/prepare-failed',error?.message||error);
+    }
+  }
 
   // Use official Connection unary RPC, not ConfigEditor/volatile-update as a
   // command queue. Each click receives the actual native launch result.
@@ -597,9 +692,16 @@ export function apply(ctx, config) {
     const unregisterNativeRpc = ctx.connection.rpc.handle('/hud-native',
       (endpoint, payload, signal, peer) => endpoint === 'open'
         ? openNativeHud(payload, signal, peer)
-        : Promise.resolve({ok:false,error:{
-          code:'hud/unknown-command',message:'Unsupported native HUD command.',details:{},
-        }}));
+        : endpoint === 'prepare-install'
+          ? prepareInstall(payload, signal, peer)
+          : endpoint === 'status'
+            ? Promise.resolve(peer?.principal?.kind === 'owner'
+              ? {ok:true,value:{hostVersion:HOST_VERSION,scanAt:runtime.scanAt,
+                  scanState:runtime.scanState,scanError:runtime.scanError,
+                  autoAt:runtime.autoAt,autoState:runtime.autoState,
+                  autoError:runtime.autoError}}
+              : rpcFail('hud/forbidden','Owner access required.'))
+            : Promise.resolve(rpcFail('hud/unknown-command','Unsupported native HUD command.')));
     const guarded = promise => {
       Promise.resolve(promise).catch(error => {
         if (!disposed) {
@@ -608,6 +710,17 @@ export function apply(ctx, config) {
         }
       });
     };
+    guarded((async()=>{
+      try {
+        const record=JSON.parse(await readFile(autoLedgerFor('hud'),'utf8'));
+        const parts=String(record.key||'').split(':');
+        if(parts[0]===CURRENT_NAME && SEMVER.test(parts[2]||'')){
+          const row=(await installedRows()).find(item=>item.name===CURRENT_NAME && item.installed);
+          runtime.autoAt=typeof record.at==='string'?record.at:'';
+          runtime.autoState=row?.version===parts[2]?'installed':'unconfirmed';
+        }
+      }catch { /* Fresh profile has no previous automatic attempt. */ }
+    })());
     guarded(discover());
     // Volatile configuration writes from the DSH client are observable
     // without remounting this plugin. Listen immediately; the 850 ms timer

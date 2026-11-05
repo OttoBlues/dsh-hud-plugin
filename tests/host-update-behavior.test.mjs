@@ -41,8 +41,20 @@ const response=(body,status=200)=>{
 async function flush(){for(let i=0;i<10;i++)await tick();}
 
 function setup(overrides={}) {
+  // Legacy pre-v0.5.9 requests can still be pending; their cached catalog is
+  // supplied by the previous plugin generation. New runtime discovery no
+  // longer writes Loader config just to expose metadata.
+  const existingReleased=overrides.released===undefined?'0.4.1':overrides.released;
+  const stored=(channel,version)=>version?{
+    channel,version,file:'v'+version+'/local-dsh-hud-'+version+'.tgz',
+    sha256:overrides.badChecksum?'f'.repeat(64):sha,commit,
+  }:null;
+  const savedCatalog=JSON.stringify({schema:3,source:'public',
+    components:[{...repoIndex.components[0],
+      released:stored('released',existingReleased),
+      unstable:stored('unstable',overrides.unstable||null)}]});
   const values={
-    catalog:'{"schema":3,"source":"checking","components":[]}',
+    catalog:savedCatalog,
     allowUnstable:false,autoUpdateEnabled:false,autoUpdateUnstable:false,
     autoAttemptKey:'',overlayVisible:false,
     nativeHudRequestNonce:'',nativeHudSnapshot:'',nativeHudLanguage:'zh',
@@ -54,6 +66,7 @@ function setup(overrides={}) {
     ...overrides.values,
   };
   const calls={http:[],installed:[],list:0,writes:[],logs:[],cached:[],native:[]};
+  const storedFiles=new Map();
   const inventory=overrides.inventory || [{name:NAME,installed:true,version:'0.4.0'}];
   const callbacks=[], startTimers=[], events=new Map(),rpcRoutes=new Map();let dispose=()=>{};
   const editableEntry={options:{id:'dsh-hud'}};
@@ -130,8 +143,12 @@ function setup(overrides={}) {
       return {close(){calls.nativeClosed=true;}};
     },
     homedir:()=>'/home',process:{env:{},pid:999},
-    mkdir:async()=>{},writeFile:async(path,data)=>{calls.cached.push({path,data});},
-    rename:async()=>{},
+    mkdir:async()=>{},readFile:async path=>{
+      if(!storedFiles.has(path))throw new Error('ENOENT');
+      return storedFiles.get(path);
+    },
+    writeFile:async(path,data)=>{calls.cached.push({path,data});storedFiles.set(path,String(data));},
+    rename:async(from,to)=>{storedFiles.set(to,storedFiles.get(from));storedFiles.delete(from);},
     setInterval:fn=>{callbacks.push(fn);return callbacks.length;},
     clearInterval(){},
     setTimeout:fn=>{startTimers.push(fn);return startTimers.length;},
@@ -156,6 +173,10 @@ function setup(overrides={}) {
       assert.equal(typeof handler,'function');
       return handler('open',data,signal,peer);
     },
+    status:()=>rpcRoutes.get('/hud-native')('status',{},
+      new AbortController().signal,{principal:{kind:'owner'}}),
+    prepare:(data,signal=new AbortController().signal,peer={principal:{kind:'owner'}})=>
+      rpcRoutes.get('/hud-native')('prepare-install',data,signal,peer),
     check:async()=>{values.checkNonce='check-'+(++id);values.checkState='checking';
       callbacks[1]();await flush();},
     refresh:async()=>{callbacks[0]();await flush();},
@@ -171,11 +192,12 @@ test('public repository index exposes components with released and unstable chan
   const s=setup({unstable:'0.4.2'});
   try{
     await flush();
-    const catalog=JSON.parse(s.values.catalog);
-    assert.equal(catalog.source,'public');
-    assert.equal(catalog.components[0].name,NAME);
-    assert.equal(catalog.components[0].released.version,'0.4.1');
-    assert.equal(catalog.components[0].unstable.version,'0.4.2');
+    const status=await s.status();
+    assert.equal(status.value.scanState,'success');
+    assert.equal(status.value.hostVersion,'0.5.9');
+    assert.equal(s.calls.writes.length,0,'Background scanning must not recompose its own Host');
+    assert(s.calls.http.some(x=>x.url.endsWith('/hud/released/index.json')));
+    assert(s.calls.http.some(x=>x.url.endsWith('/hud/unstable/index.json')));
     assert.equal(s.calls.installed.length,0,'Discovering versions must not install');
     assert(s.calls.http.every(x=>x.opts.redirect==='error'&&x.opts.headers.authorization===undefined));
   }finally{s.stop();}
@@ -185,7 +207,8 @@ test('private repository is identified as unavailable, not up to date',async()=>
   const s=setup({private:true});
   try{
     await flush();
-    assert.equal(JSON.parse(s.values.catalog).source,'unavailable');
+    assert.equal((await s.status()).value.scanState,'failed');
+    assert.equal(s.calls.writes.length,0);
     assert.equal(s.calls.installed.length,0);
   }finally{s.stop();}
 });
@@ -220,7 +243,8 @@ test('overridden result and installed-version mismatch never mean success',async
   const overridden=setup({application:'overridden'});
   try{await flush();await overridden.click();
     assert.equal(overridden.calls.installed.length,1);
-    assert.equal(overridden.values.updateStatus,'failed');
+    assert.equal((await overridden.status()).value.autoState,'failed');
+    assert.equal(overridden.values.updateStatus,'installing','Old Loader state is no longer an authoritative result');
   }finally{overridden.stop();}
   const wrong=setup({wrongInstalledVersion:true});
   try{await flush();await wrong.click();
@@ -245,10 +269,10 @@ test('auto update of a released version only after user opt in, one attempt per 
   const s=setup({values:{autoUpdateEnabled:true}});
   try{await flush();
     assert.equal(s.calls.installed.length,1);
-    assert.equal(s.values.updateStatus,'installing');
-    await s.reconcile();
-    assert.equal(s.values.updateStatus,'installed');
-    assert.match(s.values.autoAttemptKey,/released:0\.4\.1:/);
+    assert.equal(s.values.updateStatus,'');
+    assert.equal(s.values.autoAttemptKey,'','No pre-install ConfigEditor changes');
+    assert(s.calls.cached.some(x=>x.path.includes('.auto-attempt.json')));
+    assert.equal((await s.status()).value.autoState,'restart-required');
     await s.refresh();
     assert.equal(s.calls.installed.length,1);
   }finally{s.stop();}
@@ -258,14 +282,16 @@ test('experimental versions never auto install unless both additional switches e
   const s=setup({unstable:'0.4.2',values:{autoUpdateEnabled:true,allowUnstable:true}});
   try{await flush();
     assert.equal(s.calls.installed.length,1);
-    assert.match(s.values.autoAttemptKey,/released:0\.4\.1:/);
+    assert.equal(s.values.autoAttemptKey,'');
+    assert(s.calls.cached.some(x=>String(x.data).includes('released:0.4.1:')));
   }finally{s.stop();}
   const exp=setup({unstable:'0.4.2',values:{
     autoUpdateEnabled:true,allowUnstable:true,autoUpdateUnstable:true,
   }});
   try{await flush();
     assert.equal(exp.calls.installed.length,1);
-    assert.match(exp.values.autoAttemptKey,/unstable:0\.4\.2:/);
+    assert.equal(exp.values.autoAttemptKey,'');
+    assert(exp.calls.cached.some(x=>String(x.data).includes('unstable:0.4.2:')));
   }finally{exp.stop();}
 });
 
@@ -373,8 +399,8 @@ test('a timed-out previous nonce is not replayed after a successful manual check
     // The manual callback can fire again; consumed nonce must not re-fetch.
     await s.refresh();
     assert(s.calls.http.length>count,'Periodic scan must still work');
-    assert.equal(s.values.scanState,'success');
-    assert.match(s.values.scanAt,/^\d{4}-\d{2}-\d{2}T/);
+    assert.equal((await s.status()).value.scanState,'success');
+    assert.match((await s.status()).value.scanAt,/^\d{4}-\d{2}-\d{2}T/);
     assert.equal(s.values.checkNonce,'');
   }finally{s.stop();}
 });
@@ -383,7 +409,7 @@ test('a failed channel never becomes a false successful background scan',async()
   const s=setup({failUnstable:true});
   try{
     await flush();
-    assert.equal(s.values.scanState,'partial');
+    assert.equal((await s.status()).value.scanState,'partial');
     await s.check();
     assert.equal(s.values.checkState,'partial');
   }finally{s.stop();}
@@ -414,8 +440,8 @@ test('a ConfigEditor that loads after the HUD Host starts can process pending up
   const s=setup({editorInitiallyAvailable:false});
   try{
     await flush();
-    assert.equal(s.values.catalog.includes('"source":"checking"'),true,
-      'Initial scan cannot publish facts while editor service is unavailable');
+    assert.equal((await s.status()).value.scanState,'success',
+      'Read-only Host discovery must not depend on ConfigEditor availability');
     s.values.checkNonce='pending-before-service';
     s.values.checkState='queued';
     await s.checkCallback();
@@ -547,4 +573,58 @@ test('native HUD RPC disallows non-owner and duplicate windows',async()=>{
     s.calls.native[0].onReady();
     await opening;
   }finally{s.stop();}
+});
+
+
+test('authenticated prepare-install verifies bytes before returning a local immutable path',async()=>{
+  const s=setup();
+  try {
+    await flush();
+    const result=await s.prepare({id:'hud',name:NAME,version:'0.4.1',channel:'released'});
+    assert.equal(result.ok,true);
+    assert.equal(result.value.version,'0.4.1');
+    assert.equal(result.value.sha256,sha);
+    assert.match(result.value.path,/approved-component-packages/);
+    assert(s.calls.cached.some(x=>x.path.includes('0.4.1')));
+    assert.equal(s.calls.installed.length,0,'Preparation must never start an installation');
+    assert.equal(s.calls.writes.length,0,'Preparation cannot edit Loader profile');
+  } finally{s.stop();}
+});
+
+test('prepare-install rejects altered SHA and non-owner callers',async()=>{
+  const s=setup({badChecksum:true});
+  try {
+    await flush();
+    const denied=await s.prepare({id:'hud',name:NAME,version:'0.4.1',channel:'released'},
+      new AbortController().signal,{principal:{kind:'guest'}});
+    assert.equal(denied.ok,false);
+    assert.equal(denied.error.code,'hud/forbidden');
+    const changed=await s.prepare({id:'hud',name:NAME,version:'0.4.1',channel:'released'});
+    assert.equal(changed.ok,false);
+    assert.equal(changed.error.code,'hud/prepare-failed');
+    assert.match(changed.error.message,/SHA-256 mismatch/);
+    assert.equal(s.calls.installed.length,0);
+  } finally{s.stop();}
+});
+
+test('legacy pending nonce is not replayed on reloaded Host and does not disturb new RPC',async()=>{
+  const s=setup({values:{requestNonce:'old-confirmation',updateStatus:'queued'}});
+  try {
+    await flush();
+    await s.checkCallback();
+    assert.equal(s.calls.installed.length,0,'Recomposed Host must not replay old confirmation');
+    assert.equal((await s.status()).value.hostVersion,'0.5.9');
+  } finally{s.stop();}
+});
+
+test('background automatic update uses no pre-install ConfigEditor and does not retry the same SHA',async()=>{
+  const s=setup({values:{autoUpdateEnabled:true}});
+  try {
+    await flush();
+    assert.equal(s.calls.installed.length,1);
+    assert.equal(s.calls.writes.length,0);
+    assert(s.calls.cached.some(x=>x.path.includes('.auto-attempt.json')));
+    await s.refresh();
+    assert.equal(s.calls.installed.length,1);
+  } finally{s.stop();}
 });

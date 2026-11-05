@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.5.8 development source parse successfully',()=>{
+test('Host and Client v0.5.9 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -48,7 +48,10 @@ test('auto updates default off and experimental auto needs 3 explicit opt-ins',(
   assert.match(host,/autoUpdateUnstable: Schema\.boolean\(\)\.default\(false\)\.volatile\(\)/);
   assert.match(host,/config\.allowUnstable\.get\(\) === true &&\s*config\.autoUpdateUnstable\.get\(\) === true/);
   assert.match(host,/if \(!row\) continue; \/\/ Never silently install a new component/);
-  assert.match(host,/autoAttemptKey:key/);
+  assert.match(host,/autoLedgerFor/);
+  assert.match(host,/verifiedPackagePath\(component,approved,signal\)/);
+  assert.match(host,/await writeFile\(temporaryLedger/);
+  assert.match(host,/await rename\(temporaryLedger,ledgerPath\)/);
 });
 test('retired Windows Runner deployment workflows cannot be triggered',()=>{
   for(const file of [
@@ -168,4 +171,34 @@ test('native window launch uses official Connection RPC, never volatile settings
     client.indexOf('const queue = async'));
   assert.doesNotMatch(launch,/form\.(set|mutate)/);
   assert.doesNotMatch(host,/processNativeHudRequest|lastNativeHudNonce/);
+});
+
+
+test('direct, SHA-pinned install preparation never mutates Loader profile config',()=>{
+  assert.match(host,/async function prepareInstall\(/);
+  assert.match(host,/endpoint === 'prepare-install'/);
+  assert.match(host,/sha256:approved\.sha256/);
+  const prepared=host.slice(host.indexOf('async function prepareInstall('),
+    host.indexOf('// Use official Connection unary RPC',host.indexOf('async function prepareInstall(')));
+  assert.doesNotMatch(prepared,/writeSettings\(/);
+  assert.match(client,/ctx\.connection\.rpc\.call\('\/hud-native','prepare-install'/);
+  const manual=client.slice(client.indexOf('const queue = async'),
+    client.indexOf('const checkState=directCheck.state'));
+  assert.match(manual,/ctx\.remote\.pluginManager\.installBundle\(facts\.path/);
+  assert.match(manual,/facts\.sha256!==candidate\.sha256/);
+  assert.doesNotMatch(manual,/form\.(mutate|set)/);
+});
+
+test('manual install receives official DSH application result or displays unconfirmed, never stuck queued',()=>{
+  assert.match(client,/INSTALL_WAIT_MS = 90_000/);
+  assert.match(client,/application==='restart-required'/);
+  assert.match(client,/data-hud-install-stale/);
+  assert.match(client,/data-hud-clear-pending/);
+  assert.match(client,/data-hud-legacy-stale/);
+  assert.match(client,/data-hud-host-mismatch/);
+  assert.match(host,/endpoint === 'status'/);
+  assert.match(host,/hostVersion:HOST_VERSION/);
+  assert.match(host,/runtime\.scanAt/);
+  assert.doesNotMatch(host.slice(host.indexOf('async function discover('),
+    host.indexOf('async function processCheckRequest()')),/if \(!manual\)\s*await writeSettings/);
 });

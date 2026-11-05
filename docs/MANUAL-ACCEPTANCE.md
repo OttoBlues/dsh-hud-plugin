@@ -81,3 +81,7 @@
 ## V0.5.7 用户反馈与 V0.5.8 复验
 
 用户报告在 V0.5.7 点击 HUD 组件中心进入独立窗口后，**没有弹出窗口，最终启动超时**。据此 V0.5.7 的 **U057-1 实际启动验收未通过**；应明确区别于 GitHub Actions 的 WPF 静态自检通过。V0.5.8 修复原 ConfigForms nonce 可能被 Host 重建吞掉的问题，改用正式 RPC；请按 [U058](HUD-NATIVE-WINDOW-V058.md) 验证，不自动标记成功。
+
+## V0.5.8 用户现场失败与 V0.5.9 U059
+
+用户明确报告在同一 DSH Desktop 进程中，手动更新和自动试验版更新可能卡在「已确认，正在安装」，退出后重新启动才显示版本更新完成；独立 HUD 启动返回 HTTP 405。不得将 v0.5.8 的 Windows CI 通过误记为 Desktop 实际验收通过。v0.5.9 把一次性安装从 Host ConfigEditor 队列移交给 DSH 官方 Plugin Manager，并提供 Host 运行版本诊断、明确的重启/未确认状态。请按 [U059 验收矩阵](HUD-INSTALL-RELIABILITY-V059.md) 完成实机复测。

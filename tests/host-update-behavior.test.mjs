@@ -91,6 +91,7 @@ function setup(overrides={}) {
   const ctx={
     fiber:{entry:overrides.wrongFiberEntry?{options:{id:'not-hud'}}:editableEntry},
     get(name){
+      if(name==='pluginManager')return overrides.managerUnavailable ? undefined : ctx.pluginManager;
       if(name!=='configEditor'||!editorReady)return;
       return{
         entries(){return overrides.noAddressableEntry?[]:[editableEntry];},
@@ -194,7 +195,7 @@ test('public repository index exposes components with released and unstable chan
     await flush();
     const status=await s.status();
     assert.equal(status.value.scanState,'success');
-    assert.equal(status.value.hostVersion,'0.5.9');
+    assert.equal(status.value.hostVersion,'0.5.10');
     assert.equal(s.calls.writes.length,0,'Background scanning must not recompose its own Host');
     assert(s.calls.http.some(x=>x.url.endsWith('/hud/released/index.json')));
     assert(s.calls.http.some(x=>x.url.endsWith('/hud/unstable/index.json')));
@@ -613,7 +614,7 @@ test('legacy pending nonce is not replayed on reloaded Host and does not disturb
     await flush();
     await s.checkCallback();
     assert.equal(s.calls.installed.length,0,'Recomposed Host must not replay old confirmation');
-    assert.equal((await s.status()).value.hostVersion,'0.5.9');
+    assert.equal((await s.status()).value.hostVersion,'0.5.10');
   } finally{s.stop();}
 });
 
@@ -627,4 +628,20 @@ test('background automatic update uses no pre-install ConfigEditor and does not 
     await s.refresh();
     assert.equal(s.calls.installed.length,1);
   } finally{s.stop();}
+});
+
+
+test('Host exposes native status RPC when optional Plugin Manager has not started',async()=>{
+  const s=setup({managerUnavailable:true});
+  try {
+    const status=await s.status();
+    assert.equal(status.ok,true);
+    assert.equal(status.value.hostVersion,'0.5.10');
+    assert.equal(s.calls.installed.length,0);
+    const pending=s.native();
+    assert.equal(s.calls.native.length,1,'Independent HUD RPC must not depend on pluginManager');
+    s.calls.native[0].onReady();
+    const started=await pending;
+    assert.equal(started.ok,true);
+  } finally {s.stop();}
 });

@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.9: verified direct installer and Host/version health diagnostics.
+ * DSH HUD V0.5.10: auto public checks, resilient settings and Host bootstrap.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.9';
+    const VERSION = '0.5.10';
     let nativeSessionSnapshot = { capturedAt:'', sessions:[] };
     // User-triggered checks do not use Host settings as a command queue.
     const REFRESH_MS = 5 * 60_000;
@@ -58,7 +58,8 @@ window.__ModuleLoader__.load({
         previewStatus:'工作区预览',modeFailed:'HUD 模式切换失败，请重试',
         panel: 'HUD', title: 'HUD 组件中心', sub: 'OttoBlues/dsh-hud-plugin · 组件安装、版本和更新策略',
         section: '仓库组件', options: '更新策略', sourceOK: '公开仓库已连接',
-        sourceUnavailable: '仓库版本源暂不可匿名访问：请将 GitHub 仓库设为 Public。',
+        sourceUnavailable:'公开仓库状态尚未确认，请检查网络并重试。',
+        sourceNetworkError:'无法读取 GitHub 公开版本清单；请检查网络/CORS 并重试（不能据此认定仓库为 Private）。',
         sourceChecking: '正在读取公开组件清单…', noComponents: '当前没有可用的仓库组件',
         sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkQueued:'正在查询公开 GitHub 更新源…',
         checkTimeout:'检查超时：DSH 更新服务未响应，可以点击重试并查看日志',checkIdle:'手动触发云端版本扫描',
@@ -86,6 +87,10 @@ window.__ModuleLoader__.load({
         autoUnstable: '自动更新试验版', autoUnstableHelp: '独立的额外授权；只有同时开启上述两个选项才会自动安装 unstable 包。存在不稳定风险。',
         preview: '聊天窗口 HUD 预览', previewHelp: '默认关闭；可避免状态文字与标题栏、聊天输入区重叠。',
         noToken: '无需 GitHub Token · 仅下载公开通道中登记的安装包',
+        policySaved:'更新策略已保存到 DSH 配置。',policySaving:'正在保存更新策略…',
+        policyReady:'DSH 设置可写',policyNotReady:'DSH HUD 配置暂不可写，设置不会生效。',
+        policyFailed:'保存更新策略失败（原设置保持不变）：',
+        policyHelp:'请检查 HUD Host 和 DSH 原生插件配置。若仍无法保存，可通过官方离线安装方式升级。',
       },
       en: {
         workspaceTitle:'HUD Workspace',workspaceNav:'HUD navigation',overview:'Overview',sessionTab:'Sessions',
@@ -106,7 +111,8 @@ window.__ModuleLoader__.load({
         previewStatus:'Workspace preview',modeFailed:'Could not change HUD mode. Try again.',
         panel: 'HUD', title: 'HUD Component Center', sub: 'OttoBlues/dsh-hud-plugin · Install, update and configure',
         section: 'Repository components', options: 'Update policy', sourceOK: 'Public repository connected',
-        sourceUnavailable: 'Anonymous update source unavailable. Make the GitHub repository Public to enable direct updates.',
+        sourceUnavailable:'Public source has not been verified; check the network and retry.',
+        sourceNetworkError:'Could not read public GitHub metadata. Check network/CORS and retry; this does not imply the repository is private.',
         sourceChecking: 'Checking the public component index…', noComponents: 'No repository components are available',
         sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkQueued:'Reading public GitHub release metadata…',
         checkTimeout:'Check timed out: DSH update service did not respond. Retry or inspect logs.',checkIdle:'Check public channels now',
@@ -134,6 +140,10 @@ window.__ModuleLoader__.load({
         autoUnstable: 'Automatically install unstable updates', autoUnstableHelp: 'Additional explicit opt-in, effective only with both options above; experimental risk.',
         preview: 'HUD chat-window preview', previewHelp: 'Off by default to avoid overlapping window chrome and chat input.',
         noToken: 'No GitHub Token · Only indexed public installable archives',
+        policySaved:'Update preferences saved by DSH.',policySaving:'Saving update preferences…',
+        policyReady:'DSH settings writable',policyNotReady:'HUD configuration is not writable; changes cannot take effect.',
+        policyFailed:'Failed to save update preferences (original settings unchanged):',
+        policyHelp:'Check that the HUD Host and native DSH plugin configuration are available; use the official offline installation path if needed.',
       },
     };
 
@@ -534,12 +544,18 @@ window.__ModuleLoader__.load({
         const installAttempt = React.useRef(false);
         const [error, setError] = React.useState('');
         const [requestingCheck, setRequestingCheck] = React.useState(false);
+        const checkAttempt = React.useRef(false);
+        const [policySaving,setPolicySaving] = React.useState(false);
+        const [policyDraft,setPolicyDraft] = React.useState({});
+        const [policyError,setPolicyError] = React.useState('');
+        const [policyNotice,setPolicyNotice] = React.useState('');
+        const policyAttempt = React.useRef(false);
         const [nativeLaunching,setNativeLaunching] = React.useState(false);
         const [nativeFailure,setNativeFailure] = React.useState('');
         const nativeAttempt = React.useRef(false);
         const [localCatalog,setLocalCatalog] = React.useState(null);
         const [directCheck,setDirectCheck] = React.useState({
-          state:'idle',at:'',error:'',
+          state:'checking',at:'',error:'',
         });
         React.useEffect(() => {
           let alive = true;
@@ -622,6 +638,34 @@ window.__ModuleLoader__.load({
         });
         const btn = (label,onClick,disabled=false) =>
           h('button',{type:'button',onClick,disabled,style:actionStyle(disabled)},label);
+        const policyValue=field=>Object.prototype.hasOwnProperty.call(policyDraft,field)
+          ? policyDraft[field]===true : values[field]===true;
+        const writePolicy=async ops=>{
+          if(policyAttempt.current)return;
+          const current=form.getSnapshot();
+          if(current.status!=='ready'||current.writable!==true){
+            setPolicyError(t('policyNotReady')+' ('+String(current.status)+
+              ', writable='+String(current.writable)+') '+t('policyHelp'));
+            setPolicyNotice('');
+            return;
+          }
+          policyAttempt.current=true;
+          setPolicySaving(true);setPolicyNotice('');setPolicyError('');
+          const optimistic={};
+          for(const op of ops)if(op.op==='set'&&op.path.length===1)optimistic[op.path[0]]=op.value;
+          setPolicyDraft(previous=>({...previous,...optimistic}));
+          try{
+            const accepted=await form.mutate(ops);
+            if(accepted!==true)throw new Error('Settings mutate was not accepted by DSH Host.');
+            setPolicyNotice(t('policySaved'));
+          }catch(cause){
+            const state=form.getSnapshot();
+            setPolicyError(t('policyFailed')+' '+String(cause?.message||cause).slice(0,180)+
+              ' (status='+String(state.status)+', writable='+String(state.writable)+')');
+          }finally{
+            setPolicyDraft({});setPolicySaving(false);policyAttempt.current=false;
+          }
+        };
         const toggle = (label,help,checked,change,disabled=false,dataName) =>
           h('div',{style:{padding:'12px 0',opacity:disabled?.55:1}},
             h('label',{style:{display:'flex',gap:11,alignItems:'center',fontSize:14,cursor:'pointer'}},
@@ -760,7 +804,8 @@ window.__ModuleLoader__.load({
           new Date(backgroundAt).toLocaleTimeString(undefined,
             {hour:'2-digit',minute:'2-digit'}) : '';
         const requestCheck=async()=>{
-          if(busyCheck)return;
+          if(checkAttempt.current)return;
+          checkAttempt.current=true;
           setRequestingCheck(true);
           setDirectCheck({state:'checking',at:'',error:''});
           setError('');
@@ -776,14 +821,18 @@ window.__ModuleLoader__.load({
               error:'Public GitHub read failed (network, CORS or index): '+
                 String(error?.message||'unknown').slice(0,240)});
           }finally{
+            checkAttempt.current=false;
             setRequestingCheck(false);
           }
         };
+        // Scan publicly on mount: Host config availability must not decide
+        // whether a GitHub repository can be read anonymously.
+        React.useEffect(()=>{void requestCheck();},[]);
         const checkLabel=checkState==='checking'?t('checkingNow')
           :checkState==='success'?t('checkSuccess')
           :checkState==='partial'?t('checkPartial')
           :checkState==='failed'?t('checkFailed'):t('checkIdle');
-        const originLabel=checkState==='idle'?'':t('checkCanonical');
+        const originLabel=checkState==='idle'||checkState==='checking'?'':t('checkCanonical');
 
         return h('main',{'data-dsh-hud-main':true,'data-hud-management-theme':'dsh-native',
           style:{boxSizing:'border-box',overflowY:'auto',height:'100%',

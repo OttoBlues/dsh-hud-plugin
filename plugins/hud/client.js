@@ -811,10 +811,12 @@ window.__ModuleLoader__.load({
             :null,
           hostHealth.autoState==='submitted'
             ?h('p',{role:'status','data-hud-auto-state':true,style:subtle},t('autoAttempt'))
-            :hostHealth.autoState==='failed'
-              ?h('p',{role:'alert','data-hud-auto-state':true,style:subtle},
-                  t('autoFailed')+' '+String(hostHealth.autoError||''))
-              :null,
+            :hostHealth.autoState==='restart-required'
+              ?h('p',{role:'status','data-hud-auto-state':true,style:subtle},t('restart'))
+              :hostHealth.autoState==='failed'||hostHealth.autoState==='unconfirmed'
+                ?h('p',{role:'alert','data-hud-auto-state':true,style:subtle},
+                    t('autoFailed')+' '+String(hostHealth.autoError||''))
+                :null,
           h('section',{'data-hud-check-panel':true,
             style:{...surface,padding:'20px 24px',marginTop:24}},
             h('div',{style:{display:'flex',gap:18,flexWrap:'wrap',

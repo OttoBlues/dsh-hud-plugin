@@ -8,7 +8,7 @@
 - 自动更新默认关闭，试验版订阅与自动试验版需要独立授权；窗口内 HUD 预览默认关闭。
 - 历史 V0.4.0 曾出现自更新宿主异常，V0.4.1 引入 Host 生命周期保护。
 
-**已发布：** Unstable V0.5.9（修复多次安装、自动试验版进度及运行 Host 诊断，U059 实机待验收）；Released 为空。用户截图确认已在 Windows Desktop 安装 V0.4.1。
+**已发布：** Unstable V0.5.10（修复 HUD Host 依赖、设置保存诊断与公开版本自动检查，U0510 实机待验收）；Released 为空。用户截图确认已在 Windows Desktop 安装 V0.4.1。
 
 **历史发布：** V0.4.2 完成仓库更名与本地 Runner 退役。后续 v0.5.x 已增加 DSH 组件中心、只读公开更新检查与独立 HUD 候选。安装仍须人工确认，不能将 CI 视为 Desktop 无崩溃验收。
 
@@ -60,6 +60,6 @@ v0.5.7 的独立 HUD 启动仍通过 ConfigForms nonce 排队给 Host，Host 重
 
 手动更新改为「Host 按 SHA-256 验证固定包 → DSH 官方 Plugin Manager 直接安装」，避免旧 Host ConfigEditor 命令队列被重组中断；自动更新首次验证成功后记录单次尝试，三重实验授权保持不变。组件中心直接显示安装失败、需要重启或结果未知，超过限定时间不会持续显示正在安装。新增运行中 Host 版本探测，HTTP 405 提示完整退出并重启 Desktop。U059 Windows 实机结果未验证。详见 docs/HUD-INSTALL-RELIABILITY-V059.md。
 
-## V0.5.10 冷启动 Host 与设置修复候选
+## V0.5.10 冷启动 Host 与设置修复（Unstable）
 
 用户报告 v0.5.9 冷启动 /hud-native/status、open HTTP 405，初次无网络检查被误报 GitHub Private，更新策略所有开关点击无响应。v0.5.10 去除插件管理器作为 Host 的强制注入（仅需 connection），让 HUD 配置和 RPC 先启动；组件中心自动运行浏览器公开源检查，保存更新策略统一报告可写状态、成功和失败。不将 CI 静态测试视为 Windows Desktop 实际通过。详见 docs/HUD-SETTINGS-BOOTSTRAP-V0510.md。

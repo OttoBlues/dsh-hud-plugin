@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.9: reliable verified component installation and native Host readiness.
+ * DSH HUD v0.5.10: independently bootstrapped Host, durable direct update policy and HUD RPC.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -15,7 +15,9 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-export const inject = ['pluginManager','connection','webServer'];
+// A missing optional Manager/WebServer must never prevent the plugin's Host
+// from activating and exposing its settings namespace.
+export const inject = [];
 // Keep the previous name as a temporary migration fallback. Once the user
 // renames the repository, old raw URLs are NOT assumed to keep redirecting.
 const ROOTS = [
@@ -23,7 +25,7 @@ const ROOTS = [
   'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins',
 ];
 const CURRENT_NAME = '@local/dsh-hud';
-const HOST_VERSION = '0.5.9';
+const HOST_VERSION = '0.5.10';
 const CATALOG_EMPTY = '{"schema":3,"source":"checking","components":[]}';
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const HEX40 = /^[a-f0-9]{40}$/i;
@@ -191,6 +193,45 @@ export function apply(ctx, config) {
   let lastMissingEditorWarning = 0;
   const controller = new AbortController();
   const cacheRoot = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'approved-component-packages');
+  const policyPath = join(cacheRoot,'hud','update-policy.json');
+  // Recovery-safe, versioned Host-owned settings. No ConfigEditor write or Loader
+  // recomposition is needed for these three opt-in decisions.
+  const initialPolicy = {
+    allowUnstable: config.allowUnstable?.get?.() === true,
+    autoUpdateEnabled: config.autoUpdateEnabled?.get?.() === true,
+    autoUpdateUnstable: config.autoUpdateUnstable?.get?.() === true,
+  };
+  let policy = { ...initialPolicy,
+    autoUpdateUnstable:initialPolicy.autoUpdateUnstable &&
+      initialPolicy.allowUnstable && initialPolicy.autoUpdateEnabled };
+  let policyWritable = true;
+  let policyError = '';
+  let policyWrites = Promise.resolve();
+  const loadPolicy = (async () => {
+    try {
+      const data = JSON.parse(await readFile(policyPath,'utf8'));
+      if (data?.schema !== 1 ||
+          ['allowUnstable','autoUpdateEnabled','autoUpdateUnstable'].some(key =>
+            typeof data[key] !== 'boolean')) throw new Error('Invalid HUD update policy file.');
+      policy = {
+        allowUnstable:data.allowUnstable,
+        autoUpdateEnabled:data.autoUpdateEnabled,
+        autoUpdateUnstable:data.autoUpdateUnstable &&
+          data.allowUnstable && data.autoUpdateEnabled,
+      };
+    } catch (error) {
+      if (error?.code !== 'ENOENT') {
+        policyWritable = false;
+        policyError = String(error?.message || error).slice(0,240);
+        ctx.logger?.warn?.('HUD policy read failed: %s',policyError);
+      }
+    }
+  })();
+  function manager() {
+    const current = ctx.get('pluginManager');
+    if (!current) throw new Error('DSH Plugin Manager Host service is unavailable.');
+    return current;
+  }
   const autoLedgerFor = id => join(cacheRoot,id,'.auto-attempt.json');
   const runtime = {scanAt:'',scanState:'idle',scanError:'',autoAt:'',autoState:'idle',autoError:''};
 
@@ -238,7 +279,7 @@ export function apply(ctx, config) {
   }
 
   async function installedRows() {
-    const rows = await ctx.pluginManager.listBundles();
+    const rows = await manager().listBundles();
     if (!Array.isArray(rows)) throw new Error('DSH plugin inventory unavailable.');
     return rows;
   }
@@ -283,7 +324,7 @@ export function apply(ctx, config) {
     try {
       const current = (await installedRows()).find(row => row.name === component.name && row.installed);
       if (!newer(approved.version, current?.version)) throw new Error('No newer reviewed version.');
-      if (approved.channel === 'unstable' && config.allowUnstable.get() !== true) {
+      if (approved.channel === 'unstable' && policy.allowUnstable !== true) {
         throw new Error('Experimental update option is disabled.');
       }
 
@@ -293,7 +334,7 @@ export function apply(ctx, config) {
         // Self-update can unload this Host before the manager's promise
         // settles. Never write old-instance config or query inventory after
         // replacing this very bundle. The next Host startup reconciles status.
-        const task = ctx.pluginManager.installBundle(target, {
+        const task = manager().installBundle(target, {
           enabled: true, saveExact: true,
         });
         Promise.resolve(task).then(
@@ -322,7 +363,7 @@ export function apply(ctx, config) {
         return true; // accepted for processing, NOT proof of installation
       }
 
-      const result = await ctx.pluginManager.installBundle(target, {
+      const result = await manager().installBundle(target, {
         enabled: true, saveExact: true,
       });
       if (disposed) return false;
@@ -416,13 +457,13 @@ export function apply(ctx, config) {
       }
       // Clicking "check" must never trigger an installation, even when
       // automatic-update preferences are enabled.
-      if (!manual && config.autoUpdateEnabled.get() === true && !disposed && !updating) {
+      if (!manual && policy.autoUpdateEnabled === true && !disposed && !updating) {
         const installed = await installedRows();
         for (const component of rows) {
           const row = installed.find(x => x.name === component.name && x.installed);
           if (!row) continue; // Never silently install a new component.
-          const includeExperimental = config.allowUnstable.get() === true &&
-            config.autoUpdateUnstable.get() === true;
+          const includeExperimental = policy.allowUnstable === true &&
+            policy.autoUpdateUnstable === true;
           const approved = selectRelease(component, includeExperimental);
           if (!approved || !newer(approved.version, row.version)) continue;
           const key = component.name + ':' + approved.channel + ':' + approved.version + ':' + approved.sha256;
@@ -529,7 +570,7 @@ export function apply(ctx, config) {
     const channel = config.requestChannel.get();
     if (!PACKAGE.test(name || '') || !SEMVER.test(version || '') ||
         (channel !== 'released' && channel !== 'unstable') ||
-        (channel === 'unstable' && config.allowUnstable.get() !== true)) return;
+        (channel === 'unstable' && policy.allowUnstable !== true)) return;
 
     // Consume consent before any network action so restart cannot replay it.
     try {
@@ -567,7 +608,7 @@ export function apply(ctx, config) {
       !['released','unstable'].includes(payload.channel)) {
       return rpcFail('hud/invalid-install','Invalid component, version or channel.');
     }
-    if (payload.channel === 'unstable' && config.allowUnstable.get() !== true) {
+    if (payload.channel === 'unstable' && policy.allowUnstable !== true) {
       return rpcFail('hud/unstable-disabled','Unstable channel requires explicit approval.');
     }
     try {
@@ -595,6 +636,45 @@ export function apply(ctx, config) {
       ctx.logger?.warn?.('HUD prepare-install failed: %s',String(error?.message||error));
       return rpcFail('hud/prepare-failed',error?.message||error);
     }
+  }
+
+
+  async function updatePolicy(payload, signal, peer) {
+    if (disposed) return rpcFail('hud/host-disposed','Host was stopped before saving.');
+    if (peer?.principal?.kind !== 'owner') return rpcFail('hud/forbidden','Owner access required.');
+    if (!payload || !['allowUnstable','autoUpdateEnabled','autoUpdateUnstable'].includes(payload.key) ||
+        typeof payload.value !== 'boolean') {
+      return rpcFail('hud/bad-policy','A single boolean update-policy field is required.');
+    }
+    await loadPolicy;
+    // Serialize independent checkbox writes so rapid clicks cannot roll back
+    // a successful newer user decision with an older snapshot.
+    const task = policyWrites.catch(()=>{}).then(async()=>{
+      if (disposed || signal?.aborted) return rpcFail('hud/cancelled','Policy save was cancelled.');
+      if (!policyWritable) return rpcFail('hud/policy-readonly',policyError ||
+        'HUD policy file could not be read safely.');
+      const next = {...policy,[payload.key]:payload.value};
+      if (!next.allowUnstable || !next.autoUpdateEnabled) next.autoUpdateUnstable=false;
+      if (payload.key === 'autoUpdateUnstable' && payload.value === true &&
+          (!next.allowUnstable || !next.autoUpdateEnabled)) {
+        return rpcFail('hud/policy-consent','Enable both update permissions first.');
+      }
+      try {
+        await mkdir(join(cacheRoot,'hud'),{recursive:true,mode:0o700});
+        const temporary = policyPath+'.'+process.pid+'.tmp';
+        await writeFile(temporary,JSON.stringify({schema:1,...next})+'\n',{mode:0o600});
+        await rename(temporary,policyPath);
+        policy=next;
+        ctx.logger?.info?.('HUD policy saved: %s=%s',payload.key,String(payload.value));
+        return {ok:true,value:{policy:{...policy}}};
+      } catch (error) {
+        const description=String(error?.message||error).slice(0,240);
+        ctx.logger?.warn?.('HUD update policy write failed: %s',description);
+        return rpcFail('hud/policy-save-failed',description);
+      }
+    });
+    policyWrites=task.then(()=>{},()=>{});
+    return task;
   }
 
   // Use official Connection unary RPC, not ConfigEditor/volatile-update as a
@@ -688,20 +768,30 @@ export function apply(ctx, config) {
     }
   }
 
+  // Host boot is independent of optional services. Register only when BOTH
+  // the Connection and its WebServer carrier have appeared. The prior hard
+  // injection could leave the Host waiting forever and the browser saw 405.
+  ctx.inject(['connection','webServer'], ready => {
+    ready.connection.rpc.handle('/hud-native',
+      async (endpoint, payload, signal, peer) => {
+        if (endpoint === 'open') return openNativeHud(payload,signal,peer);
+        if (endpoint === 'prepare-install') return prepareInstall(payload,signal,peer);
+        if (endpoint === 'set-policy') return updatePolicy(payload,signal,peer);
+        if (endpoint === 'status') {
+          if (peer?.principal?.kind !== 'owner') return rpcFail('hud/forbidden','Owner access required.');
+          await loadPolicy;
+          return {ok:true,value:{hostVersion:HOST_VERSION,
+            policy:{...policy},policyWritable,policyError,
+            managerReady:!!ctx.get('pluginManager'),
+            scanAt:runtime.scanAt,scanState:runtime.scanState,scanError:runtime.scanError,
+            autoAt:runtime.autoAt,autoState:runtime.autoState,autoError:runtime.autoError}};
+        }
+        return rpcFail('hud/unknown-command','Unsupported native HUD command.');
+      });
+    ctx.logger?.info?.('HUD v%s: authenticated Connection RPC registered',HOST_VERSION);
+  });
+
   ctx.effect(() => {
-    const unregisterNativeRpc = ctx.connection.rpc.handle('/hud-native',
-      (endpoint, payload, signal, peer) => endpoint === 'open'
-        ? openNativeHud(payload, signal, peer)
-        : endpoint === 'prepare-install'
-          ? prepareInstall(payload, signal, peer)
-          : endpoint === 'status'
-            ? Promise.resolve(peer?.principal?.kind === 'owner'
-              ? {ok:true,value:{hostVersion:HOST_VERSION,scanAt:runtime.scanAt,
-                  scanState:runtime.scanState,scanError:runtime.scanError,
-                  autoAt:runtime.autoAt,autoState:runtime.autoState,
-                  autoError:runtime.autoError}}
-              : rpcFail('hud/forbidden','Owner access required.'))
-            : Promise.resolve(rpcFail('hud/unknown-command','Unsupported native HUD command.')));
     const guarded = promise => {
       Promise.resolve(promise).catch(error => {
         if (!disposed) {
@@ -721,7 +811,7 @@ export function apply(ctx, config) {
         }
       }catch { /* Fresh profile has no previous automatic attempt. */ }
     })());
-    guarded(discover());
+    guarded(loadPolicy.then(()=>discover()));
     // Volatile configuration writes from the DSH client are observable
     // without remounting this plugin. Listen immediately; the 850 ms timer
     // remains as a fallback for runtimes without the event.
@@ -740,7 +830,6 @@ export function apply(ctx, config) {
       disposed = true;
       nativeHudWindow?.close();
       nativeHudWindow = null;
-      void unregisterNativeRpc();
       controller.abort();
       clearTimeout(reconcile);
       clearInterval(poll);

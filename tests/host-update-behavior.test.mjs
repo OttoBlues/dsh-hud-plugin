@@ -68,7 +68,10 @@ function setup(overrides={}) {
   const calls={http:[],installed:[],list:0,writes:[],logs:[],cached:[],native:[]};
   const storedFiles=new Map();
   const inventory=overrides.inventory || [{name:NAME,installed:true,version:'0.4.0'}];
-  const callbacks=[], startTimers=[], events=new Map(),rpcRoutes=new Map();let dispose=()=>{};
+  const callbacks=[], startTimers=[], events=new Map(),rpcRoutes=new Map();
+  let dispose=()=>{}, connectionDisposer=()=>{}, pendingConnection=null;
+  let connectionReady=overrides.connectionInitiallyUnavailable!==true;
+  let managerReady=overrides.managerInitiallyUnavailable!==true;
   const editableEntry={options:{id:'dsh-hud'}};
   let editorReady=overrides.editorInitiallyAvailable!==false;
   let failCheckClaimOnce=overrides.rejectCheckClaimOnce===true;
@@ -91,6 +94,7 @@ function setup(overrides={}) {
   const ctx={
     fiber:{entry:overrides.wrongFiberEntry?{options:{id:'not-hud'}}:editableEntry},
     get(name){
+      if(name==='pluginManager')return managerReady?ctx.pluginManager:undefined;
       if(name!=='configEditor'||!editorReady)return;
       return{
         entries(){return overrides.noAddressableEntry?[]:[editableEntry];},
@@ -112,6 +116,14 @@ function setup(overrides={}) {
       rpcRoutes.set(channel,callback);
       return ()=>rpcRoutes.delete(channel);
     }}},
+    inject(services,callback){
+      assert.deepEqual(Array.from(services),['connection']);
+      const mount=()=>callback({connection:ctx.connection,effect(register){
+        connectionDisposer=register();
+      }});
+      if(!connectionReady)pendingConnection=mount;
+      else mount();
+    },
     pluginManager:{
       async listBundles(){calls.list++;return inventory;},
       async installBundle(path,opts){
@@ -184,8 +196,10 @@ function setup(overrides={}) {
     checkCallback:async()=>{callbacks[1]();await flush();},
     sendVolatile:async()=>{events.get('loader/volatile-update')?.([['checkNonce']]);await flush();},
     enableEditor:()=>{editorReady=true;},
+    enableConnection:()=>{connectionReady=true;pendingConnection?.();pendingConnection=null;},
+    enableManager:()=>{managerReady=true;},
     advance:ms=>{clock+=ms;},
-    stop:()=>dispose()};
+    stop:()=>{dispose();connectionDisposer();}};
 }
 
 test('public repository index exposes components with released and unstable channels',async()=>{
@@ -194,7 +208,7 @@ test('public repository index exposes components with released and unstable chan
     await flush();
     const status=await s.status();
     assert.equal(status.value.scanState,'success');
-    assert.equal(status.value.hostVersion,'0.5.9');
+    assert.equal(status.value.hostVersion,'0.5.10');
     assert.equal(s.calls.writes.length,0,'Background scanning must not recompose its own Host');
     assert(s.calls.http.some(x=>x.url.endsWith('/hud/released/index.json')));
     assert(s.calls.http.some(x=>x.url.endsWith('/hud/unstable/index.json')));
@@ -613,7 +627,7 @@ test('legacy pending nonce is not replayed on reloaded Host and does not disturb
     await flush();
     await s.checkCallback();
     assert.equal(s.calls.installed.length,0,'Recomposed Host must not replay old confirmation');
-    assert.equal((await s.status()).value.hostVersion,'0.5.9');
+    assert.equal((await s.status()).value.hostVersion,'0.5.10');
   } finally{s.stop();}
 });
 
@@ -627,4 +641,34 @@ test('background automatic update uses no pre-install ConfigEditor and does not 
     await s.refresh();
     assert.equal(s.calls.installed.length,1);
   } finally{s.stop();}
+});
+
+test('HUD Host activates and starts safe config without Connection or Plugin Manager services',async()=>{
+  const s=setup({connectionInitiallyUnavailable:true,managerInitiallyUnavailable:true});
+  try{
+    await flush();
+    assert.equal(s.calls.installed.length,0);
+    assert.equal(s.calls.writes.length,0,
+      'The public scanner must not trigger a Loader recomposition before a service exists');
+    assert.equal(s.calls.http.length>0,true,
+      'Read-only public discovery must not wait for webServer/Connection');
+    s.enableConnection();
+    assert.equal((await s.status()).ok,true);
+    assert.equal((await s.status()).value.hostVersion,'0.5.10');
+    s.enableManager();
+    const attempt=await s.prepare({id:'hud',name:NAME,version:'0.4.1',channel:'released'});
+    assert.equal(attempt.ok,true,'Plugin Manager can be added after Host activation');
+  }finally{s.stop();}
+});
+
+test('HUD Host can attach native RPC before manager exists and keeps owner guard',async()=>{
+  const s=setup({managerInitiallyUnavailable:true});
+  try{
+    const result=await s.status();
+    assert.equal(result.ok,true);
+    assert.equal(result.value.hostVersion,'0.5.10');
+    const denied=await s.native(undefined,new AbortController().signal,{principal:{kind:'guest'}});
+    assert.equal(denied.error.code,'hud/forbidden');
+    assert.equal(s.calls.installed.length,0);
+  }finally{s.stop();}
 });

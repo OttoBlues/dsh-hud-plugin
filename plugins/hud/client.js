@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.5: flat cockpit and Loader-entry backed release scans.
+ * DSH HUD V0.5.6: independent read-only release checks and safe Host-owned installs.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,8 +10,8 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.5';
-    const CHECK_WATCHDOG_MS = 45_000;
+    const VERSION = '0.5.6';
+    // User-triggered checks do not use Host settings as a command queue.
     const REFRESH_MS = 5 * 60_000;
 
     const dictionaries = {
@@ -31,12 +31,12 @@ window.__ModuleLoader__.load({
         section: '仓库组件', options: '更新策略', sourceOK: '公开仓库已连接',
         sourceUnavailable: '仓库版本源暂不可匿名访问：请将 GitHub 仓库设为 Public。',
         sourceChecking: '正在读取公开组件清单…', noComponents: '当前没有可用的仓库组件',
-        sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkQueued:'请求已提交，等待版本扫描结果…',
+        sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkQueued:'正在查询公开 GitHub 更新源…',
         checkTimeout:'检查超时：DSH 更新服务未响应，可以点击重试并查看日志',checkIdle:'手动触发云端版本扫描',
         automaticScan:'后台检查',
         checkSuccess:'版本检查完成',checkPartial:'部分通道检查不完整',checkFailed:'版本检查失败',
         checkAt:'检查时间',checkCanonical:'当前源：dsh-hud-plugin',checkLegacy:'当前源：旧地址兼容',
-        checkTip:'仅重新读取公开组件索引与发布清单，不安装任何版本。',
+        checkTip:'直接读取公开 GitHub 版本清单；不写入 DSH 配置，也不安装版本。',
         installed: '已安装', notInstalled: '未安装', current: '当前', released: '正式版',
         unstable: '试验版', notPublished: '未发布', update: '更新', install: '安装',
         latest: '已是最新', unavailable: '暂无可安装的新版本', queued: '已确认，准备安装…',
@@ -67,12 +67,12 @@ window.__ModuleLoader__.load({
         section: 'Repository components', options: 'Update policy', sourceOK: 'Public repository connected',
         sourceUnavailable: 'Anonymous update source unavailable. Make the GitHub repository Public to enable direct updates.',
         sourceChecking: 'Checking the public component index…', noComponents: 'No repository components are available',
-        sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkQueued:'Check requested; awaiting scan result…',
+        sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkQueued:'Reading public GitHub release metadata…',
         checkTimeout:'Check timed out: DSH update service did not respond. Retry or inspect logs.',checkIdle:'Check public channels now',
         automaticScan:'Background check',
         checkSuccess:'Update check completed',checkPartial:'Some release channels could not be checked',
         checkFailed:'Update check failed',checkAt:'Checked at',checkCanonical:'Source: dsh-hud-plugin',
-        checkLegacy:'Source: legacy compatibility',checkTip:'Read public release manifests now; no installation is triggered.',
+        checkLegacy:'Source: legacy compatibility',checkTip:'Direct public GitHub metadata read, no DSH settings write or installation.',
         installed: 'Installed', notInstalled: 'Not installed', current: 'Current', released: 'Released',
         unstable: 'Unstable', notPublished: 'Not published', update: 'Update', install: 'Install',
         latest: 'Up to date', unavailable: 'No installable new version', queued: 'Update confirmed and queued…',
@@ -112,6 +112,88 @@ window.__ModuleLoader__.load({
             typeof row.title === 'string' && typeof row.description === 'string'),
         };
       } catch { return { source: 'unavailable', components: [] }; }
+    }
+
+
+    // V0.5.6: a release check is a READ, not a profile configuration edit.
+    // DSH configForms.mutate(...) is an authenticated settings persistence
+    // operation, not an RPC transport for transient commands. Keep installs
+    // in the Host; only public, fixed GitHub metadata is read here.
+    const PUBLIC_ROOT = 'https://raw.githubusercontent.com/OttoBlues/dsh-hud-plugin/main/plugins';
+    const VERSION_RE = /^\d+\.\d+\.\d+$/;
+    const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+    const PACKAGE_RE = /^@local\/[a-z0-9][a-z0-9-]{0,63}$/;
+    const HASH_RE = /^[a-f0-9]{64}$/i;
+    const COMMIT_RE = /^[a-f0-9]{40}$/i;
+    async function publicJson(path) {
+      // path is derived only from our own fixed names or validated slugs.
+      if (!/^(index\.json|[a-z0-9][a-z0-9-]{0,63}\/(unstable|released)\/index\.json)$/.test(path)) {
+        throw new Error('Unsafe component index path.');
+      }
+      if (typeof fetch !== 'function') throw new Error('Browser fetch is unavailable.');
+      const response=await fetch(PUBLIC_ROOT+'/'+path,{
+        method:'GET',mode:'cors',redirect:'error',credentials:'omit',
+        cache:'no-store',signal:AbortSignal.timeout(14_000),
+      });
+      if (!response.ok) throw new Error(path+': HTTP '+response.status);
+      const body=await response.text();
+      if(body.length>100_000)throw new Error(path+': index exceeded size limit.');
+      return JSON.parse(body);
+    }
+    function publicRelease(value,component,channel){
+      if(value?.schema!==1 || value.component!==component.id ||
+         value.package!==component.name || value.channel!==channel ||
+         !Array.isArray(value.releases) || value.releases.length>128) {
+        throw new Error(component.id+'/'+channel+': invalid channel.');
+      }
+      if(value.latest===null && value.releases.length===0)return null;
+      if(typeof value.latest!=='string'||!VERSION_RE.test(value.latest)){
+        throw new Error(component.id+'/'+channel+': invalid version.');
+      }
+      const results=value.releases.filter(x=>x?.version===value.latest);
+      if(results.length!==1)throw new Error(component.id+'/'+channel+': ambiguous latest.');
+      const item=results[0],file='v'+item.version+'/local-dsh-'+component.id+'-'+item.version+'.tgz';
+      if(item.file!==file||!HASH_RE.test(item.sha256||'')||
+         !COMMIT_RE.test(item.sourceCommit||'')){
+        throw new Error(component.id+'/'+channel+': invalid archive facts.');
+      }
+      if(channel==='released' &&
+        (item.acceptance?.decision!=='approved'||!/^U\d{2,3}$/.test(item.acceptance?.check||''))){
+        throw new Error(component.id+'/released: missing acceptance.');
+      }
+      if(channel==='unstable' &&
+        (item.test?.result!=='success'||!/^\d+$/.test(item.test?.ciRun||''))){
+        throw new Error(component.id+'/unstable: missing green CI.');
+      }
+      return {channel,version:item.version,file,sha256:item.sha256.toLowerCase(),
+        commit:item.sourceCommit.toLowerCase()};
+    }
+    async function checkPublicReleases(){
+      const root=await publicJson('index.json');
+      if(root?.schema!==1||!Array.isArray(root.components)||root.components.length>32) {
+        throw new Error('Invalid repository component index.');
+      }
+      const names=new Set(),ids=new Set(),problems=[];
+      const components=await Promise.all(root.components.map(async component=>{
+        if(!SLUG_RE.test(component?.id||'')||!PACKAGE_RE.test(component?.name||'')||
+          typeof component.title!=='string'||component.title.length<1||component.title.length>90||
+          typeof component.description!=='string'||component.description.length>300||
+          names.has(component.name)||ids.has(component.id)){
+          throw new Error('Invalid component registry row.');
+        }
+        names.add(component.name);ids.add(component.id);
+        const results=await Promise.all(['released','unstable'].map(async channel=>{
+          try { return publicRelease(await publicJson(component.id+'/'+channel+'/index.json'),
+            component,channel); }
+          catch(error){problems.push(component.id+'/'+channel+': '+
+            String(error?.message||'request failed').slice(0,110));return null;}
+        }));
+        return {id:component.id,name:component.name,title:component.title,
+          description:component.description,released:results[0],unstable:results[1]};
+      }));
+      return {catalog:JSON.stringify({schema:3,source:'public',components}),
+        state:problems.length?'partial':'success',
+        error:problems.join(' | ').slice(0,450)};
     }
 
     const overlayStyle = {
@@ -383,11 +465,10 @@ window.__ModuleLoader__.load({
         const [saving, setSaving] = React.useState(false);
         const [error, setError] = React.useState('');
         const [requestingCheck, setRequestingCheck] = React.useState(false);
-        const [watchNow, setWatchNow] = React.useState(Date.now());
-        React.useEffect(() => {
-          const tick=setInterval(()=>setWatchNow(Date.now()),1000);
-          return ()=>clearInterval(tick);
-        },[]);
+        const [localCatalog,setLocalCatalog] = React.useState(null);
+        const [directCheck,setDirectCheck] = React.useState({
+          state:'idle',at:'',error:'',
+        });
         React.useEffect(() => {
           let alive = true;
           async function refreshInstalled() {
@@ -402,7 +483,7 @@ window.__ModuleLoader__.load({
         }, []);
 
         const values = snapshot.value || {};
-        const catalog = parseCatalog(values.catalog);
+        const catalog = parseCatalog(localCatalog ?? values.catalog);
         const known = [...catalog.components];
         if (!known.some(x => x.name === '@local/dsh-hud')) {
           known.unshift({ id: 'hud', name:'@local/dsh-hud', title:'DSH HUD',
@@ -455,49 +536,40 @@ window.__ModuleLoader__.load({
         };
 
 
-        const checkState = values.checkState || 'idle';
-        const queuedTime = Date.parse(values.checkQueuedAt || '');
-        const pendingCheck = !!values.checkNonce ||
-          checkState === 'queued' || checkState === 'checking';
-        // Old hung requests lack checkQueuedAt, so they can be retried too.
-        const checkTimedOut = pendingCheck &&
-          (!Number.isFinite(queuedTime) ||
-            watchNow - queuedTime >= CHECK_WATCHDOG_MS);
-        const busyCheck = requestingCheck || (pendingCheck && !checkTimedOut);
-        const checkDisplayState = checkTimedOut ? 'timeout' : checkState;
-        const lastChecked = typeof values.checkAt === 'string' &&
-          !Number.isNaN(Date.parse(values.checkAt))
-          ? new Date(values.checkAt).toLocaleTimeString(undefined,
-              {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
-        const lastBackgroundCheck = typeof values.scanAt === 'string' &&
-          !Number.isNaN(Date.parse(values.scanAt))
-          ? new Date(values.scanAt).toLocaleTimeString(undefined,
-              {hour:'2-digit',minute:'2-digit'}) : '';
-        const requestCheck = async () => {
-          if (busyCheck) return;
-          setRequestingCheck(true);setError('');
-          try {
-            const accepted = await form.mutate([
-              {op:'set',path:['checkNonce'],value:String(Date.now())+'-'+Math.random().toString(36).slice(2)},
-              {op:'set',path:['checkQueuedAt'],value:new Date().toISOString()},
-              {op:'set',path:['checkState'],value:'queued'},
-              {op:'set',path:['checkError'],value:''},
-            ]);
-            if (accepted === false) throw new Error('The update check request was rejected.');
-          } catch {
-            setError(t('checkFailed'));
-          } finally {
+        const checkState=directCheck.state;
+        const busyCheck=requestingCheck;
+        const lastChecked=directCheck.at ?
+          new Date(directCheck.at).toLocaleTimeString(undefined,
+            {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+        const lastBackgroundCheck=typeof values.scanAt==='string' &&
+          !Number.isNaN(Date.parse(values.scanAt)) ?
+          new Date(values.scanAt).toLocaleTimeString(undefined,
+            {hour:'2-digit',minute:'2-digit'}) : '';
+        const requestCheck=async()=>{
+          if(busyCheck)return;
+          setRequestingCheck(true);
+          setDirectCheck({state:'checking',at:'',error:''});
+          setError('');
+          try{
+            const found=await checkPublicReleases();
+            setLocalCatalog(found.catalog);
+            setDirectCheck({state:found.state,at:new Date().toISOString(),
+              error:found.error});
+          }catch(error){
+            // Never show a stale catalog as a freshly checked release index.
+            setLocalCatalog('{"schema":3,"source":"unavailable","components":[]}');
+            setDirectCheck({state:'failed',at:new Date().toISOString(),
+              error:'Public GitHub read failed (network, CORS or index): '+
+                String(error?.message||'unknown').slice(0,240)});
+          }finally{
             setRequestingCheck(false);
           }
         };
-        const checkLabel = checkTimedOut ? t('checkTimeout')
-          : checkState === 'queued' ? t('checkQueued')
-          : checkState === 'checking' ? t('checkingNow')
-          : checkState === 'success' ? t('checkSuccess')
-          : checkState === 'partial' ? t('checkPartial')
-          : checkState === 'failed' ? t('checkFailed') : t('checkIdle');
-        const originLabel = values.checkOrigin === 'canonical' ? t('checkCanonical')
-          : values.checkOrigin === 'legacy' ? t('checkLegacy') : '';
+        const checkLabel=checkState==='checking'?t('checkingNow')
+          :checkState==='success'?t('checkSuccess')
+          :checkState==='partial'?t('checkPartial')
+          :checkState==='failed'?t('checkFailed'):t('checkIdle');
+        const originLabel=checkState==='idle'?'':t('checkCanonical');
 
         return h('main',{'data-dsh-hud-main':true,'data-hud-management-theme':'dsh-native',
           style:{boxSizing:'border-box',overflowY:'auto',height:'100%',
@@ -526,9 +598,9 @@ window.__ModuleLoader__.load({
                   'data-hud-source':catalog.source,role:'status'},
                   catalog.source === 'public'?t('sourceOK'):
                     catalog.source==='checking'?t('sourceChecking'):t('sourceUnavailable')),
-                h('div',{'data-hud-check-state':checkDisplayState,role:'status',
+                h('div',{'data-hud-check-state':checkState,role:'status',
                   style:{fontSize:12,marginTop:7,
-                    color:checkTimedOut||checkState==='failed'||checkState==='partial'?'#ad722a':'var(--text-secondary,#777)'}},
+                    color:checkState==='failed'||checkState==='partial'?'#ad722a':'var(--text-secondary,#777)'}},
                   checkLabel,
                   lastChecked?' · '+t('checkAt')+' '+lastChecked:'',
                   originLabel?' · '+originLabel:'',
@@ -538,12 +610,12 @@ window.__ModuleLoader__.load({
                 style:{...actionStyle(busyCheck),minWidth:140,fontWeight:600}},
                 busyCheck?t('checkingNow'):t('checkNow'))),
             h('div',{style:{...tiny,marginTop:13}},t('checkTip')),
-            (checkTimedOut || checkState==='failed'||checkState==='partial') && (checkTimedOut || values.checkError)
+            (checkState==='failed'||checkState==='partial') && directCheck.error
               ? h('div',{role:'alert','data-hud-check-error':true,
                   style:{fontSize:12,marginTop:10,color:'#a06e34',
                     padding:'10px 12px',background:'rgba(165,118,54,.065)',
                     borderLeft:'2px solid #c09b5f',
-                    overflowWrap:'anywhere'}},checkTimedOut?t('checkTimeout'):values.checkError)
+                    overflowWrap:'anywhere'}},directCheck.error)
               : null),
 
           h('section',{style:{marginTop:31}},

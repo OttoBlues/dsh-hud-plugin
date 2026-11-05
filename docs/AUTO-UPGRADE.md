@@ -51,3 +51,5 @@ GitHub 云端 Actions 仅运行 CI 测试和源码结构打包，不访问用户
 - V0.5.5 开发：组件更新检查改为匹配 DSH ConfigEditor 可编辑的唯一 `dsh-hud` Loader entry，响应官方 `loader/volatile-update` 事件，并将扫描结果作为一次配置写入返回，避免旧版预先提交 `checking` 后引发两次 profile 重组的风险。具体本机效果需要独立验收。
 
 - V0.5.5：已发布 Unstable；Host 以官方 ConfigEditor 可编辑 `dsh-hud` 条目定位状态写入，监听 Loader volatile 变更立即响应检查请求，一次扫描只进行一次结果写回，避免不必要的 profile 重组。U055 实机完成前不能称故障已彻底消除。
+
+- V0.5.6 开发：组件中心“检查更新”改为独立只读浏览器公开源检查，与会触发 Loader 持久化的配置操作解耦；不发送 Host checkNonce。保留 Host 执行安装前的独立重新获取和校验逻辑，加入检查 GitHub Raw 访问失败/CORS、无通道和恶意索引场景的单元测试。U056 实机验收前不能宣称更新故障完全解决。

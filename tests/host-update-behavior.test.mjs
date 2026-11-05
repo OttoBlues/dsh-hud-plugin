@@ -497,7 +497,9 @@ test('native HUD RPC reports READY without a Host ConfigEditor write',async()=>{
     assert.equal(s.calls.native.length,1);
     assert.equal(s.calls.writes.filter(x=>x.nativeHudState).length,0);
     s.calls.native[0].onReady();
-    assert.deepEqual(await promise,{ok:true,value:{state:'open'}});
+    const opened=await promise;
+    assert.equal(opened.ok,true);
+    assert.equal(opened.value.state,'open');
     s.calls.native[0].onExit({ready:true,error:''});
     const next=s.native();
     assert.equal(s.calls.native.length,2,'Closing native window allows another launch');

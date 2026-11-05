@@ -7,8 +7,8 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.8 试验源码**（保留 V0.5.6 的只读 GitHub 检查，并新增 Windows 独立无边框 WPF HUD）。
-- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.8**。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.9 试验源码**（保留 V0.5.6 的只读 GitHub 检查，并新增 Windows 独立无边框 WPF HUD）。
+- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.9**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
 
@@ -105,4 +105,4 @@ V0.5.3 报告的手动检查超时已有一条**确认的源码故障路径**：
 
 ## HUD v0.5.9 重复更新和独立 HUD Host 路由修复（U059 候选）
 
-用户报告 v0.5.8 在同一 DSH 进程中连续更新时状态永久卡在「已确认，正在安装」，重启后版本生效，HUD 独立窗口启动请求返回 HTTP 405。v0.5.9 修改为 Host 按固定公开通道验证 SHA-256 安装包后，由 DSH 官方插件管理器直接执行安装；不再用插件 Loader 配置写入承担临时安装队列。后台自动更新采用按组件、版本和哈希去重的本地尝试账本。组件中心区分正在安装、实际失败、状态未知和必须重启，并探测运行 Host 版本，解释 404/405 的修复步骤。此功能仍需 Windows DSH Desktop 的人工 U059 验证；正式版 Released 不变。详见 [U059 修复与验收](docs/HUD-INSTALL-RELIABILITY-V059.md)。
+用户报告 v0.5.8 在同一 DSH 进程中连续更新时状态永久卡在「已确认，正在安装」，重启后版本生效，HUD 独立窗口启动请求返回 HTTP 405。v0.5.9 修改为 Host 按固定公开通道验证 SHA-256 安装包后，由 DSH 官方插件管理器直接执行安装；不再用插件 Loader 配置写入承担临时安装队列。后台自动更新采用按组件、版本和哈希去重的本地尝试账本。组件中心区分正在安装、实际失败、状态未知和必须重启，并探测运行 Host 版本，解释 404/405 的修复步骤。此功能已通过 GitHub Linux/Windows CI 并登记 Unstable，但仍需 Windows DSH Desktop 的人工 U059 验证；正式版 Released 不变。详见 [U059 修复与验收](docs/HUD-INSTALL-RELIABILITY-V059.md)。

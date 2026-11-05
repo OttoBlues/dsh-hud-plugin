@@ -17,7 +17,7 @@
 | M3.1.6 | V0.5.6 版本查询脱离 Host 配置命令 | Unstable 已发布，CI 通过，待 U056 浏览器跨域读取与安装分步验证 |
 | M3.1.7 | V0.5.7 原生 Windows 无边框 HUD、隐藏/恢复 DSH | Unstable 已发布；用户报告 U057-1 无法打开，触发启动超时；不通过人工验收 |
 | M3.1.8 | V0.5.8 独立 HUD 启动 RPC 与诊断修复 | Unstable 已发布，CI 通过；用户报告运行中 HTTP 405，U058 独立窗口启动未通过 |
-| M3.1.9 | V0.5.9 多次安装、自动试验版状态及 Host 路由健康诊断 | 修复候选，待 Linux/Windows CI 和 U059 Windows Desktop 验收 |
+| M3.1.9 | V0.5.9 多次安装、自动试验版状态及 Host 路由健康诊断 | Unstable 已发布，Linux/Windows CI 与 WPF 渲染通过；U059 Windows Desktop 尚待实机验收 |
 | M3.2 | HUD 聊天输入、完整会话选择与审批 | 待开发，需要官方 UI/Session 接口对接 |
 | M3.3 | HUD 静默与激活布局 | 待开发 |
 | M4 | Windows 透明置顶、键盘唤醒、点击穿透和深度 Electron 窗口集成 | 待开发；V0.5.7 WPF 独立窗口不等于 M4 完成 |

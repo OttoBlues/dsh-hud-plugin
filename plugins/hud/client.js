@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.6: independent read-only release checks and safe Host-owned installs.
+ * DSH HUD V0.5.7: independent Windows native HUD with safe DSH return.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,14 +10,17 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.6';
+    const VERSION = '0.5.7';
+    let nativeSessionSnapshot = { capturedAt:'', sessions:[] };
     // User-triggered checks do not use Host settings as a command queue.
     const REFRESH_MS = 5 * 60_000;
 
     const dictionaries = {
       zh: {
         workspaceTitle:'HUD 工作台',workspaceNav:'HUD 导航',overview:'总览',sessionTab:'会话',
-        enterHud:'进入 HUD 模式',returnDSH:'返回 DSH',componentCenter:'组件中心',
+        enterHud:'打开独立 HUD 窗口',returnDSH:'返回 DSH',componentCenter:'组件中心',
+        nativeOpening:'正在启动独立 HUD 窗口…',nativeFailed:'独立 HUD 启动失败，请确认正在使用 Windows DSH Desktop。',
+        nativeTimeout:'独立 HUD 启动超时；可以点击重试。',nativeDescription:'Windows 无边框独立窗口 · 进入后隐藏 DSH · 返回时恢复 DSH',
         liveStatus:'信号接入 / 实时状态',heroTitle:'任务态势中心',heroHelp:'HUD 正从 DSH 的真实会话中读取运行态势。核心命令、对话与授权仍由原生 DSH 执行。',
         sessionCount:'会话数量',runningCount:'运行中',viewMode:'显示模式',
         fromDSH:'由 DSH 提供',realtime:'实时状态',switchable:'随时可切换',
@@ -52,7 +55,9 @@ window.__ModuleLoader__.load({
       },
       en: {
         workspaceTitle:'HUD Workspace',workspaceNav:'HUD navigation',overview:'Overview',sessionTab:'Sessions',
-        enterHud:'Enter HUD mode',returnDSH:'Return to DSH',componentCenter:'Component Center',
+        enterHud:'Open independent HUD window',returnDSH:'Return to DSH',componentCenter:'Component Center',
+        nativeOpening:'Starting native HUD window…',nativeFailed:'Unable to open the HUD window. Windows DSH Desktop is required.',
+        nativeTimeout:'Native HUD startup timed out; you can retry.',nativeDescription:'Frameless Windows HUD · DSH is hidden on entry and restored on return',
         liveStatus:'LIVE SIGNAL / SESSION LINK',heroTitle:'MISSION CONTROL',
         heroHelp:'A live HUD workspace powered by DSH session state. Commands and permissions stay in DSH.',
         sessionCount:'SESSIONS',runningCount:'RUNNING',viewMode:'VIEW MODE',
@@ -393,6 +398,20 @@ window.__ModuleLoader__.load({
         const values = config.value || {};
         const sessions = useSessions(x => x) || {ids:[],byId:{}};
         const statuses = useSessionStatus(x => x) || new Map();
+        // Private, bounded, read-only data sent to the native window on entry.
+        // No account credentials, conversation content, session IDs or paths.
+        nativeSessionSnapshot = {
+          capturedAt:new Date().toISOString(),
+          sessions:(Array.isArray(sessions?.ids)?sessions.ids:[]).slice(0,16).map(id=>{
+            const session=sessions?.byId?.[id] || {};
+            const state=typeof statuses?.get==='function'?statuses.get(id):null;
+            return {
+              title:(typeof session.displayTitle==='string' && session.displayTitle.trim()
+                ? session.displayTitle : t('untitledSession')).slice(0,100),
+              running:(state?.running ?? session.running)===true,
+            };
+          }),
+        };
         const isHud = values.hudMode === true;
         const setMode = async enabled => {
           setError('');
@@ -465,6 +484,7 @@ window.__ModuleLoader__.load({
         const [saving, setSaving] = React.useState(false);
         const [error, setError] = React.useState('');
         const [requestingCheck, setRequestingCheck] = React.useState(false);
+        const [nativeTimedOut,setNativeTimedOut] = React.useState(false);
         const [localCatalog,setLocalCatalog] = React.useState(null);
         const [directCheck,setDirectCheck] = React.useState({
           state:'idle',at:'',error:'',
@@ -483,6 +503,17 @@ window.__ModuleLoader__.load({
         }, []);
 
         const values = snapshot.value || {};
+        React.useEffect(() => {
+          if (values.nativeHudState !== 'open') return;
+          // A native window is ready and has hidden the DSH app window.
+          // Restore the normal session view for the next native Return action.
+          try { ctx.layout.selectPanel(null); } catch { /* DSH remains recoverable. */ }
+        }, [values.nativeHudState]);
+        React.useEffect(() => {
+          if (values.nativeHudState !== 'launching') return;
+          const timer=setTimeout(() => setNativeTimedOut(true), 24_000);
+          return () => clearTimeout(timer);
+        }, [values.nativeHudState]);
         const catalog = parseCatalog(localCatalog ?? values.catalog);
         const known = [...catalog.components];
         if (!known.some(x => x.name === '@local/dsh-hud')) {
@@ -519,6 +550,25 @@ window.__ModuleLoader__.load({
                 onChange:e=>{void change(e.target.checked);}}),
               label),
             h('div',{style:{...tiny,marginLeft:27,marginTop:5}},help));
+        const launchNativeHud = async () => {
+          setNativeTimedOut(false);
+          setError('');
+          try {
+            const nonce=String(Date.now())+'-'+Math.random().toString(36).slice(2);
+            const accepted=await form.mutate([
+              {op:'set',path:['hudMode'],value:false},
+              {op:'set',path:['nativeHudSnapshot'],value:JSON.stringify(nativeSessionSnapshot)},
+              {op:'set',path:['nativeHudLanguage'],
+                value:t('returnDSH')==='Return to DSH'?'en':'zh'},
+              {op:'set',path:['nativeHudError'],value:''},
+              {op:'set',path:['nativeHudState'],value:'launching'},
+              {op:'set',path:['nativeHudRequestNonce'],value:nonce},
+            ]);
+            if (accepted === false) throw new Error('DSH settings are unavailable');
+          } catch (cause) {
+            setError(t('nativeFailed')+' '+String(cause?.message||'').slice(0,120));
+          }
+        };
         const queue = async (component,candidate) => {
           setSaving(true); setError('');
           try {
@@ -582,10 +632,21 @@ window.__ModuleLoader__.load({
             justifyContent:'space-between',flexWrap:'wrap'}},
             h('h1',{style:{fontSize:25,margin:'0 0 7px',fontWeight:650}},t('title')),
             h('button',{type:'button','data-hud-enter-mode':true,
-              onClick:()=>{void form.set('hudMode',true);},
-              style:{...actionStyle(false),fontWeight:600,
-                borderColor:'rgba(72,165,179,.4)',background:'rgba(76,171,179,.09)'}},t('enterHud'))),
+              disabled:values.nativeHudState==='launching' && !nativeTimedOut,
+              onClick:()=>{void launchNativeHud();},
+              style:{...actionStyle(values.nativeHudState==='launching' && !nativeTimedOut),
+                fontWeight:600,borderColor:'rgba(72,165,179,.4)',
+                background:'rgba(76,171,179,.09)'}},
+              values.nativeHudState==='launching' && !nativeTimedOut?t('nativeOpening'):t('enterHud'))),
           h('p',{style:{...subtle,margin:0}},t('sub')),
+          h('p',{'data-hud-native-description':true,style:{...subtle,margin:'7px 0 0'}},
+            t('nativeDescription')),
+          values.nativeHudState==='failed'||nativeTimedOut
+            ?h('p',{role:'alert','data-hud-native-error':true,
+                style:{color:'#b84b4b',marginTop:9}},
+              nativeTimedOut?t('nativeTimeout'):
+                t('nativeFailed')+' '+String(values.nativeHudError||'').slice(0,240))
+            :null,
           h('section',{'data-hud-check-panel':true,
             style:{...surface,padding:'20px 24px',marginTop:24}},
             h('div',{style:{display:'flex',gap:18,flexWrap:'wrap',

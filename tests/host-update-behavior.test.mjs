@@ -192,11 +192,12 @@ test('public repository index exposes components with released and unstable chan
   const s=setup({unstable:'0.4.2'});
   try{
     await flush();
-    const catalog=JSON.parse(s.values.catalog);
-    assert.equal(catalog.source,'public');
-    assert.equal(catalog.components[0].name,NAME);
-    assert.equal(catalog.components[0].released.version,'0.4.1');
-    assert.equal(catalog.components[0].unstable.version,'0.4.2');
+    const status=await s.status();
+    assert.equal(status.value.scanState,'success');
+    assert.equal(status.value.hostVersion,'0.5.9');
+    assert.equal(s.calls.writes.length,0,'Background scanning must not recompose its own Host');
+    assert(s.calls.http.some(x=>x.url.endsWith('/hud/released/index.json')));
+    assert(s.calls.http.some(x=>x.url.endsWith('/hud/unstable/index.json')));
     assert.equal(s.calls.installed.length,0,'Discovering versions must not install');
     assert(s.calls.http.every(x=>x.opts.redirect==='error'&&x.opts.headers.authorization===undefined));
   }finally{s.stop();}
@@ -206,7 +207,8 @@ test('private repository is identified as unavailable, not up to date',async()=>
   const s=setup({private:true});
   try{
     await flush();
-    assert.equal(JSON.parse(s.values.catalog).source,'unavailable');
+    assert.equal((await s.status()).value.scanState,'failed');
+    assert.equal(s.calls.writes.length,0);
     assert.equal(s.calls.installed.length,0);
   }finally{s.stop();}
 });
@@ -266,10 +268,10 @@ test('auto update of a released version only after user opt in, one attempt per 
   const s=setup({values:{autoUpdateEnabled:true}});
   try{await flush();
     assert.equal(s.calls.installed.length,1);
-    assert.equal(s.values.updateStatus,'installing');
-    await s.reconcile();
-    assert.equal(s.values.updateStatus,'installed');
-    assert.match(s.values.autoAttemptKey,/released:0\.4\.1:/);
+    assert.equal(s.values.updateStatus,'');
+    assert.equal(s.values.autoAttemptKey,'','No pre-install ConfigEditor changes');
+    assert(s.calls.cached.some(x=>x.path.includes('.hud-auto-attempt.json')));
+    assert.equal((await s.status()).value.autoState,'submitted');
     await s.refresh();
     assert.equal(s.calls.installed.length,1);
   }finally{s.stop();}
@@ -279,14 +281,16 @@ test('experimental versions never auto install unless both additional switches e
   const s=setup({unstable:'0.4.2',values:{autoUpdateEnabled:true,allowUnstable:true}});
   try{await flush();
     assert.equal(s.calls.installed.length,1);
-    assert.match(s.values.autoAttemptKey,/released:0\.4\.1:/);
+    assert.equal(s.values.autoAttemptKey,'');
+    assert(s.calls.cached.some(x=>String(x.data).includes('released:0.4.1:')));
   }finally{s.stop();}
   const exp=setup({unstable:'0.4.2',values:{
     autoUpdateEnabled:true,allowUnstable:true,autoUpdateUnstable:true,
   }});
   try{await flush();
     assert.equal(exp.calls.installed.length,1);
-    assert.match(exp.values.autoAttemptKey,/unstable:0\.4\.2:/);
+    assert.equal(exp.values.autoAttemptKey,'');
+    assert(exp.calls.cached.some(x=>String(x.data).includes('unstable:0.4.2:')));
   }finally{exp.stop();}
 });
 
@@ -394,8 +398,8 @@ test('a timed-out previous nonce is not replayed after a successful manual check
     // The manual callback can fire again; consumed nonce must not re-fetch.
     await s.refresh();
     assert(s.calls.http.length>count,'Periodic scan must still work');
-    assert.equal(s.values.scanState,'success');
-    assert.match(s.values.scanAt,/^\d{4}-\d{2}-\d{2}T/);
+    assert.equal((await s.status()).value.scanState,'success');
+    assert.match((await s.status()).value.scanAt,/^\d{4}-\d{2}-\d{2}T/);
     assert.equal(s.values.checkNonce,'');
   }finally{s.stop();}
 });
@@ -404,7 +408,7 @@ test('a failed channel never becomes a false successful background scan',async()
   const s=setup({failUnstable:true});
   try{
     await flush();
-    assert.equal(s.values.scanState,'partial');
+    assert.equal((await s.status()).value.scanState,'partial');
     await s.check();
     assert.equal(s.values.checkState,'partial');
   }finally{s.stop();}
@@ -435,8 +439,8 @@ test('a ConfigEditor that loads after the HUD Host starts can process pending up
   const s=setup({editorInitiallyAvailable:false});
   try{
     await flush();
-    assert.equal(s.values.catalog.includes('"source":"checking"'),true,
-      'Initial scan cannot publish facts while editor service is unavailable');
+    assert.equal((await s.status()).value.scanState,'success',
+      'Read-only Host discovery must not depend on ConfigEditor availability');
     s.values.checkNonce='pending-before-service';
     s.values.checkState='queued';
     await s.checkCallback();

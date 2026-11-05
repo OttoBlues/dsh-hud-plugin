@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.3: bounded refresh watchdog, flat cockpit, component-center-only entry.
+ * DSH HUD v0.5.4: recover manual checks after ConfigEditor failure; instrument Host progress.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -178,12 +178,26 @@ export function apply(ctx, config) {
   let disposed = false, checking = false, updating = false, manualChecking = false;
   let lastNonce = '';
   let lastCheckNonce = '';
+  let retryCheckAfter = 0;
+  let lastMissingEditorWarning = 0;
   const controller = new AbortController();
-  const editor = ctx.get('configEditor'), entry = ctx.fiber?.entry;
   const cacheRoot = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'approved-component-packages');
 
   async function writeSettings(patch) {
-    if (disposed || !editor || !entry) return false;
+    if (disposed) return false;
+    // This service/entry can become available after this plugin starts.
+    // Caching an undefined ConfigEditor during apply() permanently prevents
+    // every Host -> Client status update (the UI can only show 'queued').
+    const editor = ctx.get('configEditor');
+    const entry = ctx.fiber?.entry;
+    if (!editor || typeof editor.edit !== 'function' || !entry) {
+      if (Date.now() - lastMissingEditorWarning > 5_000) {
+        lastMissingEditorWarning = Date.now();
+        try { ctx.logger?.warn?.('HUD check cannot write: ConfigEditor or loader entry unavailable'); }
+        catch { /* Disposing plugin */ }
+      }
+      return false;
+    }
     // Bound ConfigEditor too. A stale Host may be unable to edit its entry
     // after hot-reload, which previously left checkState='checking' forever.
     let timer;
@@ -351,8 +365,16 @@ export function apply(ctx, config) {
         patch.checkAt = new Date().toISOString();
         patch.checkOrigin = repository.root.includes('/dsh-hud-plugin/') ? 'canonical' : 'legacy';
       }
-      if (Object.keys(patch).length) await writeSettings(patch);
-
+      if (Object.keys(patch).length && !(await writeSettings(patch))) {
+        // Never claim a scan completed when no version facts reached DSH UI.
+        try { ctx.logger?.warn?.('HUD discovery read completed but config status write failed'); }
+        catch { /* logger may be disposed */ }
+        return false;
+      }
+      if (manual) {
+        try { ctx.logger?.info?.('HUD manual release scan completed: %s', patch.checkState); }
+        catch { /* logger may be disposed */ }
+      }
       // Clicking "check" must never trigger an installation, even when
       // automatic-update preferences are enabled.
       if (!manual && config.autoUpdateEnabled.get() === true && !disposed && !updating) {
@@ -398,18 +420,40 @@ export function apply(ctx, config) {
     if (disposed || checking || updating || manualChecking) return;
     const nonce = config.checkNonce.get();
     if (typeof nonce !== 'string' || !nonce || nonce === lastCheckNonce) return;
-    lastCheckNonce = nonce; // No tight retry loop when DSH Host cannot write.
+    if (Date.now() < retryCheckAfter) return;
     manualChecking = true;
     try {
-      if (!(await writeSettings({ checkState:'checking', checkError:'' }))) return;
+      // Do not consume this nonce before a successful Host status write.
+      // V0.5.3 marked it processed first, then returned silently on editor
+      // errors, causing a permanent "queued" state for this request.
+      if (!(await writeSettings({ checkState:'checking', checkError:'' }))) {
+        retryCheckAfter = Date.now() + 3_000;
+        try { ctx.logger?.warn?.('HUD manual check could not be claimed; retrying after editor recovery'); }
+        catch { /* logger may be disposed */ }
+        return;
+      }
       if (disposed) return;
-      await discover(true,nonce);
+      lastCheckNonce = nonce;
+      retryCheckAfter = 0;
+      try { ctx.logger?.info?.('HUD manual release scan started'); }
+      catch { /* logger may be disposed */ }
+      const completed = await discover(true, nonce);
+      // If a race prevented the result from being persisted and the nonce
+      // still exists, allow retry instead of trapping the same request.
+      if (!completed && !disposed && config.checkNonce.get() === nonce) {
+        lastCheckNonce = '';
+        retryCheckAfter = Date.now() + 3_000;
+      }
     } catch (error) {
       if (!disposed && config.checkNonce.get() === nonce) {
-        await writeSettings({
+        const saved = await writeSettings({
           checkNonce:'', checkState:'failed',
           checkError:diagnostic(error), checkAt:new Date().toISOString(),
         });
+        if (!saved) {
+          lastCheckNonce = '';
+          retryCheckAfter = Date.now() + 3_000;
+        }
       }
     } finally {
       manualChecking = false;

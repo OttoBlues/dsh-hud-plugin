@@ -21,7 +21,11 @@ const indexPath=join(releaseRoot,'index.json');
 const pkg=JSON.parse(readFileSync(join(root,'plugins','hud','package.json'),'utf8'));
 const index=JSON.parse(readFileSync(indexPath,'utf8'));
 
-assert.equal(pkg.version,version,'One-shot publisher cannot package another version.');
+if(pkg.version!==version) {
+  // Future source versions must not be blocked by this one-time release job.
+  console.log('HUD source is '+pkg.version+'; v0.5.7 publisher is inactive.');
+  process.exit(0);
+}
 assert.equal(index.component,'hud');
 assert.equal(index.channel,'unstable');
 assert.equal(index.package,'@local/dsh-hud');

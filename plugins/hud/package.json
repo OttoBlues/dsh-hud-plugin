@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "private": true,
   "type": "module",
-  "description": "DSH HUD flat cockpit and config-editor resilient manual updates",
+  "description": "Flat HUD cockpit and improved DSH Host check delivery through addressable Loader entries",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },

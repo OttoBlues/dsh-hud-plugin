@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.4: flat cockpit and resilient Host manual-check results.
+ * DSH HUD V0.5.5: flat cockpit and Loader-entry backed release scans.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.4';
+    const VERSION = '0.5.5';
     const CHECK_WATCHDOG_MS = 45_000;
     const REFRESH_MS = 5 * 60_000;
 
@@ -31,7 +31,7 @@ window.__ModuleLoader__.load({
         section: '仓库组件', options: '更新策略', sourceOK: '公开仓库已连接',
         sourceUnavailable: '仓库版本源暂不可匿名访问：请将 GitHub 仓库设为 Public。',
         sourceChecking: '正在读取公开组件清单…', noComponents: '当前没有可用的仓库组件',
-        sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkQueued:'排队等待 Host 检查…',
+        sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkQueued:'请求已提交，等待版本扫描结果…',
         checkTimeout:'检查超时：DSH 更新服务未响应，可以点击重试并查看日志',checkIdle:'手动触发云端版本扫描',
         automaticScan:'后台检查',
         checkSuccess:'版本检查完成',checkPartial:'部分通道检查不完整',checkFailed:'版本检查失败',
@@ -67,7 +67,7 @@ window.__ModuleLoader__.load({
         section: 'Repository components', options: 'Update policy', sourceOK: 'Public repository connected',
         sourceUnavailable: 'Anonymous update source unavailable. Make the GitHub repository Public to enable direct updates.',
         sourceChecking: 'Checking the public component index…', noComponents: 'No repository components are available',
-        sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkQueued:'Waiting for DSH Host…',
+        sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkQueued:'Check requested; awaiting scan result…',
         checkTimeout:'Check timed out: DSH update service did not respond. Retry or inspect logs.',checkIdle:'Check public channels now',
         automaticScan:'Background check',
         checkSuccess:'Update check completed',checkPartial:'Some release channels could not be checked',

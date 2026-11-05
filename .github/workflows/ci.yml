@@ -63,3 +63,39 @@ jobs:
         run: npm run pack:hud
       - name: Verify candidate package structure
         run: npm run verify:pack
+      - name: Smoke-test native Windows WPF HUD window (without showing it)
+        shell: powershell
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -STA -File ./plugins/hud/native/windows-hud.ps1 -SelfTest
+
+  publish-hud-v057:
+    name: Publish immutable HUD v0.5.7 Unstable package (no Desktop deployment)
+    needs: [linux-check, windows-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Package explicitly requested v0.5.7 exactly once
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+          CI_RUN_ID: ${{ github.run_id }}
+        run: node scripts/publish-unstable-v057.mjs
+      - name: Verify all original and new release archives
+        run: npm run verify:channels
+      - name: Record validated Unstable package without changing Released
+        shell: bash
+        run: |
+          if ! git ls-files --error-unmatch plugins/hud/unstable/v0.5.7/manifest.json >/dev/null 2>&1; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add plugins/hud/unstable/index.json plugins/hud/unstable/v0.5.7/
+            git commit -m "release(unstable): publish immutable HUD v0.5.7 native window trial"
+            git push origin HEAD:main
+          fi

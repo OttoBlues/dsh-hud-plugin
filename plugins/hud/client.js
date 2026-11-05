@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.7: independent Windows native HUD with safe DSH return.
+ * DSH HUD V0.5.8: direct authenticated native HUD startup RPC and error feedback.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.7';
+    const VERSION = '0.5.8';
     let nativeSessionSnapshot = { capturedAt:'', sessions:[] };
     // User-triggered checks do not use Host settings as a command queue.
     const REFRESH_MS = 5 * 60_000;
@@ -484,7 +484,9 @@ window.__ModuleLoader__.load({
         const [saving, setSaving] = React.useState(false);
         const [error, setError] = React.useState('');
         const [requestingCheck, setRequestingCheck] = React.useState(false);
-        const [nativeTimedOut,setNativeTimedOut] = React.useState(false);
+        const [nativeLaunching,setNativeLaunching] = React.useState(false);
+        const [nativeFailure,setNativeFailure] = React.useState('');
+        const nativeAttempt = React.useRef(false);
         const [localCatalog,setLocalCatalog] = React.useState(null);
         const [directCheck,setDirectCheck] = React.useState({
           state:'idle',at:'',error:'',
@@ -503,17 +505,6 @@ window.__ModuleLoader__.load({
         }, []);
 
         const values = snapshot.value || {};
-        React.useEffect(() => {
-          if (values.nativeHudState !== 'open') return;
-          // A native window is ready and has hidden the DSH app window.
-          // Restore the normal session view for the next native Return action.
-          try { ctx.layout.selectPanel(null); } catch { /* DSH remains recoverable. */ }
-        }, [values.nativeHudState]);
-        React.useEffect(() => {
-          if (values.nativeHudState !== 'launching') return;
-          const timer=setTimeout(() => setNativeTimedOut(true), 24_000);
-          return () => clearTimeout(timer);
-        }, [values.nativeHudState]);
         const catalog = parseCatalog(localCatalog ?? values.catalog);
         const known = [...catalog.components];
         if (!known.some(x => x.name === '@local/dsh-hud')) {
@@ -551,22 +542,34 @@ window.__ModuleLoader__.load({
               label),
             h('div',{style:{...tiny,marginLeft:27,marginTop:5}},help));
         const launchNativeHud = async () => {
-          setNativeTimedOut(false);
-          setError('');
+          if (nativeAttempt.current) return;
+          nativeAttempt.current = true;
+          setNativeLaunching(true);
+          setNativeFailure('');
+          const abort = new AbortController();
+          const timeout = setTimeout(() => abort.abort(), 22_000);
           try {
-            const nonce=String(Date.now())+'-'+Math.random().toString(36).slice(2);
-            const accepted=await form.mutate([
-              {op:'set',path:['hudMode'],value:false},
-              {op:'set',path:['nativeHudSnapshot'],value:JSON.stringify(nativeSessionSnapshot)},
-              {op:'set',path:['nativeHudLanguage'],
-                value:t('returnDSH')==='Return to DSH'?'en':'zh'},
-              {op:'set',path:['nativeHudError'],value:''},
-              {op:'set',path:['nativeHudState'],value:'launching'},
-              {op:'set',path:['nativeHudRequestNonce'],value:nonce},
-            ]);
-            if (accepted === false) throw new Error('DSH settings are unavailable');
+            // Transient RPC: never write a launch nonce into ConfigForms.
+            // WPF returns READY only after the new window has rendered and
+            // the correct DSH Desktop window has been hidden.
+            const outcome = await ctx.connection.rpc.call('/hud-native', 'open', {
+              snapshot:JSON.stringify(nativeSessionSnapshot),
+              language:t('returnDSH')==='Return to DSH'?'en':'zh',
+            }, abort.signal);
+            if (!outcome?.ok) {
+              const code=String(outcome?.error?.code || 'hud/no-response');
+              const message=String(outcome?.error?.message || 'No Host acknowledgement');
+              throw new Error(code+': '+message);
+            }
+            if (outcome.value?.state !== 'open') throw new Error('Host did not report native READY.');
+            try { ctx.layout.selectPanel(null); } catch { /* HUD window remains usable. */ }
           } catch (cause) {
-            setError(t('nativeFailed')+' '+String(cause?.message||'').slice(0,120));
+            setNativeFailure(abort.signal.aborted?t('nativeTimeout'):
+              t('nativeFailed')+' '+String(cause?.message||cause).slice(0,300));
+          } finally {
+            clearTimeout(timeout);
+            nativeAttempt.current = false;
+            setNativeLaunching(false);
           }
         };
         const queue = async (component,candidate) => {
@@ -632,21 +635,17 @@ window.__ModuleLoader__.load({
             justifyContent:'space-between',flexWrap:'wrap'}},
             h('h1',{style:{fontSize:25,margin:'0 0 7px',fontWeight:650}},t('title')),
             h('button',{type:'button','data-hud-enter-mode':true,
-              disabled:values.nativeHudState==='launching' && !nativeTimedOut,
+              disabled:nativeLaunching,
               onClick:()=>{void launchNativeHud();},
-              style:{...actionStyle(values.nativeHudState==='launching' && !nativeTimedOut),
+              style:{...actionStyle(nativeLaunching),
                 fontWeight:600,borderColor:'rgba(72,165,179,.4)',
                 background:'rgba(76,171,179,.09)'}},
-              values.nativeHudState==='launching' && !nativeTimedOut?t('nativeOpening'):t('enterHud'))),
+              nativeLaunching?t('nativeOpening'):t('enterHud'))),
           h('p',{style:{...subtle,margin:0}},t('sub')),
           h('p',{'data-hud-native-description':true,style:{...subtle,margin:'7px 0 0'}},
             t('nativeDescription')),
-          values.nativeHudState==='failed'||nativeTimedOut
-            ?h('p',{role:'alert','data-hud-native-error':true,
-                style:{color:'#b84b4b',marginTop:9}},
-              nativeTimedOut?t('nativeTimeout'):
-                t('nativeFailed')+' '+String(values.nativeHudError||'').slice(0,240))
-            :null,
+          nativeFailure?h('p',{role:'alert','data-hud-native-error':true,
+              style:{color:'#b84b4b',marginTop:9}},nativeFailure):null,
           h('section',{'data-hud-check-panel':true,
             style:{...surface,padding:'20px 24px',marginTop:24}},
             h('div',{style:{display:'flex',gap:18,flexWrap:'wrap',
@@ -755,7 +754,7 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots','locale','layout','uiSession','configForms','remote','remote.pluginManager'],
+      inject: ['slots','connection','locale','layout','uiSession','configForms','remote','remote.pluginManager'],
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS,dictionaries),'hud: locale');
         const form = ctx.configForms.get('dsh-hud');

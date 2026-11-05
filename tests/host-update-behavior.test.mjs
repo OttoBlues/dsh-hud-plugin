@@ -573,3 +573,57 @@ test('native HUD RPC disallows non-owner and duplicate windows',async()=>{
     await opening;
   }finally{s.stop();}
 });
+
+
+test('authenticated prepare-install verifies bytes before returning a local immutable path',async()=>{
+  const s=setup();
+  try {
+    await flush();
+    const result=await s.prepare({id:'hud',name:NAME,version:'0.4.1',channel:'released'});
+    assert.equal(result.ok,true);
+    assert.equal(result.value.version,'0.4.1');
+    assert.equal(result.value.sha256,sha);
+    assert.match(result.value.path,/approved-component-packages/);
+    assert(s.calls.cached.some(x=>x.path.includes('0.4.1')));
+    assert.equal(s.calls.installed.length,0,'Preparation must never start an installation');
+    assert.equal(s.calls.writes.length,0,'Preparation cannot edit Loader profile');
+  } finally{s.stop();}
+});
+
+test('prepare-install rejects altered SHA and non-owner callers',async()=>{
+  const s=setup({badChecksum:true});
+  try {
+    await flush();
+    const denied=await s.prepare({id:'hud',name:NAME,version:'0.4.1',channel:'released'},
+      new AbortController().signal,{principal:{kind:'guest'}});
+    assert.equal(denied.ok,false);
+    assert.equal(denied.error.code,'hud/forbidden');
+    const changed=await s.prepare({id:'hud',name:NAME,version:'0.4.1',channel:'released'});
+    assert.equal(changed.ok,false);
+    assert.equal(changed.error.code,'hud/prepare-failed');
+    assert.match(changed.error.message,/SHA-256 mismatch/);
+    assert.equal(s.calls.installed.length,0);
+  } finally{s.stop();}
+});
+
+test('legacy pending nonce is not replayed on reloaded Host and does not disturb new RPC',async()=>{
+  const s=setup({values:{requestNonce:'old-confirmation',updateStatus:'queued'}});
+  try {
+    await flush();
+    await s.checkCallback();
+    assert.equal(s.calls.installed.length,0,'Recomposed Host must not replay old confirmation');
+    assert.equal((await s.status()).value.hostVersion,'0.5.9');
+  } finally{s.stop();}
+});
+
+test('background automatic update uses no pre-install ConfigEditor and does not retry the same SHA',async()=>{
+  const s=setup({values:{autoUpdateEnabled:true}});
+  try {
+    await flush();
+    assert.equal(s.calls.installed.length,1);
+    assert.equal(s.calls.writes.length,0);
+    assert(s.calls.cached.some(x=>x.path.includes('.hud-auto-attempt.json')));
+    await s.refresh();
+    assert.equal(s.calls.installed.length,1);
+  } finally{s.stop();}
+});

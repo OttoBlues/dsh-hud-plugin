@@ -55,7 +55,7 @@ function setup(valuesOverride={}, runtime={}) {
     async set(key,value){values[key]=value;updates.push({key,value});return true;},
     async mutate(ops){for(const op of ops){values[op.path[0]]=op.value;}updates.push({ops});return true;},
   };
-  const slots=new Map();const navigations=[];const rpcCalls=[];let dictionary;
+  const slots=new Map();const navigations=[];const rpcCalls=[],installCalls=[];let dictionary;
   const ctx={
     locale:{
       register(ns,dict){dictionary=dict;assert.equal(ns,'dsh.hud');return ()=>{};},
@@ -65,8 +65,13 @@ function setup(valuesOverride={}, runtime={}) {
     layout:{selectPanel(id){navigations.push(id);}},
     connection:{rpc:{async call(channel,endpoint,payload,signal){
       rpcCalls.push({channel,endpoint,payload,signal});
-      return runtime.nativeRpc ? runtime.nativeRpc({channel,endpoint,payload,signal}) :
-        {ok:true,value:{state:'open'}};
+      if(runtime.nativeRpc)return runtime.nativeRpc({channel,endpoint,payload,signal});
+      if(endpoint==='status')return {ok:true,value:{hostVersion:'0.5.9'}};
+      if(endpoint==='prepare-install')return {ok:true,value:{
+        name:payload.name,version:payload.version,channel:payload.channel,
+        sha256:'f'.repeat(64),path:'/fixture/cache/'+payload.version+'/verified.tgz',
+      }};
+      return {ok:true,value:{state:'open'}};
     }}},
     configForms:{get(key){assert.equal(key,'dsh-hud');return form;}},
     slots:{
@@ -76,7 +81,14 @@ function setup(valuesOverride={}, runtime={}) {
         return ()=>{};
       },
     },
-    remote:{pluginManager:{async listBundles(){return {ok:true,value:[]};}}},
+    remote:{pluginManager:{
+      async listBundles(){return {ok:true,value:[]};},
+      async installBundle(path,options){
+        installCalls.push({path,options});
+        const version=/\/(\d+\.\d+\.\d+)\//.exec(path)?.[1]||'0.5.9';
+        return runtime.installResult||{ok:true,value:{application:'applied',version}};
+      },
+    }},
   };
   plugin.apply(ctx);
   const render=(slot='main')=>{
@@ -89,7 +101,7 @@ function setup(valuesOverride={}, runtime={}) {
     }
     return withHooks(slot,()=>entry.component(props));
   };
-  return {plugin,values,form,slots,render,updates,navigations,rpcCalls,withHooks};
+  return {plugin,values,form,slots,render,updates,navigations,rpcCalls,installCalls,withHooks};
 }
 function find(tree,when,result=[]) {
   if(tree==null)return result;
@@ -130,7 +142,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.5.9')])});
+  const ui=setup({catalog:catalog([own('0.5.10')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -160,7 +172,7 @@ test('Experimental opt-in and all automatic settings default off',()=>{
   assert.doesNotMatch(JSON.stringify(tree),/试验版: 0\.6\.0/);
 });
 
-test('Experimental update requires explicit toggle and manual confirmation',async()=>{
+test('Experimental update requires explicit toggle and a direct, verified DSH installation',async()=>{
   const ui=setup({catalog:catalog([own('0.4.1','0.6.0')])});
   const flag=find(ui.render(),x=>x.type==='input'&&x.props['data-hud-setting']==='unstable')[0];
   flag.props.onChange({target:{checked:true}});
@@ -168,17 +180,18 @@ test('Experimental update requires explicit toggle and manual confirmation',asyn
   assert.equal(ui.values.allowUnstable,true);
   const first=ui.render();
   assert.match(JSON.stringify(first),/试验版: 0\.6\.0/);
-  const update=find(first,x=>x.type==='button'&&x.children.includes('更新'))[0];
-  update.props.onClick();
-  const confirmation=ui.render();
-  const submit=find(confirmation,x=>x.type==='button'&&x.children.includes('确认'))[0];
-  assert.ok(submit);
-  submit.props.onClick();
-  await Promise.resolve();
-  assert.equal(ui.values.requestComponent,'@local/dsh-hud');
-  assert.equal(ui.values.requestChannel,'unstable');
-  assert.equal(ui.values.requestVersion,'0.6.0');
-  assert.match(ui.values.requestNonce,/^\d+$/);
+  find(first,x=>x.type==='button'&&x.children.includes('更新'))[0].props.onClick();
+  const confirm=find(ui.render(),x=>x.type==='button'&&x.children.includes('确认'))[0];
+  assert.ok(confirm);
+  confirm.props.onClick();
+  await flushMode();
+  assert.equal(ui.rpcCalls.filter(x=>x.endpoint==='prepare-install').length,1);
+  assert.equal(ui.installCalls.length,1);
+  assert.equal(ui.installCalls[0].options.saveExact,true);
+  assert.equal(ui.installCalls[0].options.enabled,true);
+  assert.equal(ui.values.requestNonce,'','No Loader install nonce is queued');
+  assert.equal(ui.values.updateStatus,'','No Host status write occurs before installation');
+  assert.equal(ui.updates.filter(x=>x.ops?.some(y=>y.path[0]==='updateStatus')).length,0);
 });
 
 test('Automatic experimental updates require separate explicit double opt-in',async()=>{
@@ -213,7 +226,7 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   const preview=find(overlay,x=>x.props?.['data-dsh-hud-preview']==='true')[0];
   assert.ok(preview);
   assert.equal(preview.props.style.pointerEvents,'none');
-  assert.equal(preview.props['data-dsh-hud-version'],'0.5.8');
+  assert.equal(preview.props['data-dsh-hud-version'],'0.5.9');
 });
 
 test('component center shows the renamed repository rather than legacy UI copy',()=>{
@@ -336,7 +349,7 @@ test('HUD Escape and manager entry both keep DSH navigation usable',async()=>{
 test('cockpit UI uses fixed-pixel nested panels with no distorted SVG rails',()=>{
   const ui=setup({hudMode:true});
   const overlay=renderWorkspace(ui);
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.8');
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.9');
   assert.equal(overlay.props.style.pointerEvents,'auto');
   const panels=find(overlay,x=>x.props?.['data-hud-cockpit-panel']===true);
   assert.ok(panels.length>=4,'hero, metrics and Session modules stay separate');

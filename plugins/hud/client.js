@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.9: verified direct installer and Host/version health diagnostics.
+ * DSH HUD V0.5.10: nonblocking Host activation, visible settings writes and eager version checks.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.9';
+    const VERSION = '0.5.10';
     let nativeSessionSnapshot = { capturedAt:'', sessions:[] };
     // User-triggered checks do not use Host settings as a command queue.
     const REFRESH_MS = 5 * 60_000;
@@ -58,7 +58,10 @@ window.__ModuleLoader__.load({
         previewStatus:'工作区预览',modeFailed:'HUD 模式切换失败，请重试',
         panel: 'HUD', title: 'HUD 组件中心', sub: 'OttoBlues/dsh-hud-plugin · 组件安装、版本和更新策略',
         section: '仓库组件', options: '更新策略', sourceOK: '公开仓库已连接',
-        sourceUnavailable: '仓库版本源暂不可匿名访问：请将 GitHub 仓库设为 Public。',
+        sourceUnavailable: '尚未获取可用的仓库版本清单；请重试。不能因此认定仓库为私有。',
+        settingsUnavailable: '更新策略暂不可写入 DSH（状态：{status}，允许写入：{writable}）。请检查插件 Host 是否正常启动。',
+        settingsFailed: '更新策略保存失败：DSH 没有接受修改。请检查当前 Profile 设置与 Host 日志。',
+        settingsSaved: '更新策略已由 DSH 确认保存。',
         sourceChecking: '正在读取公开组件清单…', noComponents: '当前没有可用的仓库组件',
         sourceHeading:'版本源状态',checkNow:'检查更新',checkingNow:'扫描版本源…',checkQueued:'正在查询公开 GitHub 更新源…',
         checkTimeout:'检查超时：DSH 更新服务未响应，可以点击重试并查看日志',checkIdle:'手动触发云端版本扫描',
@@ -106,7 +109,10 @@ window.__ModuleLoader__.load({
         previewStatus:'Workspace preview',modeFailed:'Could not change HUD mode. Try again.',
         panel: 'HUD', title: 'HUD Component Center', sub: 'OttoBlues/dsh-hud-plugin · Install, update and configure',
         section: 'Repository components', options: 'Update policy', sourceOK: 'Public repository connected',
-        sourceUnavailable: 'Anonymous update source unavailable. Make the GitHub repository Public to enable direct updates.',
+        sourceUnavailable: 'No verified release index available yet. Retry; this does not prove the repository is private.',
+        settingsUnavailable: 'HUD policy is not writable (state: {status}; writable: {writable}). Check the running Host.',
+        settingsFailed: 'DSH did not accept the policy change. Check the profile and Host logs.',
+        settingsSaved: 'DSH confirmed the update policy was saved.',
         sourceChecking: 'Checking the public component index…', noComponents: 'No repository components are available',
         sourceHeading:'Repository status',checkNow:'Check updates',checkingNow:'Scanning channels…',checkQueued:'Reading public GitHub release metadata…',
         checkTimeout:'Check timed out: DSH update service did not respond. Retry or inspect logs.',checkIdle:'Check public channels now',
@@ -526,6 +532,9 @@ window.__ModuleLoader__.load({
         const [bundles, setBundles] = React.useState([]);
         const [confirm, setConfirm] = React.useState('');
         const [saving, setSaving] = React.useState(false);
+        const [settingsSaving,setSettingsSaving] = React.useState(false);
+        const [settingsError,setSettingsError] = React.useState('');
+        const [settingsSaved,setSettingsSaved] = React.useState(false);
         const [pending,setPending] = React.useState(readPending());
         const [installNote,setInstallNote] = React.useState('');
         const [hostHealth,setHostHealth] = React.useState({status:'checking',version:'',autoState:'',autoError:'',scanAt:''});
@@ -534,6 +543,7 @@ window.__ModuleLoader__.load({
         const installAttempt = React.useRef(false);
         const [error, setError] = React.useState('');
         const [requestingCheck, setRequestingCheck] = React.useState(false);
+        const checkInFlight=React.useRef(false);
         const [nativeLaunching,setNativeLaunching] = React.useState(false);
         const [nativeFailure,setNativeFailure] = React.useState('');
         const nativeAttempt = React.useRef(false);
@@ -622,14 +632,40 @@ window.__ModuleLoader__.load({
         });
         const btn = (label,onClick,disabled=false) =>
           h('button',{type:'button',onClick,disabled,style:actionStyle(disabled)},label);
-        const toggle = (label,help,checked,change,disabled=false,dataName) =>
-          h('div',{style:{padding:'12px 0',opacity:disabled?.55:1}},
+        const writePolicy=async operations=>{
+          setSettingsError('');setSettingsSaved(false);
+          const current=form.getSnapshot();
+          if(current?.status!=='ready'||current.writable!==true){
+            const status=String(current?.status||'loading');
+            setSettingsError(t('settingsUnavailable').replace('{status}',status)
+              .replace('{writable}',String(current?.writable===true)));
+            return false;
+          }
+          setSettingsSaving(true);
+          try{
+            const accepted=await form.mutate(operations);
+            if(accepted!==true){
+              setSettingsError(t('settingsFailed'));
+              return false;
+            }
+            setSettingsSaved(true);
+            return true;
+          }catch(failure){
+            setSettingsError(t('settingsFailed')+' '+
+              String(failure?.message||failure||'unknown').slice(0,220));
+            return false;
+          }finally{setSettingsSaving(false);}
+        };
+        const toggle = (label,help,checked,change,disabled=false,dataName) => {
+          const blocked=disabled||settingsSaving;
+          return h('div',{style:{padding:'12px 0',opacity:blocked?.55:1}},
             h('label',{style:{display:'flex',gap:11,alignItems:'center',fontSize:14,cursor:'pointer'}},
-              h('input',{type:'checkbox',checked:checked===true,disabled,
+              h('input',{type:'checkbox',checked:checked===true,disabled:blocked,
                 'data-hud-setting':dataName,style:{accentColor:'var(--accent-color,#4f9ab1)',width:16,height:16},
                 onChange:e=>{void change(e.target.checked);}}),
               label),
             h('div',{style:{...tiny,marginLeft:27,marginTop:5}},help));
+        };
         const launchNativeHud = async () => {
           if (nativeAttempt.current) return;
           nativeAttempt.current = true;
@@ -760,7 +796,8 @@ window.__ModuleLoader__.load({
           new Date(backgroundAt).toLocaleTimeString(undefined,
             {hour:'2-digit',minute:'2-digit'}) : '';
         const requestCheck=async()=>{
-          if(busyCheck)return;
+          if(checkInFlight.current)return;
+          checkInFlight.current=true;
           setRequestingCheck(true);
           setDirectCheck({state:'checking',at:'',error:''});
           setError('');
@@ -776,9 +813,13 @@ window.__ModuleLoader__.load({
               error:'Public GitHub read failed (network, CORS or index): '+
                 String(error?.message||'unknown').slice(0,240)});
           }finally{
+            checkInFlight.current=false;
             setRequestingCheck(false);
           }
         };
+        // Fetch the fixed anonymous source when Component Center first mounts.
+        // The Host need not be running. A missing cache is not "private".
+        React.useEffect(()=>{void requestCheck();},[]);
         const checkLabel=checkState==='checking'?t('checkingNow')
           :checkState==='success'?t('checkSuccess')
           :checkState==='partial'?t('checkPartial')
@@ -833,7 +874,8 @@ window.__ModuleLoader__.load({
                 h('div',{style:{marginTop:7,fontSize:13},
                   'data-hud-source':catalog.source,role:'status'},
                   catalog.source === 'public'?t('sourceOK'):
-                    catalog.source==='checking'?t('sourceChecking'):t('sourceUnavailable')),
+                    checkState==='idle'||checkState==='checking'||catalog.source==='checking'
+                      ?t('sourceChecking'):t('sourceUnavailable')),
                 h('div',{'data-hud-check-state':checkState,role:'status',
                   style:{fontSize:12,marginTop:7,
                     color:checkState==='failed'||checkState==='partial'?'#ad722a':'var(--text-secondary,#777)'}},
@@ -915,17 +957,24 @@ window.__ModuleLoader__.load({
             h('h2',{style:{fontSize:18,margin:'0 0 8px',fontWeight:650}},t('options')),
             h('div',{style:surface},
               toggle(t('allowUnstable'),t('allowUnstableHelp'),values.allowUnstable,
-                async value=>{
-                  await form.mutate([{op:'set',path:['allowUnstable'],value},
-                    ...(value?[]:[{op:'set',path:['autoUpdateUnstable'],value:false}])]);
-                },false,'unstable'),
+                value=>writePolicy([{op:'set',path:['allowUnstable'],value},
+                  ...(value?[]:[{op:'set',path:['autoUpdateUnstable'],value:false}])]),false,'unstable'),
               toggle(t('autoUpdate'),t('autoUpdateHelp'),values.autoUpdateEnabled,
-                value=>form.set('autoUpdateEnabled',value),false,'auto'),
+                value=>writePolicy([{op:'set',path:['autoUpdateEnabled'],value}]),false,'auto'),
               toggle(t('autoUnstable'),t('autoUnstableHelp'),values.autoUpdateUnstable,
-                value=>form.set('autoUpdateUnstable',value),
+                value=>writePolicy([{op:'set',path:['autoUpdateUnstable'],value}]),
                 values.allowUnstable!==true || values.autoUpdateEnabled!==true,'auto-unstable'),
               toggle(t('preview'),t('previewHelp'),values.overlayVisible,
-                value=>form.set('overlayVisible',value),false,'preview')
+                value=>writePolicy([{op:'set',path:['overlayVisible'],value}]),false,'preview'),
+              snapshot?.status!=='ready'||snapshot?.writable!==true
+                ?h('p',{role:'alert','data-hud-settings-unavailable':true,style:{...subtle,color:'#b84b4b',marginTop:10}},
+                   t('settingsUnavailable').replace('{status}',String(snapshot?.status||'loading'))
+                     .replace('{writable}',String(snapshot?.writable===true)))
+                :null,
+              settingsError?h('p',{role:'alert','data-hud-settings-error':true,
+                style:{fontSize:13,color:'#b84b4b',marginTop:10}},settingsError):null,
+              settingsSaved?h('p',{role:'status','data-hud-settings-saved':true,
+                style:{fontSize:13,marginTop:10}},t('settingsSaved')):null
             )
           ),
           error?h('p',{role:'alert',style:{color:'#b84b4b'}},error):null,

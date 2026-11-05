@@ -89,3 +89,16 @@ test('abnormal exit after ready invokes dedicated recovery helper',()=>{
   assert(launched[1].args.includes('-RestoreOnly'));
   assert(!launched[1].args.includes('-HostPid'));
 });
+
+test('startup errors are reported without leaving the DSH shell hidden',()=>{
+  const {spawnProcess,launched}=mockSpawner();
+  let outcome;
+  launchWindowsHud({platform:'win32',shellPid:222,hostPid:333,
+    spawnProcess,onExit:data=>{outcome=data;}});
+  launched[0].child.stdout.write('ERROR: Cannot identify a unique DSH window.\n');
+  launched[0].child.emit('exit',1,null);
+  assert.equal(outcome.ready,false);
+  assert.match(outcome.error,/Cannot identify/);
+  assert.equal(launched.length,2,'A startup failure also attempts safe recovery');
+  assert(launched[1].args.includes('-RestoreOnly'));
+});

@@ -51,7 +51,7 @@ export function launchWindowsHud({
     if (!ready && !failure) failure = String(reason || 'Native HUD did not report READY.');
     // In case WPF was terminated instead of closing normally, a second fixed
     // helper restores the hidden DSH window. It never executes client input.
-    if (ready && reason) {
+    if (reason || !ready) {
       try {
         const restore = spawnProcess('powershell.exe', [
           '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-STA',

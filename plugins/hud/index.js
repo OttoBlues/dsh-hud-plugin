@@ -275,7 +275,7 @@ export function apply(ctx, config) {
     return target;
   }
 
-  async function installComponent(component, approved, origin) {
+  async function installComponent(component, approved, origin, preparedTarget = null) {
     if (updating || disposed || !approved) return false;
     updating = true;
     let wasApplied = false;
@@ -287,7 +287,7 @@ export function apply(ctx, config) {
         throw new Error('Experimental update option is disabled.');
       }
 
-      const target = await verifiedPackagePath(component, approved, controller.signal);
+      const target = preparedTarget || await verifiedPackagePath(component, approved, controller.signal);
 
       if (component.name === CURRENT_NAME) {
         // Self-update can unload this Host before the manager's promise
@@ -301,13 +301,21 @@ export function apply(ctx, config) {
             if (disposed) return;
             updating = false;
             if (!result || !['applied', 'restart-required'].includes(result.application)) {
-              void writeSettings({ updateStatus: 'failed' });
+              runtime.autoState = 'failed';
+              runtime.autoError=String(result?.error?.diagnostic||result?.error?.code||
+                'Plugin Manager rejected the update').slice(0,240);
+              ctx.logger?.warn?.('HUD self-update result: %s',runtime.autoError);
+            } else {
+              runtime.autoState=result.application==='restart-required'?'restart-required':'submitted';
+              runtime.autoError='';
             }
           },
-          () => {
+          error => {
             if (disposed) return;
             updating = false;
-            void writeSettings({ updateStatus: 'failed' });
+            runtime.autoState='failed';
+            runtime.autoError=String(error?.message||error).slice(0,240);
+            ctx.logger?.warn?.('HUD self-update promise rejected: %s',runtime.autoError);
           },
         );
         detachedSelfUpdate = true;
@@ -427,6 +435,9 @@ export function apply(ctx, config) {
             previous = typeof record.key === 'string' ? record.key : '';
           } catch { /* First attempt or a truncated old ledger. */ }
           if (previous === key || config.autoAttemptKey.get() === key) continue;
+          // A failed network/manifest read must not burn the auto-update attempt.
+          const verifiedTarget=await verifiedPackagePath(component,approved,signal);
+          if (disposed) break;
           await mkdir(cacheRoot,{recursive:true,mode:0o700});
           const temporaryLedger=autoLedgerPath+'.'+process.pid+'.tmp';
           await writeFile(temporaryLedger,JSON.stringify({key,at:new Date().toISOString()}),
@@ -436,7 +447,7 @@ export function apply(ctx, config) {
           runtime.autoState='submitted'; // pending, not proof of success
           runtime.autoError='';
           ctx.logger?.info?.('HUD auto-update accepted for %s %s', component.name, approved.version);
-          const accepted = await installComponent(component, approved, 'automatic');
+          const accepted = await installComponent(component, approved, 'automatic',verifiedTarget);
           if (!disposed) {
             runtime.autoState = accepted ? 'submitted' : 'failed';
             if (!accepted) runtime.autoError='Install operation did not confirm success; check DSH Plugin Manager.';

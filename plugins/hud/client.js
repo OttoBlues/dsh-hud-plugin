@@ -733,9 +733,10 @@ window.__ModuleLoader__.load({
         const lastChecked=directCheck.at ?
           new Date(directCheck.at).toLocaleTimeString(undefined,
             {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
-        const lastBackgroundCheck=typeof values.scanAt==='string' &&
-          !Number.isNaN(Date.parse(values.scanAt)) ?
-          new Date(values.scanAt).toLocaleTimeString(undefined,
+        const backgroundAt=hostHealth.scanAt||values.scanAt;
+        const lastBackgroundCheck=typeof backgroundAt==='string' &&
+          !Number.isNaN(Date.parse(backgroundAt)) ?
+          new Date(backgroundAt).toLocaleTimeString(undefined,
             {hour:'2-digit',minute:'2-digit'}) : '';
         const requestCheck=async()=>{
           if(busyCheck)return;
@@ -785,6 +786,19 @@ window.__ModuleLoader__.load({
             t('nativeDescription')),
           nativeFailure?h('p',{role:'alert','data-hud-native-error':true,
               style:{color:'#b84b4b',marginTop:9}},nativeFailure):null,
+          hostHealth.status==='unavailable'||hostHealth.status==='mismatch'
+            ?h('p',{role:'alert','data-hud-host-mismatch':true,
+                style:{fontSize:13,color:'#b84b4b',margin:'8px 0'}},
+              hostHealth.status==='mismatch'?t('hostVersionMismatch')+
+                ' ('+hostHealth.version+' / '+VERSION+')':
+                t('hostMismatch')+' '+String(hostHealth.error||'').slice(0,180))
+            :null,
+          hostHealth.autoState==='submitted'
+            ?h('p',{role:'status','data-hud-auto-state':true,style:subtle},t('autoAttempt'))
+            :hostHealth.autoState==='failed'
+              ?h('p',{role:'alert','data-hud-auto-state':true,style:subtle},
+                  t('autoFailed')+' '+String(hostHealth.autoError||''))
+              :null,
           h('section',{'data-hud-check-panel':true,
             style:{...surface,padding:'20px 24px',marginTop:24}},
             h('div',{style:{display:'flex',gap:18,flexWrap:'wrap',
@@ -828,21 +842,24 @@ window.__ModuleLoader__.load({
                 ? experimental : stable;
               const eligible = latest && newer(latest.version,current);
               const key = component.name + ':' + (latest?.version || '');
-              const isPending = values.requestComponent === component.name &&
-                values.requestVersion === latest?.version &&
-                (values.updateStatus === 'queued' || values.updateStatus === 'installing') &&
-                !!values.requestNonce;
-              const rightAction = isPending
-                ? h('span',{role:'status',style:tiny},
-                    t(values.updateStatus==='installing'?'installing':'queued'))
-                : eligible
-                  ? confirm===key
-                    ? h(React.Fragment,null,
-                        h('span',{style:{...tiny,maxWidth:245}},t('confirmText')),
-                        btn(t('cancel'),()=>setConfirm(''),saving),
-                        btn(t('confirm'),()=>{void queue(component,latest);},saving))
-                    : btn(installed?t('update'):t('install'),()=>setConfirm(key),saving)
-                  : h('span',{style:tiny},latest?t('latest'):t('unavailable'));
+              const isPending = pending?.name===component.name &&
+                pending?.version===latest?.version;
+              const stale=isPending && now-pending.startedAt>INSTALL_STALE_MS;
+              const pendingReady=isPending && current===pending.version && !installed?.provisional;
+              const rightAction = isPending && !stale && !pendingReady
+                ? h('span',{role:'status','data-hud-install-pending':true,style:tiny},
+                    t(pending.stage==='restart-required'?'restart':
+                      pending.stage==='unconfirmed'?'installUnconfirmed':'installSubmitting'))
+                : isPending && pending.stage==='restart-required'
+                  ? h('span',{role:'status','data-hud-install-restart':true,style:tiny},t('restart'))
+                  : eligible
+                    ? confirm===key
+                      ? h(React.Fragment,null,
+                          h('span',{style:{...tiny,maxWidth:245}},t('confirmText')),
+                          btn(t('cancel'),()=>setConfirm(''),saving),
+                          btn(t('confirm'),()=>{void queue(component,latest);},saving))
+                      : btn(installed?t('update'):t('install'),()=>setConfirm(key),saving)
+                    : h('span',{style:tiny},latest?t('latest'):t('unavailable'));
               return h('div',{key:component.name,style:surface,
                 'data-hud-component':component.name},
                 h('div',{style:{display:'flex',gap:15,alignItems:'center',
@@ -884,9 +901,13 @@ window.__ModuleLoader__.load({
             )
           ),
           error?h('p',{role:'alert',style:{color:'#b84b4b'}},error):null,
-          values.updateStatus==='failed'?h('p',{role:'alert',style:{color:'#b84b4b'}},t('failed')):
-          values.updateStatus==='restart-required'?h('p',{role:'status'},t('restart')):
-          values.updateStatus==='installed'?h('p',{role:'status'},t('succeeded')):null,
+          installNote?h('p',{role:'status','data-hud-install-note':true,
+              style:{fontSize:13}},installNote):null,
+          pending && now-pending.startedAt>INSTALL_STALE_MS
+            ?h('p',{role:'alert','data-hud-install-stale':true,style:subtle},
+                t(pending.stage==='restart-required'?'restart':'installUnconfirmed')):null,
+          ['queued','installing'].includes(values.updateStatus) && values.requestNonce
+            ?h('p',{role:'status','data-hud-legacy-stale':true,style:subtle},t('legacyStale')):null,
           h('p',{style:{...tiny,marginTop:25}},t('noToken'))
         ));
       };

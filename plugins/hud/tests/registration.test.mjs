@@ -35,6 +35,8 @@ function setup(valuesOverride={}, runtime={}) {
     requestNonce:'',updateStatus:'',allowUnstable:false,
     autoUpdateEnabled:false,autoUpdateUnstable:false,autoAttemptKey:'',
     overlayVisible:false,hudMode:false,
+    nativeHudRequestNonce:'',nativeHudSnapshot:'',nativeHudLanguage:'zh',
+    nativeHudState:'idle',nativeHudError:'',
     checkNonce:'',checkQueuedAt:'',checkState:'idle',checkError:'',checkAt:'',checkOrigin:'',
     scanAt:'',scanState:'idle',
     ...valuesOverride,
@@ -199,7 +201,7 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   const preview=find(overlay,x=>x.props?.['data-dsh-hud-preview']==='true')[0];
   assert.ok(preview);
   assert.equal(preview.props.style.pointerEvents,'none');
-  assert.equal(preview.props['data-dsh-hud-version'],'0.5.6');
+  assert.equal(preview.props['data-dsh-hud-version'],'0.5.7');
 });
 
 test('component center shows the renamed repository rather than legacy UI copy',()=>{
@@ -217,20 +219,27 @@ function renderWorkspace(ui) {
 }
 const flushMode=async()=>{await new Promise(resolve=>setImmediate(resolve));};
 
-test('HUD opt-in switch shows an interactive full-frame workspace without losing DSH selection',async()=>{
-  const ui=setup();
+test('Component Center sends an opt-in native window request without replacing DSH',async()=>{
+  const ui=setup({},{
+    sessions:{ids:['secret-1'],byId:{'secret-1':{displayTitle:'A real task'}}},
+    statuses:new Map([['secret-1',{running:true}]])
+  });
   assert.equal(ui.values.hudMode,false);
+  assert.equal(ui.render('shell.overlay'),null);
   const button=find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true)[0];
   assert.ok(button,'HUD entry belongs only in Component Center');
   button.props.onClick();
   await flushMode();
-  assert.equal(ui.values.hudMode,true);
-  const screen=renderWorkspace(ui);
-  assert.equal(screen.props['data-dsh-hud-workspace'],true);
-  assert.equal(screen.props.style.pointerEvents,'auto');
-  assert.equal(screen.props['aria-modal'],true);
-  assert.match(JSON.stringify(screen),/返回 DSH/);
-  assert.equal(ui.navigations.length,0);
+  assert.equal(ui.values.hudMode,false);
+  assert.equal(ui.values.nativeHudState,'launching');
+  assert.match(ui.values.nativeHudRequestNonce,/^\d+-[a-z0-9]+$/);
+  assert.equal(ui.navigations.length,0,'Never hide DSH before native HUD is READY');
+  const snapshot=JSON.parse(ui.values.nativeHudSnapshot);
+  assert.equal(snapshot.sessions[0].title,'A real task');
+  assert.equal(snapshot.sessions[0].running,true);
+  assert.equal(JSON.stringify(snapshot).includes('secret-1'),false,
+    'The snapshot must not leak session IDs');
+  assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true)[0].props.disabled,true);
 });
 
 test('HUD exits safely to native DSH conversation without resetting Session',async()=>{
@@ -287,14 +296,15 @@ test('HUD Escape and manager entry both keep DSH navigation usable',async()=>{
   assert.equal(ui.navigations.at(-1),null);
   button.props.onClick();
   await flushMode();
-  assert.equal(ui.values.hudMode,true);
+  assert.equal(ui.values.hudMode,false);
+  assert.equal(ui.values.nativeHudState,'launching');
 });
 
 
 test('cockpit UI uses fixed-pixel nested panels with no distorted SVG rails',()=>{
   const ui=setup({hudMode:true});
   const overlay=renderWorkspace(ui);
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.6');
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.7');
   assert.equal(overlay.props.style.pointerEvents,'auto');
   const panels=find(overlay,x=>x.props?.['data-hud-cockpit-panel']===true);
   assert.ok(panels.length>=4,'hero, metrics and Session modules stay separate');

@@ -119,10 +119,11 @@ test('bounded scanning and UI recovery prevent infinite updating states',()=>{
   assert.match(host,/Promise\.race\(\[edit,timeout\]\)/);
   assert.match(host,/lastCheckNonce/);
   assert.match(host,/scanAt:new Date\(\)\.toISOString\(\)/);
-  assert.match(client,/CHECK_WATCHDOG_MS/);
-  assert.match(client,/checkTimedOut/);
-  assert.match(client,/checkQueuedAt/);
+  assert.match(client,/AbortSignal\.timeout\(14_000\)/);
+  assert.match(client,/checkPublicReleases\(\)/);
+  assert.match(client,/setDirectCheck/);
   assert.match(client,/data-hud-check-state/);
+  assert.doesNotMatch(client,/checkTimedOut/);
 });
 
 test('flat cockpit uses one line and panel color; entry only in Component Center',()=>{

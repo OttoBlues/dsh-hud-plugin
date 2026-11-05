@@ -7,7 +7,7 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.6 试验源码**（已发布 Unstable，独立读取 GitHub 公开发布索引，不再以插件配置写入传递检查命令）。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.7 试验源码**（保留 V0.5.6 的只读 GitHub 检查，并新增 Windows 独立无边框 WPF HUD）。
 - `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.6**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
@@ -94,3 +94,7 @@ V0.5.3 报告的手动检查超时已有一条**确认的源码故障路径**：
 真正的插件安装仍需原有 Host 读取、校验 SHA-256、核实最新通道并经用户确认。公开只读查询成功**不代表安装通道已通过验证**，必须经 Windows DSH 实机验收，必要时另行改进安装请求通道。
 
 **V0.5.6 Unstable：** 主分支 CI `41972165734` 成功；固定 `.tgz` 与 SHA-256 已登记。该版本的用户触发只读检查脱离 DSH Host 配置队列，必须在用户 Windows Desktop 中检查跨域读取结果以及手动安装授权行为，CI 无法证明这些体验无故障。
+
+## V0.5.7 Windows 独立 HUD（试验版候选）
+
+从 HUD 组件中心主动打开 WPF 原生无边框窗口：新窗体不显示系统最小化、最大化、关闭按钮，提供「返回 DSH」按钮，显示后隐藏原 DSH，退出时恢复主窗口。与原有 DSH 内部 shell.overlay 视图不同，独立窗口是本地 PowerShell/WPF 辅助进程，当前只能读取打开时的会话快照，尚未实现 Electron 原生 BrowserWindow 集成、透明置顶或聊天输入。Linux 和 Windows CI 加入脚本/包结构检查，实机 U057 验收需由 Windows Desktop 用户执行。详见 [独立窗口说明](docs/HUD-NATIVE-WINDOW-V057.md)。

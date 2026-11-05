@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.5.8",
+  "version": "0.5.9",
   "private": true,
   "type": "module",
-  "description": "Windows native HUD launched via authenticated direct Host RPC with diagnostics and safe DSH restoration",
+  "description": "Reliable SHA-256-pinned HUD updates through DSH Plugin Manager with native Host readiness and restart diagnostics",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },

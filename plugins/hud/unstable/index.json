@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.5.7",
+  "latest": "0.5.8",
   "releases": [
     {
       "version": "0.3.0",
@@ -136,6 +136,17 @@
         "result": "success"
       },
       "note": "Explicitly requested U057 Windows independent frameless HUD experiment. Native WPF helper, one Return-to-DSH exit, no floating launcher; Windows Desktop UAT pending."
+    },
+    {
+      "version": "0.5.8",
+      "file": "v0.5.8/local-dsh-hud-0.5.8.tgz",
+      "sha256": "f1115aefa89a108a3471c5dfac775ed3b46975947f63b281a877b607b1d9eca7",
+      "sourceCommit": "0f573b67fad12c197832f709139eb9743b059431",
+      "test": {
+        "ciRun": "41985691740",
+        "result": "success"
+      },
+      "note": "Explicitly requested U058 Windows independent frameless HUD experiment. Direct authenticated Connection RPC to Windows WPF helper, with precise startup diagnostics; U058 Desktop UAT pending."
     }
   ]
 }

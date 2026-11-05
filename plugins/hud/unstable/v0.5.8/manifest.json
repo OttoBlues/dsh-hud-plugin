@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "component": "hud",
+  "package": "@local/dsh-hud",
+  "channel": "unstable",
+  "version": "0.5.8",
+  "file": "local-dsh-hud-0.5.8.tgz",
+  "sha256": "f1115aefa89a108a3471c5dfac775ed3b46975947f63b281a877b607b1d9eca7",
+  "sourceCommit": "0f573b67fad12c197832f709139eb9743b059431",
+  "test": {
+    "ciRun": "41985691740",
+    "result": "success"
+  },
+  "verification": {
+    "sourceCi": "41985691740",
+    "role": "U058 standalone WPF window; no user Desktop acceptance yet",
+    "approvedAsStable": false
+  }
+}

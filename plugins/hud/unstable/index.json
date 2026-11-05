@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.5.3",
+  "latest": "0.5.4",
   "releases": [
     {
       "version": "0.3.0",
@@ -92,6 +92,17 @@
         "result": "success"
       },
       "note": "Unstable HUD v0.5.3: bounded refresh and watchdog retry, flat single-palette cockpit, and component-center-only HUD entry; U053 Desktop validation pending."
+    },
+    {
+      "version": "0.5.4",
+      "file": "v0.5.4/local-dsh-hud-0.5.4.tgz",
+      "sha256": "565e0d7d3c1f8048f53f050fd366a1d49b9debf9b7c43c48412aa135706aa477",
+      "sourceCommit": "2933b19c4e6f1efaa4266682cf43e7a941b4bc8c",
+      "test": {
+        "ciRun": "41943053479",
+        "result": "success"
+      },
+      "note": "Experimental Host check recovery: retry nonce after ConfigEditor failure, resolve editor/loader entry when needed, and log scan progress. Requires real DSH acceptance."
     }
   ]
 }

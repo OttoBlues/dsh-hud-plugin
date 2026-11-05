@@ -8,7 +8,7 @@
 
 - `plugins/index.json`：HUD 组件总目录。
 - `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.7 试验源码**（保留 V0.5.6 的只读 GitHub 检查，并新增 Windows 独立无边框 WPF HUD）。
-- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.6**。
+- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.7**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
 

@@ -15,7 +15,7 @@
 | M3.1.4 | V0.5.4 更新 Host 配置写入恢复与请求状态诊断 | Unstable 已发布，Linux/Windows CI 通过；待用户 U054 实机验证 |
 | M3.1.5 | V0.5.5 主动检查交付链路：官方 Loader 条目解析与事件驱动 | 已进入 Unstable，Linux/Windows CI 全绿；待 U055 用户实机复验 |
 | M3.1.6 | V0.5.6 版本查询脱离 Host 配置命令 | Unstable 已发布，CI 通过，待 U056 浏览器跨域读取与安装分步验证 |
-| M3.1.7 | V0.5.7 原生 Windows 无边框 HUD、隐藏/恢复 DSH | 实现候选、等待 Windows CI 与 U057 实机验收；Released 不变 |
+| M3.1.7 | V0.5.7 原生 Windows 无边框 HUD、隐藏/恢复 DSH | Unstable 已发布，CI 全绿；U057 实机验收待完成；Released 不变 |
 | M3.2 | HUD 聊天输入、完整会话选择与审批 | 待开发，需要官方 UI/Session 接口对接 |
 | M3.3 | HUD 静默与激活布局 | 待开发 |
 | M4 | Windows 透明置顶、键盘唤醒、点击穿透和深度 Electron 窗口集成 | 待开发；V0.5.7 WPF 独立窗口不等于 M4 完成 |

@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.4: recover manual checks after ConfigEditor failure; instrument Host progress.
+ * DSH HUD v0.5.5: locate addressable Loader entry and react to volatile check requests.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -189,11 +189,17 @@ export function apply(ctx, config) {
     // Caching an undefined ConfigEditor during apply() permanently prevents
     // every Host -> Client status update (the UI can only show 'queued').
     const editor = ctx.get('configEditor');
-    const entry = ctx.fiber?.entry;
+    // Match the same unique, profile-editable Loader entry used by native
+    // DSH SettingsForms, not the optional ctx.fiber.entry shortcut. The
+    // shortcut can be absent or point to an unrelated nested entry.
+    const entries = typeof editor?.entries === 'function' ? editor.entries() : null;
+    const entry = entries
+      ? entries.find(row => row.options?.id === 'dsh-hud')
+      : ctx.fiber?.entry;
     if (!editor || typeof editor.edit !== 'function' || !entry) {
       if (Date.now() - lastMissingEditorWarning > 5_000) {
         lastMissingEditorWarning = Date.now();
-        try { ctx.logger?.warn?.('HUD check cannot write: ConfigEditor or loader entry unavailable'); }
+        try { ctx.logger?.warn?.('HUD check cannot write: ConfigEditor or profile-editable dsh-hud entry unavailable'); }
         catch { /* Disposing plugin */ }
       }
       return false;
@@ -423,26 +429,20 @@ export function apply(ctx, config) {
     if (Date.now() < retryCheckAfter) return;
     manualChecking = true;
     try {
-      // Do not consume this nonce before a successful Host status write.
-      // V0.5.3 marked it processed first, then returned silently on editor
-      // errors, causing a permanent "queued" state for this request.
-      if (!(await writeSettings({ checkState:'checking', checkError:'' }))) {
-        retryCheckAfter = Date.now() + 3_000;
-        try { ctx.logger?.warn?.('HUD manual check could not be claimed; retrying after editor recovery'); }
-        catch { /* logger may be disposed */ }
-        return;
-      }
-      if (disposed) return;
+      // Do not write a transient "checking" state before scanning:
+      // ConfigEditor.edit reconciles the Loader/profile and may invalidate
+      // this Host. One atomic result write is safer than two profile reloads.
       lastCheckNonce = nonce;
-      retryCheckAfter = 0;
-      try { ctx.logger?.info?.('HUD manual release scan started'); }
+      try { ctx.logger?.info?.('HUD Host received manual check request'); }
       catch { /* logger may be disposed */ }
       const completed = await discover(true, nonce);
-      // If a race prevented the result from being persisted and the nonce
-      // still exists, allow retry instead of trapping the same request.
       if (!completed && !disposed && config.checkNonce.get() === nonce) {
+        // The same nonce remains pending until a successful commit. Retry
+        // after backoff, rather than spinning or silently consuming it.
         lastCheckNonce = '';
         retryCheckAfter = Date.now() + 3_000;
+      } else if (completed) {
+        retryCheckAfter = 0;
       }
     } catch (error) {
       if (!disposed && config.checkNonce.get() === nonce) {
@@ -534,6 +534,12 @@ export function apply(ctx, config) {
       });
     };
     guarded(discover());
+    // Volatile configuration writes from the DSH client are observable
+    // without remounting this plugin. Listen immediately; the 850 ms timer
+    // remains as a fallback for runtimes without the event.
+    ctx.on?.('loader/volatile-update', () => {
+      if (!disposed && config.checkNonce.get()) guarded(processCheckRequest());
+    });
     const reconcile = setTimeout(() => { if (!disposed) guarded(reconcileAfterReload()); }, 1500);
     const poll = setInterval(() => { if (!disposed) guarded(discover()); }, CHECK_MS);
     const requests = setInterval(() => {

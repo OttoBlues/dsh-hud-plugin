@@ -53,7 +53,8 @@ function setup(overrides={}) {
   };
   const calls={http:[],installed:[],list:0,writes:[],logs:[],cached:[]};
   const inventory=overrides.inventory || [{name:NAME,installed:true,version:'0.4.0'}];
-  const callbacks=[], startTimers=[];let dispose=()=>{};
+  const callbacks=[], startTimers=[], events=new Map();let dispose=()=>{};
+  const editableEntry={options:{id:'dsh-hud'}};
   let editorReady=overrides.editorInitiallyAvailable!==false;
   let failCheckClaimOnce=overrides.rejectCheckClaimOnce===true;
   let clock=Date.now();
@@ -73,12 +74,15 @@ function setup(overrides={}) {
     return response('missing',404);
   };
   const ctx={
-    fiber:{entry:{id:'hud'}},
+    fiber:{entry:overrides.wrongFiberEntry?{options:{id:'not-hud'}}:editableEntry},
     get(name){
       if(name!=='configEditor'||!editorReady)return;
-      return{async edit(_entry,transform){
+      return{
+        entries(){return overrides.noAddressableEntry?[]:[editableEntry];},
+        async edit(entry,transform){
+        if(entry!==editableEntry)throw new Error('Wrong Loader Entry object');
         const next=transform({...values});
-        if(failCheckClaimOnce && next.checkState==='checking' && next.checkNonce){
+        if(failCheckClaimOnce && next.checkState==='success' && next.checkAt){
           failCheckClaimOnce=false;
           throw new Error('Simulated transient ConfigEditor lock');
         }
@@ -88,7 +92,7 @@ function setup(overrides={}) {
         Object.assign(values,next);calls.writes.push(next);
       }};
     },
-    logger:{warn:(...x)=>calls.logs.push(x.join(' ')),info(){}},
+    logger:{warn:(...x)=>calls.logs.push(x.join(' ')),info:(...x)=>calls.logs.push(x.join(' '))},
     pluginManager:{
       async listBundles(){calls.list++;return inventory;},
       async installBundle(path,opts){
@@ -106,6 +110,7 @@ function setup(overrides={}) {
       },
     },
     effect:fn=>{dispose=fn();},
+    on:(name,fn)=>{events.set(name,fn);},
   };
   class TestDate extends Date {
     constructor(...args){super(...(args.length?args:[clock]));}
@@ -140,6 +145,7 @@ function setup(overrides={}) {
     refresh:async()=>{callbacks[0]();await flush();},
     reconcile:async()=>{startTimers[0]?.();await flush();},
     checkCallback:async()=>{callbacks[1]();await flush();},
+    sendVolatile:async()=>{events.get('loader/volatile-update')?.([['checkNonce']]);await flush();},
     enableEditor:()=>{editorReady=true;},
     advance:ms=>{clock+=ms;},
     stop:()=>dispose()};
@@ -368,7 +374,7 @@ test('a failed channel never becomes a false successful background scan',async()
 });
 
 
-test('a failed ConfigEditor check claim does not permanently consume the request nonce',async()=>{
+test('a failed ConfigEditor result commit does not permanently consume the request nonce',async()=>{
   const s=setup({rejectCheckClaimOnce:true});
   try{
     await flush(); // initial catalog discovery with a working editor
@@ -377,14 +383,14 @@ test('a failed ConfigEditor check claim does not permanently consume the request
     s.values.checkState='queued';
     await s.checkCallback();
     assert.equal(s.values.checkNonce,'retry-nonce');
-    assert.equal(s.values.checkState,'queued','Host failed before acknowledging the request');
+    assert.equal(s.values.checkState,'queued','Host could not publish its result');
     assert(s.calls.logs.some(x=>/Simulated transient ConfigEditor lock/.test(x)));
     // One 3-second retry backoff, then the SAME nonce must resume.
     s.advance(3_100);
     await s.checkCallback();
     assert.equal(s.values.checkNonce,'');
     assert.equal(s.values.checkState,'success');
-    assert(s.calls.http.length>initialHttp,'The abandoned check must now fetch GitHub');
+    assert(s.calls.http.length>initialHttp,'A failed result write must allow another GitHub scan');
   }finally{s.stop();}
 });
 
@@ -398,7 +404,7 @@ test('a ConfigEditor that loads after the HUD Host starts can process pending up
     s.values.checkState='queued';
     await s.checkCallback();
     assert.equal(s.values.checkState,'queued');
-    assert(s.calls.logs.some(x=>/ConfigEditor or loader entry unavailable/.test(x)));
+    assert(s.calls.logs.some(x=>/ConfigEditor or profile-editable dsh-hud entry unavailable/.test(x)));
     s.enableEditor();
     s.advance(3_100);
     await s.checkCallback();
@@ -420,5 +426,50 @@ test('manual scan completion is not reported when its catalog/status edit fails'
     s.advance(3_100);
     await s.checkCallback();
     assert.equal(s.values.checkState,'success');
+  }finally{s.stop();}
+});
+
+
+test('Host uses DSH ConfigEditor addressable entry rather than an unrelated fiber shortcut',async()=>{
+  const s=setup({wrongFiberEntry:true});
+  try{
+    await flush();
+    assert.equal(JSON.parse(s.values.catalog).source,'public');
+    s.values.checkNonce='from-native-settings';
+    s.values.checkState='queued';
+    await s.sendVolatile();
+    assert.equal(s.values.checkNonce,'');
+    assert.equal(s.values.checkState,'success');
+    assert(s.calls.logs.some(x=>/HUD Host received manual check request/.test(x)));
+    assert.equal(s.calls.installed.length,0);
+  }finally{s.stop();}
+});
+
+test('missing profile-editable entry does not falsely consume a manual check',async()=>{
+  const s=setup({noAddressableEntry:true});
+  try{
+    await flush();
+    s.values.checkNonce='still-pending';
+    s.values.checkState='queued';
+    await s.sendVolatile();
+    assert.equal(s.values.checkNonce,'still-pending');
+    assert.equal(s.values.checkState,'queued');
+    assert(s.calls.logs.some(x=>/profile-editable dsh-hud entry unavailable/.test(x)));
+    assert.equal(s.calls.installed.length,0);
+  }finally{s.stop();}
+});
+
+test('immediate volatile-update callback handles checks without a timer tick',async()=>{
+  const s=setup();
+  try{
+    await flush();
+    const before=s.calls.http.length;
+    s.values.checkNonce='volatile-event';
+    s.values.checkState='queued';
+    await s.sendVolatile(); // never calls the 850 ms scheduled callback
+    assert(s.calls.http.length>before);
+    assert.equal(s.values.checkState,'success');
+    assert.equal(s.values.checkNonce,'');
+    assert.equal(s.calls.installed.length,0);
   }finally{s.stop();}
 });

@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.5.7 development source parse successfully',()=>{
+test('Host and Client v0.5.8 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -156,4 +156,16 @@ test('manual release scanning persists results in one authoritative settings edi
   assert.doesNotMatch(code,/writeSettings\(\{ checkState:'checking'/);
   assert.match(host,/editor\.entries\(\)/);
   assert.match(host,/ctx\.on\?\.\('loader\/volatile-update'/);
+});
+
+test('native window launch uses official Connection RPC, never volatile settings as a command bus',()=>{
+  assert.match(host,/inject = \['pluginManager','connection'\]/);
+  assert.match(host,/ctx\.connection\.rpc\.handle\('\/hud-native'/);
+  assert.match(host,/peer\?\.principal\?\.kind !== 'owner'/);
+  assert.match(client,/ctx\.connection\.rpc\.call\('\/hud-native', 'open'/);
+  assert.match(client,/abort\.abort\(\)/);
+  const launch=client.slice(client.indexOf('const launchNativeHud = async'),
+    client.indexOf('const queue = async'));
+  assert.doesNotMatch(launch,/form\.(set|mutate)/);
+  assert.doesNotMatch(host,/processNativeHudRequest|lastNativeHudNonce/);
 });

@@ -35,11 +35,11 @@ test('only listed released/unstable archives can be installed',()=>{
   assert.match(host,/item\.acceptance\?\.decision !== 'approved'/);
   assert.match(host,/item\.test\?\.result !== 'success'/);
   assert.match(host,/createHash\('sha256'\)\.update\(bytes\)\.digest\('hex'\)/);
-  assert.match(host,/ctx\.pluginManager\.installBundle\(target, \{/);
+  assert.match(host,/pluginManager\(\)\.installBundle\(target, \{/);
   assert.match(host,/saveExact: true/);
   assert.match(host,/const nonce = config\.requestNonce\.get\(\)/);
   assert.match(host,/requestNonce:'', updateStatus:'installing'/);
-  assert.match(host,/ctx\.pluginManager\.listBundles\(\)/);
+  assert.match(host,/pluginManager\(\)\.listBundles\(\)/);
   assert.match(host,/AbortSignal\.timeout\(TIMEOUT_MS\)/);
 });
 test('auto updates default off and experimental auto needs 3 explicit opt-ins',()=>{
@@ -162,7 +162,7 @@ test('manual release scanning persists results in one authoritative settings edi
 });
 
 test('native window launch uses official Connection RPC, never volatile settings as a command bus',()=>{
-  assert.match(host,/inject = \['pluginManager','connection','webServer'\]/);
+  assert.match(host,/inject = \['connection'\]/);
   assert.match(host,/ctx\.connection\.rpc\.handle\('\/hud-native'/);
   assert.match(host,/peer\?\.principal\?\.kind !== 'owner'/);
   assert.match(client,/ctx\.connection\.rpc\.call\('\/hud-native', 'open'/);

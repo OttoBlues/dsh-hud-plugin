@@ -15,6 +15,7 @@ const paths = result.stdout.trim().split(/\r?\n/);
 for (const name of [
   'package/package.json', 'package/index.js', 'package/client.js',
   'package/cordis.patch.yml', 'package/icon.svg',
+  'package/native-window.js', 'package/native/windows-hud.ps1',
   'package/locale/en.json', 'package/locale/zh.json',
 ]) {
   assert(paths.includes(name), `Bundle missing file: ${name}`);

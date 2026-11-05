@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "private": true,
   "type": "module",
-  "description": "Flat HUD cockpit with direct read-only public release checks; Host remains installation authority",
+  "description": "Independent native Windows frameless HUD with safe DSH restoration and direct read-only release checks",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },
@@ -16,6 +16,8 @@
   "files": [
     "index.js",
     "client.js",
+    "native-window.js",
+    "native/windows-hud.ps1",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg"

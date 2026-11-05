@@ -45,6 +45,8 @@ function setup(overrides={}) {
     catalog:'{"schema":3,"source":"checking","components":[]}',
     allowUnstable:false,autoUpdateEnabled:false,autoUpdateUnstable:false,
     autoAttemptKey:'',overlayVisible:false,
+    nativeHudRequestNonce:'',nativeHudSnapshot:'',nativeHudLanguage:'zh',
+    nativeHudState:'idle',nativeHudError:'',
     checkNonce:'',checkQueuedAt:'',checkState:'idle',checkError:'',checkAt:'',checkOrigin:'',
     scanAt:'',scanState:'idle',
     requestComponent:'',requestVersion:'',requestChannel:'released',

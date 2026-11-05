@@ -7,8 +7,8 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.3 试验源码**（已发布到 Unstable，检查更新可靠性与纯色 HUD 待用户验收）。
-- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.3**。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.4 试验源码**（已发布 Unstable，修复 Host 检查请求永久丢失的明确代码缺陷）。
+- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.4**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
 
@@ -78,3 +78,5 @@ HUD 改为**统一纯色**：背景深蓝 `#071522`，所有面板内填充 `#14
 ## V0.5.4 开发修复：Host 检查请求不再被永久丢弃
 
 V0.5.3 报告的手动检查超时已有一条**确认的源码故障路径**：Host 在成功承认更新检查之前就永久登记 nonce，以及在启动阶段缓存可能暂时不可用的 ConfigEditor。V0.5.4 修改为运行时动态获取配置编辑器，失败退避后可恢复检查同一请求，并将状态写入失败记录为警告而非“完成”。详细分析见 [V0.5.3 → V0.5.4 追踪](docs/HUD-UPDATE-FLAT-V053.md)。该修复仍需在用户真实 DSH 环境验收。
+
+**V0.5.4 发布：** 经固定源码主分支 CI `41943053479` 验证后，发布至 Unstable，保持原 HUD 纯色工作区和 DSH 原生组件管理主题，修复状态写入失败后检查请求不可恢复的缺陷；真实 Windows DSH 检查效果仍待复验。

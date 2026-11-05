@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "component": "hud",
+  "package": "@local/dsh-hud",
+  "channel": "unstable",
+  "version": "0.5.4",
+  "file": "local-dsh-hud-0.5.4.tgz",
+  "sha256": "565e0d7d3c1f8048f53f050fd366a1d49b9debf9b7c43c48412aa135706aa477",
+  "sourceCommit": "2933b19c4e6f1efaa4266682cf43e7a941b4bc8c",
+  "test": {
+    "ciRun": "41943053479",
+    "result": "success"
+  },
+  "verification": {
+    "sourceCi": "41943053479",
+    "role": "U054 ConfigEditor manual refresh recovery regression and real Desktop test",
+    "approvedAsStable": false
+  }
+}

@@ -26,7 +26,7 @@
 审计-退役Runner工具-历史分支=本机已有 origin 跟踪引用中的 feat/deploy-hud-to-desktop、feat/windows-self-hosted-smoke、fix/smoke-dsh-readiness-guard 和 feat/ci-gated-auto-upgrade 含旧 self-hosted smoke、Desktop 部署或 auto-upgrade 工作流及 scripts/windows 脚本；本轮未删除
 审计-候选闲置发布脚本=main 中 publish-unstable-v057.mjs、publish-unstable-v058.mjs、publish-unstable-v059.mjs 未被当前 package.json 或 CI 调用；当前 CI 调用 publish-unstable-v0510.mjs。旧脚本仅列为清理候选，本轮未删除
 审计-退役工具处理=本轮仅审计；未删除远端分支、文件或历史记录
-仓库-同步状态=2026-11-05 git fetch origin 已成功，确认 origin/main 仍为 993f6d8d7c3c4b1cc16426c6f9b3fed6bda5c72c；本地 main 含未推送文档提交；两次 git push 均等待约一分钟无响应后中断，远端推送未确认
+仓库-同步状态=2026-11-05 最近一次成功 fetch 确认 origin/main 为 993f6d8d7c3c4b1cc16426c6f9b3fed6bda5c72c；本地 main 含未推送文档提交；push 因本机无可用 GitHub 凭据而失败（非交互模式无法获取密码），gh CLI 未安装，远端推送未完成
 问题-历史更新故障=V0.5.8 曾报告同进程更新卡住且重启后才生效、独立 HUD 返回 HTTP 405；V0.5.9 曾报告冷启动 Host RPC 405、公开仓库误报 Private、更新策略控件不能保存；V0.5.10 包含相应修改，但 2026-11-05 本机仍观察到 Host RPC HTTP 405 和策略配置不可写，尚不能标记为已修复
 限制-HUD系统能力=Windows 全局透明、置顶、点击穿透、全局热键等系统层能力尚未实现，不得把 HUD 页面或 WPF 测试视为已实现
 版本规则=HUD 版本显示与 Tag/Release 采用大写 Vx.y.z；x 递增需用户明确确认，普通需求递增 y，BUG 修复轮次递增 z，已用版本不可复用

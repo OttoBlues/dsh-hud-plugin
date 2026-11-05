@@ -8,7 +8,7 @@
 - 自动更新默认关闭，试验版订阅与自动试验版需要独立授权；窗口内 HUD 预览默认关闭。
 - 历史 V0.4.0 曾出现自更新宿主异常，V0.4.1 引入 Host 生命周期保护。
 
-**已发布：** Unstable V0.5.4；Released 为空。用户截图确认已在 Windows Desktop 安装 V0.4.1。
+**已发布：** Unstable V0.5.5；Released 为空。用户截图确认已在 Windows Desktop 安装 V0.4.1。
 
 **当前版本：** V0.4.2 已根据明确要求制作 Unstable 固定包，更新中英文 HUD 仓库说明与组件目录，移除不再需要的本地 Runner 管线。安装需要人工确认，不能把 CI 通过等同于 Desktop 无崩溃验收。
 
@@ -39,3 +39,7 @@
 ## V0.5.4 Host 更新请求可靠性修复（Unstable）
 
 如果组件中心检查版本始终“排队等待 Host”，V0.5.4 为未能写入 DSH 配置编辑器的请求提供同 nonce 重试、运行时获取 ConfigEditor 和相关警告日志。自动化回归已覆盖编辑器初始不可用与写入失败后的恢复，实际 DSH 体验仍需用户验收。
+
+## V0.5.5 Loader 条目兼容与手动检查（Unstable）
+
+用 ConfigEditor 的 `entries()` 获取当前 profile 可编辑的 `dsh-hud` Loader entry，避免与 Host 纤程快捷条目不一致。实时监听 `loader/volatile-update`，并在扫描完成时一次性提交结果，规避多次配置重组。用户需在 Windows Desktop 中实际验证能检测到新版本、不显示长时间 Host 队列。原 HUD 纯色视觉、DSH 组件中心与自动更新授权均不改变。

@@ -13,6 +13,7 @@ DeepSeek Harness Host（Cordis）
       ├── sidebar.panellist 里的独立 HUD 入口
       ├── keyed main 管理页面和更新策略
       └── 默认关闭的 shell.overlay 预览
+      └── v0.5.7 组件中心 → Host 一次性命令 → Windows WPF 独立窗体
 ```
 
 本仓库以 `OttoBlues/dsh-hud-plugin` 作为新的 UI/文档标准地址。Host V0.4.1 仍有短期迁移回退，等新匿名端点的运行验证完成后再考虑移除。
@@ -43,3 +44,7 @@ Windows 系统层透明桌面覆盖、置顶、点击穿透、全局热键、可
 - 数据取自 `useSessions` 和 `useSessionStatus` 标准 Client Hooks；不访问其他插件 DOM，也不伪造聊天与性能数据。
 - 当前 HUD 是 DSH 应用窗口内的互动视图，不是单独的 Windows Electron 窗口，尚不支持系统级透明、置顶及鼠标穿透。
 - 因此需要单独验证窄窗口、插件热更新、审批弹窗与返回原会话的稳定性。
+
+## V0.5.7 原生独立窗体补充
+
+组件中心仅通过 DSH ConfigForms 提交经用户点击授权的一次性窗口启动请求；Host 通过固定 native-window.js 启动仓库内置 native/windows-hud.ps1。WPF 控制实际操作系统窗体，在内容显示后隐藏唯一匹配的 DSH 主窗，关闭或退出时还原。由于此方案不依赖 DSH 官方 Electron BrowserWindow IPC，它是试验性 Windows WPF 辅助窗口而非 DSH 原生 Electron 管理窗口。不会自动安装组件或改变 Released。具体见 HUD-NATIVE-WINDOW-V057.md。

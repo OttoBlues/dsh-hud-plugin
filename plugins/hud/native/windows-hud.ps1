@@ -86,7 +86,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
     </Grid.ColumnDefinitions>
     <Border Grid.Column="0" BorderBrush="#6DCBD2" BorderThickness="0,0,1,0" Padding="10,20,20,10">
       <StackPanel>
-        <TextBlock Text="HUD" Foreground="#6DCBD2" FontSize="34" FontWeight="Bold" CharacterSpacing="250"/>
+        <TextBlock Text="HUD" Foreground="#6DCBD2" FontSize="34" FontWeight="Bold"/>
         <Border Background="#6DCBD2" Height="1" Margin="0,16,0,12"/>
         <TextBlock Text="VECTOR / INTERFACE" Foreground="#A8BDC6" FontFamily="Consolas" FontSize="11"/>
         <Border Background="#142B3A" BorderBrush="#6DCBD2" BorderThickness="1" Padding="14" Margin="0,40,0,0">
@@ -225,7 +225,7 @@ $window.Add_PreviewKeyDown({
   if ($_.Key -eq [Windows.Input.Key]::Escape) { $window.Close() }
 })
 $exitTask = [Console]::In.ReadLineAsync()
-$watch = New-Object Windows.Threading.DispatcherTimer
+$watch = New-Object System.Windows.Threading.DispatcherTimer
 $watch.Interval = [TimeSpan]::FromMilliseconds(750)
 $watch.Add_Tick({
   if ($null -eq (Get-Process -Id $HostPid -ErrorAction SilentlyContinue)) {

@@ -7,8 +7,8 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.7 试验源码**（保留 V0.5.6 的只读 GitHub 检查，并新增 Windows 独立无边框 WPF HUD）。
-- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.7**。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.8 试验源码**（保留 V0.5.6 的只读 GitHub 检查，并新增 Windows 独立无边框 WPF HUD）。
+- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.8**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
 
@@ -101,4 +101,4 @@ V0.5.3 报告的手动检查超时已有一条**确认的源码故障路径**：
 
 ## V0.5.8 启动超时修复候选
 
-用户报告 V0.5.7 独立 HUD 无窗口、触发超时。本版不再把独立窗口启动请求放进 DSH ConfigForms/Host 队列，而是调用 DSH 正式 Connection RPC，等待真实 WPF READY 并显示错误码；继续限制只能从 HUD 组件中心启动。Windows 主窗口查找改为确认 Electron 父进程、Chromium 窗口类型和唯一性，不再依赖可变标题。V0.5.8 须通过 GitHub CI 后才登记 Unstable，真实 Windows U058 仍需人工验收。[具体修复与验收](docs/HUD-NATIVE-WINDOW-V058.md)。
+用户报告 V0.5.7 独立 HUD 无窗口、触发超时。本版不再把独立窗口启动请求放进 DSH ConfigForms/Host 队列，而是调用 DSH 正式 Connection RPC，等待真实 WPF READY 并显示错误码；继续限制只能从 HUD 组件中心启动。Windows 主窗口查找改为确认 Electron 父进程、Chromium 窗口类型和唯一性，不再依赖可变标题。V0.5.8 已通过 GitHub Linux/Windows CI（含 WPF 实际渲染），固定包已登记 Unstable；真实 Windows U058 仍需人工验收。[具体修复与验收](docs/HUD-NATIVE-WINDOW-V058.md)。

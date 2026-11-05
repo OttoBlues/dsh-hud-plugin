@@ -87,7 +87,7 @@ test('one-click checks use the Host allowlisted source and cannot auto-install',
   assert.match(host,/checkNonce: Schema\.string\(\)\.default\(''\)\.volatile\(\)/);
   assert.match(host,/checkState: Schema\.string\(\)\.default\('idle'\)\.volatile\(\)/);
   assert.match(host,/async function processCheckRequest\(\)/);
-  assert.match(host,/await discover\(true,nonce\)/);
+  assert.match(host,/await discover\(true,\s*nonce\)/);
   assert.match(host,/if \(!manual && config\.autoUpdateEnabled\.get\(\) === true/);
   assert.match(client,/data-hud-check-button/);
   assert.match(client,/data-hud-check-state/);

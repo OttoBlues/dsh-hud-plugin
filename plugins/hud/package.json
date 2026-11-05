@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "private": true,
   "type": "module",
-  "description": "Independent native Windows frameless HUD with safe DSH restoration and direct read-only release checks",
+  "description": "Windows native HUD launched via authenticated direct Host RPC with diagnostics and safe DSH restoration",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },
@@ -30,6 +30,7 @@
       "platform": "web",
       "immediately": true,
       "inject": [
+        "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-session",
         "@deepseek-ai/dsh-client-ui-plugin-manager",

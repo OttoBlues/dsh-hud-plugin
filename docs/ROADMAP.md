@@ -15,7 +15,8 @@
 | M3.1.4 | V0.5.4 更新 Host 配置写入恢复与请求状态诊断 | Unstable 已发布，Linux/Windows CI 通过；待用户 U054 实机验证 |
 | M3.1.5 | V0.5.5 主动检查交付链路：官方 Loader 条目解析与事件驱动 | 已进入 Unstable，Linux/Windows CI 全绿；待 U055 用户实机复验 |
 | M3.1.6 | V0.5.6 版本查询脱离 Host 配置命令 | Unstable 已发布，CI 通过，待 U056 浏览器跨域读取与安装分步验证 |
-| M3.1.7 | V0.5.7 原生 Windows 无边框 HUD、隐藏/恢复 DSH | Unstable 已发布，CI 全绿；U057 实机验收待完成；Released 不变 |
+| M3.1.7 | V0.5.7 原生 Windows 无边框 HUD、隐藏/恢复 DSH | Unstable 已发布；用户报告 U057-1 无法打开，触发启动超时；不通过人工验收 |
+| M3.1.8 | V0.5.8 独立 HUD 启动 RPC 与诊断修复 | 源码候选；脱离 ConfigForms nonce，改用 Connection RPC；待 CI 与 U058 实机验收 |
 | M3.2 | HUD 聊天输入、完整会话选择与审批 | 待开发，需要官方 UI/Session 接口对接 |
 | M3.3 | HUD 静默与激活布局 | 待开发 |
 | M4 | Windows 透明置顶、键盘唤醒、点击穿透和深度 Electron 窗口集成 | 待开发；V0.5.7 WPF 独立窗口不等于 M4 完成 |
@@ -55,3 +56,7 @@
 ## V0.5.7 独立窗口任务
 
 详见 [Windows 独立 HUD 设计及 U057 验收](HUD-NATIVE-WINDOW-V057.md)。使用 Host 管理本机 WPF 辅助进程；主窗口只在 HUD 成功显示后隐藏，返回/异常退出时恢复；版本查询与安装机制保持原有隔离。
+
+## U058 修复重点
+
+v0.5.7 无窗口、仅显示超时。修复使用官方 Connection RPC，返回真正的 WPF 启动结果与具体失败原因；详见 [v0.5.8 排障与验收](HUD-NATIVE-WINDOW-V058.md)。

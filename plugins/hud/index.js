@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.7: add opt-in native Windows HUD without exposing Electron IPC.
+ * DSH HUD v0.5.8: direct authenticated Connection RPC for native HUD launch.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -15,7 +15,7 @@ import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-export const inject = ['pluginManager'];
+export const inject = ['pluginManager','connection','webServer'];
 // Keep the previous name as a temporary migration fallback. Once the user
 // renames the repository, old raw URLs are NOT assumed to keep redirecting.
 const ROOTS = [
@@ -184,8 +184,7 @@ export function apply(ctx, config) {
   let disposed = false, checking = false, updating = false, manualChecking = false;
   let lastNonce = '';
   let lastCheckNonce = '';
-  // Never replay an old window-launch request after a Host hot reload.
-  let lastNativeHudNonce = String(config.nativeHudRequestNonce.get() || '');
+  // Native HUD is transient process state, not a DSH Loader configuration request.
   let nativeHudWindow = null;
   let retryCheckAfter = 0;
   let lastMissingEditorWarning = 0;
@@ -503,42 +502,64 @@ export function apply(ctx, config) {
   }
 
 
-  function processNativeHudRequest() {
-    if (disposed) return;
-    const nonce = config.nativeHudRequestNonce.get();
-    if (typeof nonce !== 'string' || !nonce || nonce === lastNativeHudNonce) return;
-    lastNativeHudNonce = nonce;
-    if (nativeHudWindow) return; // one native window at a time
-    try {
-      nativeHudWindow = launchWindowsHud({
-        snapshot: config.nativeHudSnapshot.get(),
-        language: config.nativeHudLanguage.get(),
-        onReady: () => {
-          if (disposed) { nativeHudWindow?.close(); return; }
-          // Only a ready, visible native window may cause the Client to
-          // leave Component Center and reveal the original DSH session.
-          void writeSettings({ nativeHudState:'open', nativeHudError:'' })
-            .then(saved => { if (!saved) nativeHudWindow?.close(); })
-            .catch(() => nativeHudWindow?.close());
-        },
-        onExit: ({ready,error}) => {
-          nativeHudWindow = null;
-          if (disposed) return;
-          void writeSettings({
-            nativeHudState: ready ? 'closed' : 'failed',
-            nativeHudError: ready ? '' :
-              String(error || 'Windows native HUD could not open.').slice(0,240),
-          }).catch(() => {});
-        },
-      });
-    } catch (error) {
-      if (!disposed) {
-        void writeSettings({
-          nativeHudState:'failed',
-          nativeHudError:String(error?.message || 'Native HUD is unavailable.').slice(0,240),
-        }).catch(() => {});
-      }
+  // Use official Connection unary RPC, not ConfigEditor/volatile-update as a
+  // command queue. Each click receives the actual native launch result.
+  function openNativeHud(payload, signal, peer) {
+    const failed = (code, message) => ({ ok:false, error:{
+      code, message:String(message || 'Unknown native HUD failure.').slice(0,450),details:{},
+    } });
+    if (disposed) return Promise.resolve(failed('hud/host-disposed','HUD Host is shutting down.'));
+    if (peer?.principal?.kind !== 'owner') {
+      return Promise.resolve(failed('hud/forbidden','Native HUD requires an authenticated owner.'));
     }
+    if (nativeHudWindow !== null) {
+      return Promise.resolve(failed('hud/already-open','A native HUD window is already opening or open.'));
+    }
+    if (!payload || typeof payload.snapshot !== 'string' ||
+      payload.snapshot.length > 16_000 || !['zh','en'].includes(payload.language)) {
+      return Promise.resolve(failed('hud/bad-request','Invalid HUD launch snapshot or language.'));
+    }
+    if (signal?.aborted) return Promise.resolve(failed('hud/cancelled','HUD launch was cancelled.'));
+    return new Promise(resolve => {
+      let answered = false;
+      const answer = value => {
+        if (answered) return;
+        answered = true;
+        signal?.removeEventListener?.('abort', cancel);
+        resolve(value);
+      };
+      const cancel = () => {
+        nativeHudWindow?.close();
+        answer(failed('hud/cancelled','Native HUD launch was cancelled or timed out.'));
+      };
+      signal?.addEventListener?.('abort', cancel, {once:true});
+      try {
+        ctx.logger?.info?.('HUD native RPC: launching Windows WPF window');
+        nativeHudWindow = launchWindowsHud({
+          snapshot: payload.snapshot, language:payload.language,
+          onReady: () => {
+            if (disposed || signal?.aborted) { cancel(); return; }
+            ctx.logger?.info?.('HUD native RPC: WPF READY, DSH window hidden');
+            answer({ok:true,value:{state:'open'}});
+          },
+          onExit: ({ready,error}) => {
+            nativeHudWindow = null;
+            if (disposed) return;
+            if (!ready) {
+              ctx.logger?.warn?.('HUD native RPC startup failed: %s',String(error||'unknown'));
+              answer(failed('hud/native-start-failed',error ||
+                'WPF exited before the independent HUD appeared.'));
+            } else if (error) {
+              ctx.logger?.warn?.('HUD native window exited: %s',String(error));
+            }
+          },
+        });
+      } catch (error) {
+        nativeHudWindow = null;
+        ctx.logger?.warn?.('HUD native RPC unavailable: %s',String(error?.message || error));
+        answer(failed('hud/native-unavailable',error?.message || error));
+      }
+    });
   }
 
   // After a self-update the old Host can vanish before acknowledging success.
@@ -573,6 +594,12 @@ export function apply(ctx, config) {
   }
 
   ctx.effect(() => {
+    const unregisterNativeRpc = ctx.connection.rpc.handle('/hud-native',
+      (endpoint, payload, signal, peer) => endpoint === 'open'
+        ? openNativeHud(payload, signal, peer)
+        : Promise.resolve({ok:false,error:{
+          code:'hud/unknown-command',message:'Unsupported native HUD command.',details:{},
+        }}));
     const guarded = promise => {
       Promise.resolve(promise).catch(error => {
         if (!disposed) {
@@ -587,7 +614,6 @@ export function apply(ctx, config) {
     // remains as a fallback for runtimes without the event.
     ctx.on?.('loader/volatile-update', () => {
       if (!disposed && config.checkNonce.get()) guarded(processCheckRequest());
-      if (!disposed) processNativeHudRequest();
     });
     const reconcile = setTimeout(() => { if (!disposed) guarded(reconcileAfterReload()); }, 1500);
     const poll = setInterval(() => { if (!disposed) guarded(discover()); }, CHECK_MS);
@@ -595,13 +621,13 @@ export function apply(ctx, config) {
       if (!disposed) {
         guarded(processCheckRequest());
         guarded(processManualRequest());
-        processNativeHudRequest();
       }
     }, REQUEST_MS);
     return () => {
       disposed = true;
       nativeHudWindow?.close();
       nativeHudWindow = null;
+      void unregisterNativeRpc();
       controller.abort();
       clearTimeout(reconcile);
       clearInterval(poll);

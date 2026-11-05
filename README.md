@@ -98,3 +98,7 @@ V0.5.3 报告的手动检查超时已有一条**确认的源码故障路径**：
 ## V0.5.7 Windows 独立 HUD（试验版候选）
 
 从 HUD 组件中心主动打开 WPF 原生无边框窗口：新窗体不显示系统最小化、最大化、关闭按钮，提供「返回 DSH」按钮，显示后隐藏原 DSH，退出时恢复主窗口。与原有 DSH 内部 shell.overlay 视图不同，独立窗口是本地 PowerShell/WPF 辅助进程，当前只能读取打开时的会话快照，尚未实现 Electron 原生 BrowserWindow 集成、透明置顶或聊天输入。Linux 和 Windows CI 加入脚本/包结构检查，实机 U057 验收需由 Windows Desktop 用户执行。详见 [独立窗口说明](docs/HUD-NATIVE-WINDOW-V057.md)。
+
+## V0.5.8 启动超时修复候选
+
+用户报告 V0.5.7 独立 HUD 无窗口、触发超时。本版不再把独立窗口启动请求放进 DSH ConfigForms/Host 队列，而是调用 DSH 正式 Connection RPC，等待真实 WPF READY 并显示错误码；继续限制只能从 HUD 组件中心启动。Windows 主窗口查找改为确认 Electron 父进程、Chromium 窗口类型和唯一性，不再依赖可变标题。V0.5.8 须通过 GitHub CI 后才登记 Unstable，真实 Windows U058 仍需人工验收。[具体修复与验收](docs/HUD-NATIVE-WINDOW-V058.md)。

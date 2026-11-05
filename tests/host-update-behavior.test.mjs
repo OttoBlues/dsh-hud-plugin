@@ -53,9 +53,9 @@ function setup(overrides={}) {
     requestNonce:'',updateStatus:'',
     ...overrides.values,
   };
-  const calls={http:[],installed:[],list:0,writes:[],logs:[],cached:[]};
+  const calls={http:[],installed:[],list:0,writes:[],logs:[],cached:[],native:[]};
   const inventory=overrides.inventory || [{name:NAME,installed:true,version:'0.4.0'}];
-  const callbacks=[], startTimers=[], events=new Map();let dispose=()=>{};
+  const callbacks=[], startTimers=[], events=new Map(),rpcRoutes=new Map();let dispose=()=>{};
   const editableEntry={options:{id:'dsh-hud'}};
   let editorReady=overrides.editorInitiallyAvailable!==false;
   let failCheckClaimOnce=overrides.rejectCheckClaimOnce===true;
@@ -95,6 +95,10 @@ function setup(overrides={}) {
       }};
     },
     logger:{warn:(...x)=>calls.logs.push(x.join(' ')),info:(...x)=>calls.logs.push(x.join(' '))},
+    connection:{rpc:{handle(channel,callback){
+      rpcRoutes.set(channel,callback);
+      return ()=>rpcRoutes.delete(channel);
+    }}},
     pluginManager:{
       async listBundles(){calls.list++;return inventory;},
       async installBundle(path,opts){
@@ -120,6 +124,11 @@ function setup(overrides={}) {
   }
   const sandbox={
     Schema,createHash,Buffer,AbortController,AbortSignal,fetch,join,Date:TestDate,
+    launchWindowsHud(options) {
+      calls.native.push(options);
+      if (overrides.nativeThrows) throw new Error('Window spawn forbidden by OS');
+      return {close(){calls.nativeClosed=true;}};
+    },
     homedir:()=>'/home',process:{env:{},pid:999},
     mkdir:async()=>{},writeFile:async(path,data)=>{calls.cached.push({path,data});},
     rename:async()=>{},
@@ -142,6 +151,11 @@ function setup(overrides={}) {
     await flush();
   }
   return {values,calls,inventory,click,
+    native:(data={snapshot:'{"sessions":[]}',language:'zh'},signal=new AbortController().signal,peer={principal:{kind:'owner'}})=>{
+      const handler=rpcRoutes.get('/hud-native');
+      assert.equal(typeof handler,'function');
+      return handler('open',data,signal,peer);
+    },
     check:async()=>{values.checkNonce='check-'+(++id);values.checkState='checking';
       callbacks[1]();await flush();},
     refresh:async()=>{callbacks[0]();await flush();},
@@ -473,5 +487,64 @@ test('immediate volatile-update callback handles checks without a timer tick',as
     assert.equal(s.values.checkState,'success');
     assert.equal(s.values.checkNonce,'');
     assert.equal(s.calls.installed.length,0);
+  }finally{s.stop();}
+});
+
+test('native HUD RPC reports READY without a Host ConfigEditor write',async()=>{
+  const s=setup();
+  try {
+    const promise=s.native();
+    assert.equal(s.calls.native.length,1);
+    assert.equal(s.calls.writes.filter(x=>x.nativeHudState).length,0);
+    s.calls.native[0].onReady();
+    const opened=await promise;
+    assert.equal(opened.ok,true);
+    assert.equal(opened.value.state,'open');
+    s.calls.native[0].onExit({ready:true,error:''});
+    const next=s.native();
+    assert.equal(s.calls.native.length,2,'Closing native window allows another launch');
+    s.calls.native[1].onReady();
+    await next;
+  }finally{s.stop();}
+});
+
+test('native HUD RPC propagates exact process-start failure to the Client',async()=>{
+  const s=setup({nativeThrows:true});
+  try {
+    const result=await s.native();
+    assert.equal(result.ok,false);
+    assert.equal(result.error.code,'hud/native-unavailable');
+    assert.match(result.error.message,/Window spawn forbidden by OS/);
+    assert.equal(s.calls.writes.filter(x=>x.nativeHudState).length,0);
+  }finally{s.stop();}
+});
+
+test('native HUD RPC cancels pending launch and restores shell on transport abort',async()=>{
+  const s=setup();
+  try {
+    const abort=new AbortController();
+    const outcome=s.native(undefined,abort.signal);
+    assert.equal(s.calls.native.length,1);
+    abort.abort();
+    const result=await outcome;
+    assert.equal(result.ok,false);
+    assert.equal(result.error.code,'hud/cancelled');
+    assert.equal(s.calls.nativeClosed,true);
+  }finally{s.stop();}
+});
+
+test('native HUD RPC disallows non-owner and duplicate windows',async()=>{
+  const s=setup();
+  try {
+    const blocked=await s.native(undefined,new AbortController().signal,
+      {principal:{kind:'guest'}});
+    assert.equal(blocked.error.code,'hud/forbidden');
+    assert.equal(s.calls.native.length,0);
+    const opening=s.native();
+    assert.equal(s.calls.native.length,1);
+    const duplicate=await s.native();
+    assert.equal(duplicate.error.code,'hud/already-open');
+    s.calls.native[0].onReady();
+    await opening;
   }finally{s.stop();}
 });

@@ -8,7 +8,7 @@
 - 自动更新默认关闭，试验版订阅与自动试验版需要独立授权；窗口内 HUD 预览默认关闭。
 - 历史 V0.4.0 曾出现自更新宿主异常，V0.4.1 引入 Host 生命周期保护。
 
-**已发布：** Unstable V0.5.7（Windows 独立无边框 HUD，U057 实机验收待完成）；Released 为空。用户截图确认已在 Windows Desktop 安装 V0.4.1。
+**已发布：** Unstable V0.5.7（用户报告打开独立 HUD 超时）；**修复候选：** V0.5.8；Released 为空。用户截图确认已在 Windows Desktop 安装 V0.4.1。
 
 **历史发布：** V0.4.2 完成仓库更名与本地 Runner 退役。后续 v0.5.x 已增加 DSH 组件中心、只读公开更新检查与独立 HUD 候选。安装仍须人工确认，不能将 CI 视为 Desktop 无崩溃验收。
 
@@ -51,3 +51,7 @@
 ## V0.5.7 Windows 独立窗口候选（U057 待验收）
 
 通过 HUD 组件中心打开一个单独的 WPF 原生无边框窗口，不显示最小化/最大化/关闭按钮，提供「返回 DSH」按钮。原 DSH 仅在新窗口可见后隐藏，窗口关闭时恢复；没有悬浮 HUD 入口。该版本使用打开时采集的只读会话快照，未实现 Electron BrowserWindow、透明/置顶或点击穿透。Windows PowerShell/WPF 需要在目标机可用；详情见 docs/HUD-NATIVE-WINDOW-V057.md。
+
+## V0.5.8 启动超时修复
+
+v0.5.7 的独立 HUD 启动仍通过 ConfigForms nonce 排队给 Host，Host 重建后可能直接消费新请求而不运行。v0.5.8 改为 DSH 正式 Connection RPC，一次按钮点击即发送启动 RPC，等待 WPF READY 并返回真实失败原因；窗口匹配不再依赖可能变化的 DSH 标题。仍只支持 Windows Desktop，U058 实机验收待完成。详情见 docs/HUD-NATIVE-WINDOW-V058.md。

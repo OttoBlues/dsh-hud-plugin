@@ -41,8 +41,20 @@ const response=(body,status=200)=>{
 async function flush(){for(let i=0;i<10;i++)await tick();}
 
 function setup(overrides={}) {
+  // Legacy pre-v0.5.9 requests can still be pending; their cached catalog is
+  // supplied by the previous plugin generation. New runtime discovery no
+  // longer writes Loader config just to expose metadata.
+  const existingReleased=overrides.released===undefined?'0.4.1':overrides.released;
+  const stored=(channel,version)=>version?{
+    channel,version,file:'v'+version+'/local-dsh-hud-'+version+'.tgz',
+    sha256:overrides.badChecksum?'f'.repeat(64):sha,commit,
+  }:null;
+  const savedCatalog=JSON.stringify({schema:3,source:'public',
+    components:[{...repoIndex.components[0],
+      released:stored('released',existingReleased),
+      unstable:stored('unstable',overrides.unstable||null)}]});
   const values={
-    catalog:'{"schema":3,"source":"checking","components":[]}',
+    catalog:savedCatalog,
     allowUnstable:false,autoUpdateEnabled:false,autoUpdateUnstable:false,
     autoAttemptKey:'',overlayVisible:false,
     nativeHudRequestNonce:'',nativeHudSnapshot:'',nativeHudLanguage:'zh',
@@ -54,6 +66,7 @@ function setup(overrides={}) {
     ...overrides.values,
   };
   const calls={http:[],installed:[],list:0,writes:[],logs:[],cached:[],native:[]};
+  const storedFiles=new Map();
   const inventory=overrides.inventory || [{name:NAME,installed:true,version:'0.4.0'}];
   const callbacks=[], startTimers=[], events=new Map(),rpcRoutes=new Map();let dispose=()=>{};
   const editableEntry={options:{id:'dsh-hud'}};
@@ -130,8 +143,12 @@ function setup(overrides={}) {
       return {close(){calls.nativeClosed=true;}};
     },
     homedir:()=>'/home',process:{env:{},pid:999},
-    mkdir:async()=>{},writeFile:async(path,data)=>{calls.cached.push({path,data});},
-    rename:async()=>{},
+    mkdir:async()=>{},readFile:async path=>{
+      if(!storedFiles.has(path))throw new Error('ENOENT');
+      return storedFiles.get(path);
+    },
+    writeFile:async(path,data)=>{calls.cached.push({path,data});storedFiles.set(path,String(data));},
+    rename:async(from,to)=>{storedFiles.set(to,storedFiles.get(from));storedFiles.delete(from);},
     setInterval:fn=>{callbacks.push(fn);return callbacks.length;},
     clearInterval(){},
     setTimeout:fn=>{startTimers.push(fn);return startTimers.length;},
@@ -156,6 +173,10 @@ function setup(overrides={}) {
       assert.equal(typeof handler,'function');
       return handler('open',data,signal,peer);
     },
+    status:()=>rpcRoutes.get('/hud-native')('status',{},
+      new AbortController().signal,{principal:{kind:'owner'}}),
+    prepare:(data,signal=new AbortController().signal,peer={principal:{kind:'owner'}})=>
+      rpcRoutes.get('/hud-native')('prepare-install',data,signal,peer),
     check:async()=>{values.checkNonce='check-'+(++id);values.checkState='checking';
       callbacks[1]();await flush();},
     refresh:async()=>{callbacks[0]();await flush();},

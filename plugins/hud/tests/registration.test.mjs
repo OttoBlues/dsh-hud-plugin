@@ -7,7 +7,11 @@ const client = readFileSync(new URL('../client.js', import.meta.url), 'utf8');
 
 function setup(valuesOverride={}, runtime={}) {
   let module;
-  vm.runInNewContext(client, {window:{__ModuleLoader__:{load(x){module=x;}}}});
+  vm.runInNewContext(client, {
+    window:{__ModuleLoader__:{load(x){module=x;}}},
+    fetch:runtime.fetch || (async()=>{throw new Error('Browser fetch unavailable');}),
+    AbortSignal,
+  });
   assert.equal(module?.id,'@local/dsh-hud');
   const hookSets=new Map(); let cursor=0; let currentScope='root';
   const withHooks=(key,run)=>{currentScope=key;cursor=0;return run();};
@@ -112,7 +116,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.5.6')])});
+  const ui=setup({catalog:catalog([own('0.5.7')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -334,69 +338,89 @@ test('component center inherits DSH colors, keeps native cards and controls',()=
 });
 
 
-test('check updates button queues a manual scan without queuing a package',async()=>{
-  const ui=setup({catalog:catalog([own('0.6.0','0.6.1')])});
-  const button=find(ui.render('main'),x=>x.props?.['data-hud-check-button']===true)[0];
-  assert.ok(button,'manual scan button exists');
-  assert.equal(button.props.disabled,false);
-  button.props.onClick();
+
+const rootPath='https://raw.githubusercontent.com/OttoBlues/dsh-hud-plugin/main/plugins/';
+const publicIndex={schema:1,components:[{
+  id:'hud',name:'@local/dsh-hud',title:'DSH HUD',
+  description:'Verified metadata from the fixed public source',
+}]};
+const stableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
+  channel:'released',latest:null,releases:[]};
+const unstableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
+  channel:'unstable',latest:'0.5.7',releases:[{
+    version:'0.5.7',file:'v0.5.7/local-dsh-hud-0.5.7.tgz',
+    sha256:'f'.repeat(64),sourceCommit:'a'.repeat(40),
+    test:{result:'success',ciRun:'123456'},
+  }]};
+function mockPublicFetch(options={}){
+  const calls=[];
+  const fetcher=async(url,request)=>{
+    calls.push({url,request});
+    if(!url.startsWith(rootPath))throw new Error('External origin not allowed');
+    const path=url.slice(rootPath.length);
+    if(options.blocked)throw new TypeError('Failed to fetch (CORS)');
+    const status=options.failUnstable && path==='hud/unstable/index.json'?503:200;
+    const value=path==='index.json'?publicIndex:
+      path==='hud/released/index.json'?stableIndex:
+      path==='hud/unstable/index.json'?unstableIndex:null;
+    return {ok:status===200&&!!value,status,
+      async text(){return JSON.stringify(value??{});}};
+  };
+  return {fetcher,calls};
+}
+test('Check updates reads public GitHub directly without any Host config commands',async()=>{
+  const network=mockPublicFetch();
+  const ui=setup({allowUnstable:true},{fetch:network.fetcher});
+  const btn=find(ui.render('main'),x=>x.props?.['data-hud-check-button']===true)[0];
+  btn.props.onClick();
   await flushMode();
-  assert.equal(ui.values.checkState,'queued');
-  assert.match(ui.values.checkQueuedAt,/^\d{4}-\d\d-\d\dT/);
-  assert.match(ui.values.checkNonce,/^\d+-/);
-  assert.equal(ui.values.requestNonce,'','Refresh must not install a bundle');
-  assert.equal(ui.values.updateStatus,'');
-  const pending=find(ui.render('main'),x=>x.props?.['data-hud-check-button']===true)[0];
-  assert.equal(pending.props.disabled,true);
+  assert.equal(network.calls.length,3);
+  assert(network.calls.every(x=>
+    x.url.startsWith(rootPath) &&
+    x.request.credentials==='omit' &&
+    x.request.mode==='cors' &&
+    x.request.redirect==='error'));
+  assert.equal(ui.values.checkNonce,'','No Host check command was queued');
+  assert.equal(ui.values.requestNonce,'','No install command was queued');
+  assert.equal(ui.updates.length,0,'No configForm mutations of any kind');
+  const checked=ui.render('main');
+  const status=find(checked,x=>x.props?.['data-hud-check-state']==='success')[0];
+  assert.ok(status);
+  assert.match(JSON.stringify(checked),/试验版: 0\.5\.7/);
+  assert.match(JSON.stringify(checked),/Verified metadata from the fixed public source/);
 });
-
-test('partial index checks display actual channel errors, not up-to-date',()=>{
-  const ui=setup({checkState:'partial',checkAt:'2026-11-05T02:40:10Z',
-    checkError:'hud/unstable: HTTP 404',checkOrigin:'canonical'});
+test('A broken unstable channel reports partial check and hides stale latest',async()=>{
+  const network=mockPublicFetch({failUnstable:true});
+  const ui=setup({allowUnstable:true},{fetch:network.fetcher});
+  find(ui.render('main'),x=>x.props?.['data-hud-check-button']===true)[0].props.onClick();
+  await flushMode();
   const tree=ui.render('main');
-  const panel=find(tree,x=>x.props?.['data-hud-check-panel']===true)[0];
-  assert.ok(panel);
-  assert.equal(find(panel,x=>x.props?.['data-hud-check-state']==='partial').length,1);
-  assert.equal(find(panel,x=>x.props?.['data-hud-check-error']===true).length,1);
-  assert.match(JSON.stringify(panel),/hud\/unstable: HTTP 404/);
-  assert.match(JSON.stringify(panel),/当前源：dsh-hud-plugin/);
+  assert.equal(find(tree,x=>x.props?.['data-hud-check-state']==='partial').length,1);
+  const error=find(tree,x=>x.props?.['data-hud-check-error']===true)[0];
+  assert.match(JSON.stringify(error),/HTTP 503/);
+  assert.match(JSON.stringify(tree),/试验版: —/);
 });
-
-test('check button remains available when catalog is offline',()=>{
-  const ui=setup({catalog:'{"schema":3,"source":"unavailable","components":[]}'});
-  const button=find(ui.render('main'),x=>x.props?.['data-hud-check-button']===true)[0];
-  assert.ok(button);
-  assert.equal(button.props.disabled,false);
-});
-
-
-test('stale manual check becomes a visible timeout and can retry without restart',async()=>{
-  const previous=new Date(Date.now()-65_000).toISOString();
-  const ui=setup({checkNonce:'stale-host',checkState:'checking',checkQueuedAt:previous});
+test('Browser CORS/network failure is displayed and does not lock the button',async()=>{
+  const network=mockPublicFetch({blocked:true});
+  const ui=setup({checkNonce:'orphaned-host',checkState:'queued'}, {fetch:network.fetcher});
+  find(ui.render('main'),x=>x.props?.['data-hud-check-button']===true)[0].props.onClick();
+  await flushMode();
   const tree=ui.render('main');
-  const button=find(tree,x=>x.props?.['data-hud-check-button']===true)[0];
-  assert.ok(button);
-  assert.equal(button.props.disabled,false,'Watchdog must re-enable button');
-  const report=find(tree,x=>x.props?.['data-hud-check-state']==='timeout')[0];
-  assert.ok(report,'Timeout visible even when Host never responds');
-  assert.match(JSON.stringify(report),/检查超时/);
-  button.props.onClick();await flushMode();
-  assert.notEqual(ui.values.checkNonce,'stale-host');
-  assert.equal(ui.values.checkState,'queued');
-  assert.notEqual(ui.values.checkQueuedAt,previous);
+  assert.equal(find(tree,x=>x.props?.['data-hud-check-state']==='failed').length,1);
+  const error=find(tree,x=>x.props?.['data-hud-check-error']===true)[0];
+  assert.match(JSON.stringify(error),/CORS/);
+  assert.equal(find(tree,x=>x.props?.['data-hud-check-button']===true)[0].props.disabled,false);
+  assert.equal(ui.values.checkNonce,'orphaned-host','A stale Host request cannot be silently removed');
 });
-
-test('checks stuck across earlier HUD versions can retry with no timestamp',()=>{
-  const ui=setup({checkNonce:'pre-053',checkState:'checking',checkQueuedAt:''});
+test('The old Host queue no longer disables the new read-only Check button',()=>{
+  const ui=setup({checkNonce:'stale',checkState:'checking'});
   const tree=ui.render('main');
   assert.equal(find(tree,x=>x.props?.['data-hud-check-button']===true)[0].props.disabled,false);
-  assert.equal(find(tree,x=>x.props?.['data-hud-check-state']==='timeout').length,1);
+  assert.equal(find(tree,x=>x.props?.['data-hud-check-state']==='idle').length,1);
 });
-
-test('background scan time is surfaced in native Component Center',()=>{
-  const ui=setup({scanAt:'2026-11-05T01:00:00Z',scanState:'success'});
-  const panel=find(ui.render('main'),x=>x.props?.['data-hud-check-panel']===true)[0];
-  assert.match(JSON.stringify(panel),/后台检查/);
+test('Direct read-only Check remains usable with Host catalog unavailable',()=>{
+  const ui=setup({catalog:'{"schema":3,"source":"unavailable","components":[]}'});
+  assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-check-button']===true)[0].props.disabled,false);
 });
 
 test('HUD entry stays exclusive to component center after DSH mode restore',()=>{

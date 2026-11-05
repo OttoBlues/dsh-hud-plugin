@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.5.4",
+  "latest": "0.5.5",
   "releases": [
     {
       "version": "0.3.0",
@@ -103,6 +103,17 @@
         "result": "success"
       },
       "note": "Experimental Host check recovery: retry nonce after ConfigEditor failure, resolve editor/loader entry when needed, and log scan progress. Requires real DSH acceptance."
+    },
+    {
+      "version": "0.5.5",
+      "file": "v0.5.5/local-dsh-hud-0.5.5.tgz",
+      "sha256": "c558c05893cacf788799ee7d1ebc959d773d390eea093ce43e2972b228e7ce2d",
+      "sourceCommit": "d58439f40787e52a7742dbb8bf26eecf6516a56d",
+      "test": {
+        "ciRun": "41970014299",
+        "result": "success"
+      },
+      "note": "Experimental Host handoff fix: addressable DSH Loader ConfigEditor entry, volatile-update immediate trigger, single atomic scan-result write; Windows Desktop U055 acceptance pending."
     }
   ]
 }

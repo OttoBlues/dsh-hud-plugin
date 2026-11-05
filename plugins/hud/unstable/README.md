@@ -1,6 +1,6 @@
 # HUD · Unstable 试验版通道
 
-此目录只包含经过 CI 审查、在 `index.json` 中登记的不可变试验安装包，不是 Released 正式版。当前列有 V0.3.0、V0.4.0、V0.4.1、V0.4.2、V0.5.0、V0.5.1、V0.5.2、V0.5.3、V0.5.4；`latest` 为 **0.5.4**。
+此目录只包含经过 CI 审查、在 `index.json` 中登记的不可变试验安装包，不是 Released 正式版。当前列有 V0.3.0、V0.4.0、V0.4.1、V0.4.2、V0.5.0、V0.5.1、V0.5.2、V0.5.3、V0.5.4、V0.5.5；`latest` 为 **0.5.5**。
 
 ```text
 unstable/
@@ -29,3 +29,5 @@ V0.4.2 已经根据用户明确请求加入本通道，但未经完整 Desktop �
 - V0.5.3：修复手动刷新卡死无超时出口、限制后台请求和 Host 配置写入时间、增加 45 秒重试；HUD 纯色统一边线/面板，移除 DSH 上的悬浮进入按钮。来源提交 `c7e261f21a7267387556da6b8e08eb68f3b8d17a`，CI `41913217218` 成功；尚待用户 U053 实机检查。
 
 - V0.5.4：ConfigEditor 初始不可用或一次性写入失败后，Host 会尝试恢复、同 nonce 退避重试并记录阶段警告；来源提交 `2933b19c4e6f1efaa4266682cf43e7a941b4bc8c`，主分支 Linux/Windows CI `41943053479` 成功。U054 真实 Desktop 验收尚未执行，Released 仍为空。
+
+- V0.5.5：修复 Host 对 DSH 可编辑 Loader 条目的定位；监听 `loader/volatile-update` 提前处理手动检查；一次性写回检查结果以避免两次配置重组。源码提交 `d58439f40787e52a7742dbb8bf26eecf6516a56d`，主分支 Linux/Windows CI `41970014299` 成功；需 U055 Windows Desktop 实测。

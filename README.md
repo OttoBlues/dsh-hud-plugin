@@ -7,8 +7,8 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.4 试验源码**（已发布 Unstable，修复 Host 检查请求永久丢失的明确代码缺陷）。
-- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.4**。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.5 试验源码**（已发布 Unstable，改用 DSH 可编辑 Loader 条目和配置事件触发手动检查）。
+- `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.5**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
 
@@ -84,3 +84,5 @@ V0.5.3 报告的手动检查超时已有一条**确认的源码故障路径**：
 ## V0.5.5 开发：调查“Host 未接收检查请求”
 
 对 V0.5.4 的源码与 DSH 官方 ConfigEditor 实现交叉核对：编辑器只允许修改 `configEditor.entries()` 列出的可编辑 Loader 条目，而之前 HUD 采用 `ctx.fiber.entry` 快捷引用，可能存在条目身份不匹配。V0.5.5 按 `dsh-hud` profile entry ID 从官方编辑器列出的行定位，监听 `loader/volatile-update` 立即处理新检查请求；为了避免两次 profile reconcile，只在检查结束时一次性写回索引与结果。模拟纤程条目身份错误但可编辑条目正确、配置源不可编辑、配置事件即时到达的回归测试已添加。真实 Windows DSH 的问题是否彻底解决仍需实测确认。
+
+**V0.5.5 Unstable 发布状态：** 固定源码提交 `d58439f40787e52a7742dbb8bf26eecf6516a56d` 经主分支 CI `41970014299` 验证，包体 SHA-256 已记录于版本索引。此修复是基于 DSH 官方 ConfigEditor API 的代码兼容性修正，是否解决用户设备上所有 Host 请求超时还需要独立测试；不晋升正式版。

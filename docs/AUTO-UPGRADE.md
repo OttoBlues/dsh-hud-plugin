@@ -49,3 +49,5 @@ GitHub 云端 Actions 仅运行 CI 测试和源码结构打包，不访问用户
 - V0.5.4：Unstable 小范围修复；Host 的检查 nonce 只在配置状态写入成功后记为已处理，遇短暂配置编辑失败会退避重试，读取配置编辑器改为运行时获取，方便查明“排队等待 Host”后超时的原因。点击仍不自动安装。
 
 - V0.5.5 开发：组件更新检查改为匹配 DSH ConfigEditor 可编辑的唯一 `dsh-hud` Loader entry，响应官方 `loader/volatile-update` 事件，并将扫描结果作为一次配置写入返回，避免旧版预先提交 `checking` 后引发两次 profile 重组的风险。具体本机效果需要独立验收。
+
+- V0.5.5：已发布 Unstable；Host 以官方 ConfigEditor 可编辑 `dsh-hud` 条目定位状态写入，监听 Loader volatile 变更立即响应检查请求，一次扫描只进行一次结果写回，避免不必要的 profile 重组。U055 实机完成前不能称故障已彻底消除。

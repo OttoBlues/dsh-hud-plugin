@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "component": "hud",
+  "package": "@local/dsh-hud",
+  "channel": "unstable",
+  "version": "0.5.5",
+  "file": "local-dsh-hud-0.5.5.tgz",
+  "sha256": "c558c05893cacf788799ee7d1ebc959d773d390eea093ce43e2972b228e7ce2d",
+  "sourceCommit": "d58439f40787e52a7742dbb8bf26eecf6516a56d",
+  "test": {
+    "ciRun": "41970014299",
+    "result": "success"
+  },
+  "verification": {
+    "sourceCi": "41970014299",
+    "role": "U055 Loader entry / volatile check delivery manual Desktop verification",
+    "approvedAsStable": false
+  }
+}

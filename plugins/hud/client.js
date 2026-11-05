@@ -713,8 +713,13 @@ window.__ModuleLoader__.load({
             } else {
               const result=outcome.value||{};
               if(result.application==='failed'||result.application==='cancelled') {
-                throw new Error(String(result.error?.diagnostic||result.error?.code||
-                  result.packageResult?.output||'Plugin Manager refused installation').slice(0,300));
+                // An authoritative Plugin Manager refusal is a FAILURE, not an
+                // "unknown" install that keeps blocking future versions.
+                const reason=String(result.error?.diagnostic||result.error?.code||
+                  result.packageResult?.output||'Plugin Manager refused installation').slice(0,300);
+                setPending(null);persistPending(null);
+                setError(t('prepareFailed')+' '+reason);
+                return;
               }
               if(!['applied','restart-required'].includes(result.application)) {
                 throw new Error('Unknown installation outcome: '+String(result.application));

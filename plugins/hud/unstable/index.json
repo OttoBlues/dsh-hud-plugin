@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.5.6",
+  "latest": "0.5.7",
   "releases": [
     {
       "version": "0.3.0",
@@ -125,6 +125,17 @@
         "result": "success"
       },
       "note": "Experimental independent read-only browser channel checks, no Host configuration nonce; fixed public source with schema/CI/SHA metadata validation. U056 Windows test needed (CORS and installation separate)."
+    },
+    {
+      "version": "0.5.7",
+      "file": "v0.5.7/local-dsh-hud-0.5.7.tgz",
+      "sha256": "19390a89a4379e04b42b35e067bc1994eb084f743a0361a5802af8e7e7ad3c86",
+      "sourceCommit": "2c769c049c8664632794b9ece917b175577e0fd4",
+      "test": {
+        "ciRun": "41977525497",
+        "result": "success"
+      },
+      "note": "Explicitly requested U057 Windows independent frameless HUD experiment. Native WPF helper, one Return-to-DSH exit, no floating launcher; Windows Desktop UAT pending."
     }
   ]
 }

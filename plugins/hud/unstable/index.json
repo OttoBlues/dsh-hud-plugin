@@ -3,7 +3,7 @@
   "component": "hud",
   "package": "@local/dsh-hud",
   "channel": "unstable",
-  "latest": "0.5.5",
+  "latest": "0.5.6",
   "releases": [
     {
       "version": "0.3.0",
@@ -114,6 +114,17 @@
         "result": "success"
       },
       "note": "Experimental Host handoff fix: addressable DSH Loader ConfigEditor entry, volatile-update immediate trigger, single atomic scan-result write; Windows Desktop U055 acceptance pending."
+    },
+    {
+      "version": "0.5.6",
+      "file": "v0.5.6/local-dsh-hud-0.5.6.tgz",
+      "sha256": "451315a7cb6c9b11a56542aa823bcd43408e7fa39cef5bf899f5cd691a44dc82",
+      "sourceCommit": "01e088db5cfe2dc2eaf72a23e1b4ac0ca58e26b4",
+      "test": {
+        "ciRun": "41972165734",
+        "result": "success"
+      },
+      "note": "Experimental independent read-only browser channel checks, no Host configuration nonce; fixed public source with schema/CI/SHA metadata validation. U056 Windows test needed (CORS and installation separate)."
     }
   ]
 }

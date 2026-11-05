@@ -651,21 +651,82 @@ window.__ModuleLoader__.load({
           }
         };
         const queue = async (component,candidate) => {
-          setSaving(true); setError('');
+          if(installAttempt.current)return;
+          installAttempt.current=true;
+          setSaving(true);setError('');setInstallNote('');
+          let submitted=false;
+          const ctrl=new AbortController();
+          const timer=setTimeout(()=>ctrl.abort(),33_000);
           try {
-            const result = await form.mutate([
-              {op:'set',path:['requestComponent'],value:component.name},
-              {op:'set',path:['requestVersion'],value:candidate.version},
-              {op:'set',path:['requestChannel'],value:candidate.channel},
-              {op:'set',path:['requestNonce'],value:String(Date.now())},
-              {op:'set',path:['updateStatus'],value:'queued'},
+            // Verify the indexed SHA and commit in the Host, but execute pnpm
+            // in DSH's own stable Plugin Manager, outside the HUD plugin fiber.
+            const prepared=await ctx.connection.rpc.call('/hud-native','prepare-install',{
+              id:component.id,name:component.name,version:candidate.version,
+              channel:candidate.channel,
+            },ctrl.signal);
+            if(!prepared?.ok)throw new Error(
+              String(prepared?.error?.code||'hud/prepare-rejected')+': '+
+              String(prepared?.error?.message||'No verified artifact received'));
+            const facts=prepared.value||{};
+            if(facts.name!==component.name || facts.version!==candidate.version ||
+              facts.sha256!==candidate.sha256 || facts.channel!==candidate.channel ||
+              typeof facts.path!=='string'||facts.path.length>1024) {
+              throw new Error('Verified artifact metadata did not match the approved release.');
+            }
+            const record={name:component.name,version:candidate.version,
+              channel:candidate.channel,startedAt:Date.now(),stage:'installing',
+              requestId:'hud-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)};
+            setPending(record);persistPending(record);setConfirm('');
+            submitted=true;
+            clearTimeout(timer);
+            const installation=ctx.remote.pluginManager.installBundle(facts.path,{
+              enabled:true,saveExact:true,requestId:record.requestId,
+            });
+            // The Client may hot-reload during the install; a lost callback
+            // never means pnpm failed. Do not cancel a live DSH operation.
+            const outcome=await Promise.race([
+              installation,
+              new Promise(resolve=>setTimeout(()=>resolve({timedOut:true}),INSTALL_WAIT_MS)),
             ]);
-            if (!result) setError(t('failed'));
-            else setConfirm('');
-          } catch { setError(t('failed')); }
-          finally {setSaving(false);}
+            if(outcome?.timedOut) {
+              const next={...record,stage:'unconfirmed'};
+              setPending(next);persistPending(next);
+              setInstallNote(t('installUnconfirmed'));
+            } else if(!outcome?.ok) {
+              throw new Error(String(outcome?.error?.message||'Plugin Manager did not respond'));
+            } else {
+              const result=outcome.value||{};
+              if(result.application==='failed'||result.application==='cancelled') {
+                throw new Error(String(result.error?.diagnostic||result.error?.code||
+                  result.packageResult?.output||'Plugin Manager refused installation').slice(0,300));
+              }
+              if(!['applied','restart-required'].includes(result.application)) {
+                throw new Error('Unknown installation outcome: '+String(result.application));
+              }
+              if(result.version && result.version!==candidate.version) {
+                throw new Error('DSH installed an unexpected version: '+result.version);
+              }
+              const next={...record,stage:result.application==='restart-required'
+                ?'restart-required':'verifying'};
+              setPending(next);persistPending(next);
+              setInstallNote(t(result.application==='restart-required'?'restart':'installChecking'));
+            }
+          }catch(cause){
+            const message=transportDiagnostic(cause,t);
+            if(submitted){
+              // Install may already have committed while the old UI was
+              // detached. The inventory/restart check must decide its fate.
+              const next={...(readPending()||{name:component.name,version:candidate.version,
+                channel:candidate.channel,startedAt:Date.now()}),stage:'unconfirmed'};
+              setPending(next);persistPending(next);
+              setInstallNote(t('installUnconfirmed')+' '+message);
+            }else setError(t('prepareFailed')+' '+message);
+          }finally{
+            clearTimeout(timer);
+            installAttempt.current=false;
+            setSaving(false);
+          }
         };
-
 
         const checkState=directCheck.state;
         const busyCheck=requestingCheck;

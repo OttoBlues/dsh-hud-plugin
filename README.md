@@ -7,7 +7,7 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.5 试验源码**（已发布 Unstable，改用 DSH 可编辑 Loader 条目和配置事件触发手动检查）。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.6 开发源码**（独立读取 GitHub 公开发布索引，不再以插件配置写入传递检查命令）。
 - `plugins/hud/unstable/`：只存储已登记的不可变试验安装包，当前最新 **V0.5.5**。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。
@@ -86,3 +86,9 @@ V0.5.3 报告的手动检查超时已有一条**确认的源码故障路径**：
 对 V0.5.4 的源码与 DSH 官方 ConfigEditor 实现交叉核对：编辑器只允许修改 `configEditor.entries()` 列出的可编辑 Loader 条目，而之前 HUD 采用 `ctx.fiber.entry` 快捷引用，可能存在条目身份不匹配。V0.5.5 按 `dsh-hud` profile entry ID 从官方编辑器列出的行定位，监听 `loader/volatile-update` 立即处理新检查请求；为了避免两次 profile reconcile，只在检查结束时一次性写回索引与结果。模拟纤程条目身份错误但可编辑条目正确、配置源不可编辑、配置事件即时到达的回归测试已添加。真实 Windows DSH 的问题是否彻底解决仍需实测确认。
 
 **V0.5.5 Unstable 发布状态：** 固定源码提交 `d58439f40787e52a7742dbb8bf26eecf6516a56d` 经主分支 CI `41970014299` 验证，包体 SHA-256 已记录于版本索引。此修复是基于 DSH 官方 ConfigEditor API 的代码兼容性修正，是否解决用户设备上所有 Host 请求超时还需要独立测试；不晋升正式版。
+
+## V0.5.6 架构修正：版本查询与 DSH Host 配置分离
+
+用户 V0.5.5 实机反馈依然“DSH 更新服务未响应”。问题已超出多次修补 Host 配置编辑与事件通知的合理范围：`ConfigForms.mutate` 的正式职责是持久化 Loader 配置，而不是传输一次性后台命令。V0.5.6 新增由组件中心自身执行的**只读公开仓库扫描**，读取固定的 GitHub Raw 源和经校验的组件清单、Released/Unstable 索引；检查不调用配置写入，不排队 Host nonce，不安装包，因此不再会因为 Host 配置编辑失败卡在“等待检查结果”。如果浏览器由于网络或 CORS 限制无法访问，界面将明确显示错误并允许立即重试，而不是伪造最新版本。
+
+真正的插件安装仍需原有 Host 读取、校验 SHA-256、核实最新通道并经用户确认。公开只读查询成功**不代表安装通道已通过验证**，必须经 Windows DSH 实机验收，必要时另行改进安装请求通道。

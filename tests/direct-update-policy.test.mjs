@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.5.5 development source parse successfully',()=>{
+test('Host and Client v0.5.6 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -92,7 +92,13 @@ test('one-click checks use the Host allowlisted source and cannot auto-install',
   assert.match(client,/data-hud-check-button/);
   assert.match(client,/data-hud-check-state/);
   assert.match(client,/data-hud-check-error/);
-  assert.doesNotMatch(client,/fetch\(/);
+  assert.match(client,/async function checkPublicReleases\(\)/);
+  assert.match(client,/credentials:'omit'/);
+  assert.match(client,/redirect:'error'/);
+  assert.match(client,/mode:'cors'/);
+  assert.match(client,/raw\.githubusercontent\.com\/OttoBlues\/dsh-hud-plugin\/main\/plugins/);
+  const check=client.slice(client.indexOf('const requestCheck=async'),client.indexOf('const checkLabel='));
+  assert.doesNotMatch(check,/form\.mutate|form\.set/,'Read-only checks must not persist DSH settings');
 });
 
 test('HUD panels use fixed-pixel geometry while management inherits DSH theme',()=>{

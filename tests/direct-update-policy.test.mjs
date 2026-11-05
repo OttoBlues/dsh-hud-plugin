@@ -7,7 +7,7 @@ const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'ut
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.5.3 development source parse successfully',()=>{
+test('Host and Client v0.5.4 development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
@@ -128,4 +128,14 @@ test('flat cockpit uses one line and panel color; entry only in Component Center
   assert.doesNotMatch(client,/data-dsh-hud-switcher/);
   assert.match(client,/data-hud-enter-mode/);
   assert.match(client,/name:'shell\.overlay'/);
+});
+
+
+test('a transient missing ConfigEditor cannot permanently consume a check request',()=>{
+  assert.match(host,/const editor = ctx\.get\('configEditor'\)/);
+  assert.match(host,/const entry = ctx\.fiber\?\.entry/);
+  assert.match(host,/retryCheckAfter = Date\.now\(\) \+ 3_000/);
+  assert.match(host,/lastCheckNonce = nonce;/);
+  assert.match(host,/if \(!completed && !disposed && config\.checkNonce\.get\(\) === nonce\)/);
+  assert.match(host,/HUD manual check could not be claimed/);
 });

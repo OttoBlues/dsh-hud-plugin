@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.3: bounded update checks, flat cockpit, component-center-only entry.
+ * DSH HUD V0.5.4: flat cockpit and resilient Host manual-check results.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.3';
+    const VERSION = '0.5.4';
     const CHECK_WATCHDOG_MS = 45_000;
     const REFRESH_MS = 5 * 60_000;
 

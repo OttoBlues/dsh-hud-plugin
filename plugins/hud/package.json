@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "private": true,
   "type": "module",
-  "description": "DSH HUD minimal flat cockpit, responsive bounded update checks and native DSH component center",
+  "description": "DSH HUD flat cockpit and config-editor resilient manual updates",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },

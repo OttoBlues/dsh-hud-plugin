@@ -78,6 +78,7 @@ window.__ModuleLoader__.load({
         legacyStale:'旧版遗留的安装队列状态已经失效；以实际安装清单为准。',
         autoAttempt:'后台自动安装已提交；请核对安装版本与 Host 状态。',
         autoFailed:'后台自动安装结果未确认，请查看 DSH Host 日志。',
+        resetPending:'清除未确认记录（请先核对 DSH 插件状态）',
         confirm: '确认', cancel: '取消',
         confirmText: '只安装仓库对应通道中经过校验的 .tgz。更新期间 DSH 可能要求重启。',
         allowUnstable: '接收试验版更新', allowUnstableHelp: '默认关闭。开启后可以手动安装 unstable 中的试验包。',
@@ -125,6 +126,7 @@ window.__ModuleLoader__.load({
         legacyStale:'Ignoring an obsolete queued install from an older HUD; installed inventory is authoritative.',
         autoAttempt:'An automatic install was submitted; verify the installed and running Host versions.',
         autoFailed:'Automatic install outcome was not confirmed; inspect Host logs.',
+        resetPending:'Clear unconfirmed record (check DSH Plugins first)',
         confirm: 'Confirm', cancel: 'Cancel',
         confirmText: 'Only SHA-256-verified channel packages are installed. A DSH restart may be required.',
         allowUnstable: 'Allow experimental updates', allowUnstableHelp: 'Off by default; enables manual updates from unstable.',
@@ -581,6 +583,16 @@ window.__ModuleLoader__.load({
           const timer=setInterval(()=>setNow(Date.now()),4_000);
           return ()=>clearInterval(timer);
         },[]);
+        React.useEffect(()=>{
+          if (!pending || !inventoryReady || hostHealth.status!=='ready') return;
+          const actual=bundles.find(x=>x.installed && x.name===pending.name);
+          if (actual?.version===pending.version && pending.name==='@local/dsh-hud' &&
+            hostHealth.version===VERSION) {
+            persistPending(null);setPending(null);setInstallNote(t('succeeded'));
+          } else if (actual?.version===pending.version && pending.name!=='@local/dsh-hud') {
+            persistPending(null);setPending(null);setInstallNote(t('succeeded'));
+          }
+        },[inventoryReady,bundles,hostHealth.status,hostHealth.version,pending?.name,pending?.version]);
         const values = snapshot.value || {};
         const catalog = parseCatalog(localCatalog ?? values.catalog);
         const known = [...catalog.components];
@@ -684,10 +696,14 @@ window.__ModuleLoader__.load({
             });
             // The Client may hot-reload during the install; a lost callback
             // never means pnpm failed. Do not cancel a live DSH operation.
+            let installationTimeout;
             const outcome=await Promise.race([
               installation,
-              new Promise(resolve=>setTimeout(()=>resolve({timedOut:true}),INSTALL_WAIT_MS)),
+              new Promise(resolve=>{
+                installationTimeout=setTimeout(()=>resolve({timedOut:true}),INSTALL_WAIT_MS);
+              }),
             ]);
+            clearTimeout(installationTimeout);
             if(outcome?.timedOut) {
               const next={...record,stage:'unconfirmed'};
               setPending(next);persistPending(next);
@@ -852,6 +868,11 @@ window.__ModuleLoader__.load({
                       pending.stage==='unconfirmed'?'installUnconfirmed':'installSubmitting'))
                 : isPending && pending.stage==='restart-required'
                   ? h('span',{role:'status','data-hud-install-restart':true,style:tiny},t('restart'))
+                  : isPending && stale
+                    ? h('button',{type:'button','data-hud-clear-pending':true,
+                        style:actionStyle(false),onClick:()=>{
+                          persistPending(null);setPending(null);setInstallNote('');
+                        }},t('resetPending'))
                   : eligible
                     ? confirm===key
                       ? h(React.Fragment,null,

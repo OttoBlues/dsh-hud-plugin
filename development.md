@@ -18,9 +18,9 @@
 需求-更新回归=更新检查应可超时、诊断和重试；同一 DSH 进程连续安装、重启后版本保持、更新失败恢复和策略保存均需按适用场景验证
 验收-本机HUD安装=2026-11-05 在 desktop Profile 通过 DSH 插件管理器安装并启用 @local/dsh-hud 0.5.10；安装结果显示成功，左侧 HUD 入口出现，组件中心可打开
 验收-本机HUD公开通道=2026-11-05 HUD 组件中心匿名连接公开仓库并完成版本检查；当前版本 0.5.10、Released 为空、无可安装的新版本
-问题-本机HUD重启后待验收=2026-11-05 经用户确认完全退出并重启 DSH 0.2.1-rc.5 后，桌面打开至欢迎/登录/API Key 页面；完成认证并进入主界面后，需复测 HUD Host RPC 与策略保存
-问题-本机HUDHost未加载=2026-11-05 重启前 DSH 0.2.1-rc.5 的 /hud-native/status 返回 HTTP 405；重启后尚未进入已认证主界面，不能确认 Host 是否加载或独立窗口是否可用
-问题-本机HUD策略写入=2026-11-05 重启前组件中心提示 DSH HUD 配置暂不可写 (unavailable, writable=true)；重启后尚未进入已认证主界面，策略设置保存待实机复验
+问题-本机HUD重启后待验收=2026-11-05 用户确认完成登录，且已观察 DSH dsh-app://app/ 主界面；当前 UI 自动化无法打开插件面板，DSH CLI 明确拒绝读取由 Electron 独占管理的 desktop Profile，Host RPC 与策略保存尚未复测
+问题-本机HUDHost未加载=2026-11-05 重启前 DSH 0.2.1-rc.5 的 /hud-native/status 返回 HTTP 405；重启后已确认主界面和 Profile 中 HUD 0.5.10 包链接存在，但未进入 HUD 插件视图，不能确认当前 Host RPC 或独立窗口状态
+问题-本机HUD策略写入=2026-11-05 重启前组件中心提示 DSH HUD 配置暂不可写 (unavailable, writable=true)；重启后已登录，但未进入 HUD 组件中心，策略设置保存待实机复验
 审计-action-runner=本地 origin/main 未发现 action-runner 代码或文件；当前可见提交历史中 git log --all -Saction-runner 无匹配
 审计-退役Runner工具-main=本地 origin/main 仅保留托管式 Linux/Windows CI 与 WPF 自检；tests/direct-update-policy.test.mjs 明确断言旧 Desktop 部署和 self-hosted smoke 工作流/脚本不存在，应保留该测试
 审计-退役Runner工具-历史分支=本机已有 origin 跟踪引用中的 feat/deploy-hud-to-desktop、feat/windows-self-hosted-smoke、fix/smoke-dsh-readiness-guard 和 feat/ci-gated-auto-upgrade 含旧 self-hosted smoke、Desktop 部署或 auto-upgrade 工作流及 scripts/windows 脚本；本轮未删除
@@ -46,6 +46,6 @@ CI-最新结果=2026-11-05 GitHub Actions DSH HUD CI 对 main 提交 993f6d8d7c3
 环境-DSH其他目录=D:\DeepSeekHarness\desktop-data 与 D:\DeepSeekHarness\update-cache 当前存在；它们与 DSH 进程的具体配置/链接关系待核实
 环境-DSH命令行=完整 CLI 路径 D:\DeepSeekHarness\app\resources\runtime\cli\bin\dsh.cmd 可运行并报告版本；当前 shell 的 PATH 未解析出 dsh 命令
 环境-DSH旧默认目录=%USERPROFILE%\.dsh 在 2026-11-05 检查时不存在
-环境-DSH进程=2026-11-05 用户确认重启后 DeepSeek Harness.exe 已重新运行；主窗口当前显示欢迎/登录/API Key 页面，尚未完成认证
+环境-DSH进程=2026-11-05 用户确认完成登录；观察到的 DeepSeek Harness 窗口处于 dsh-app://app/ 主界面，desktop Profile package.json 与 node_modules 均指向 @local/dsh-hud 0.5.10；DSH CLI --profile desktop --dump-config 返回 profile is managed exclusively by the Electron application
 环境-DSH重装建议=用户曾建议卸载并清空所有 DSH 内容后从官网重装到 D 盘并将数据放在 D 盘；当前已核实安装目录和 DSH_HOME 均在 D 盘，本轮未执行卸载、清理或重装；安装包官方来源待核实
-验收-DSH桌面=2026-11-05 已实测 V0.5.10 安装、启用、HUD 侧栏入口、组件中心加载及匿名公开版本检查；用户确认并已完成 DSH 重启，但重启后停留在欢迎/登录/API Key 页面，Host RPC、策略保存、更新安装、独立窗口、重启恢复、回退与既有会话回归均待认证后验收
+验收-DSH桌面=2026-11-05 已实测 V0.5.10 安装、启用、HUD 侧栏入口、组件中心加载及匿名公开版本检查；重启后用户确认登录且已观察 DSH 主界面、desktop Profile 中仍链接 HUD 0.5.10；本轮 UI 自动化未能打开 HUD 插件页，Host RPC、策略保存、更新安装、独立窗口、重启恢复、回退与既有会话回归仍待 HUD 界面实测

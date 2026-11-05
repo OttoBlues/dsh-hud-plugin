@@ -202,20 +202,20 @@ test('Automatic experimental updates require separate explicit double opt-in',as
   let tree=ui.render();
   const auto=find(tree,x=>x.type==='input'&&x.props['data-hud-setting']==='auto')[0];
   auto.props.onChange({target:{checked:true}});
-  await Promise.resolve();
+  await flushMode();
   tree=ui.render();
   assert.equal(find(tree,x=>x.props?.['data-hud-setting']==='auto-unstable')[0].props.disabled,true);
   const experimental=find(tree,x=>x.props?.['data-hud-setting']==='unstable')[0];
   experimental.props.onChange({target:{checked:true}});
-  await Promise.resolve();
+  await flushMode();
   tree=ui.render();
   const autoUnstable=find(tree,x=>x.props?.['data-hud-setting']==='auto-unstable')[0];
   assert.equal(autoUnstable.props.disabled,false);
   autoUnstable.props.onChange({target:{checked:true}});
-  await Promise.resolve();
+  await flushMode();
   assert.equal(ui.values.autoUpdateUnstable,true);
   experimental.props.onChange({target:{checked:false}});
-  await Promise.resolve();
+  await flushMode();
   assert.equal(ui.values.autoUpdateUnstable,false);
 });
 

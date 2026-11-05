@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.5.9",
+  "version": "0.5.10",
   "private": true,
   "type": "module",
-  "description": "Reliable SHA-256-pinned HUD updates through DSH Plugin Manager with native Host readiness and restart diagnostics",
+  "description": "Independent HUD Host boot with writable settings, immediate anonymous GitHub checks and native RPC diagnostics",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },

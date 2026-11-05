@@ -10,7 +10,7 @@ function setup(valuesOverride={}, runtime={}) {
   vm.runInNewContext(client, {
     window:{__ModuleLoader__:{load(x){module=x;}}},
     fetch:runtime.fetch || (async()=>{throw new Error('Browser fetch unavailable');}),
-    AbortSignal,
+    AbortSignal,AbortController,setTimeout,clearTimeout,
   });
   assert.equal(module?.id,'@local/dsh-hud');
   const hookSets=new Map(); let cursor=0; let currentScope='root';
@@ -24,6 +24,13 @@ function setup(valuesOverride={}, runtime={}) {
       const i=cursor++;
       if(!(i in values))values[i]=initial;
       return [values[i],next=>{values[i]=typeof next==='function'?next(values[i]):next;}];
+    },
+    useRef(initial){
+      let values=hookSets.get(currentScope);
+      if(!values){values=[];hookSets.set(currentScope,values);}
+      const i=cursor++;
+      if(!(i in values))values[i]={current:initial};
+      return values[i];
     },
     useEffect(){},
     useSyncExternalStore(_subscribe,get){return get();},
@@ -48,7 +55,7 @@ function setup(valuesOverride={}, runtime={}) {
     async set(key,value){values[key]=value;updates.push({key,value});return true;},
     async mutate(ops){for(const op of ops){values[op.path[0]]=op.value;}updates.push({ops});return true;},
   };
-  const slots=new Map();const navigations=[];let dictionary;
+  const slots=new Map();const navigations=[];const rpcCalls=[];let dictionary;
   const ctx={
     locale:{
       register(ns,dict){dictionary=dict;assert.equal(ns,'dsh.hud');return ()=>{};},
@@ -56,6 +63,11 @@ function setup(valuesOverride={}, runtime={}) {
     },
     effect(setup){setup();},
     layout:{selectPanel(id){navigations.push(id);}},
+    connection:{rpc:{async call(channel,endpoint,payload,signal){
+      rpcCalls.push({channel,endpoint,payload,signal});
+      return runtime.nativeRpc ? runtime.nativeRpc({channel,endpoint,payload,signal}) :
+        {ok:true,value:{state:'open'}};
+    }}},
     configForms:{get(key){assert.equal(key,'dsh-hud');return form;}},
     slots:{
       inject(_seat,fn){fn();},
@@ -77,7 +89,7 @@ function setup(valuesOverride={}, runtime={}) {
     }
     return withHooks(slot,()=>entry.component(props));
   };
-  return {plugin,values,form,slots,render,updates,navigations,withHooks};
+  return {plugin,values,form,slots,render,updates,navigations,rpcCalls,withHooks};
 }
 function find(tree,when,result=[]) {
   if(tree==null)return result;
@@ -105,7 +117,7 @@ const own=(releasedVersion='0.4.2',experimental=null)=>({
 test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs',()=>{
   const ui=setup();
   assert.deepEqual(Array.from(ui.plugin.inject),
-    ['slots','locale','layout','uiSession','configForms','remote','remote.pluginManager']);
+    ['slots','connection','locale','layout','uiSession','configForms','remote','remote.pluginManager']);
   assert.equal(ui.slots.get('sidebar.panellist').options.id,'dsh-hud');
   assert.equal(ui.slots.get('sidebar.panellist').options.label(),'HUD');
   assert.equal(ui.slots.get('main').options.key,'dsh-hud');
@@ -118,7 +130,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.5.8')])});
+  const ui=setup({catalog:catalog([own('0.5.9')])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -201,7 +213,7 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   const preview=find(overlay,x=>x.props?.['data-dsh-hud-preview']==='true')[0];
   assert.ok(preview);
   assert.equal(preview.props.style.pointerEvents,'none');
-  assert.equal(preview.props['data-dsh-hud-version'],'0.5.7');
+  assert.equal(preview.props['data-dsh-hud-version'],'0.5.8');
 });
 
 test('component center shows the renamed repository rather than legacy UI copy',()=>{
@@ -219,29 +231,49 @@ function renderWorkspace(ui) {
 }
 const flushMode=async()=>{await new Promise(resolve=>setImmediate(resolve));};
 
-test('Component Center sends an opt-in native window request without replacing DSH',async()=>{
+test('Component Center launches through authenticated RPC and never uses ConfigForms',async()=>{
+  let complete;
   const ui=setup({},{
     sessions:{ids:['secret-1'],byId:{'secret-1':{displayTitle:'A real task'}}},
-    statuses:new Map([['secret-1',{running:true}]])
+    statuses:new Map([['secret-1',{running:true}]]),
+    nativeRpc:()=>new Promise(resolve=>{complete=resolve;}),
   });
   assert.equal(ui.values.hudMode,false);
   assert.equal(ui.render('shell.overlay'),null);
   const button=find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true)[0];
-  assert.ok(button,'HUD entry belongs only in Component Center');
   button.props.onClick();
   await flushMode();
-  assert.equal(ui.values.hudMode,false);
-  assert.equal(ui.values.nativeHudState,'launching');
-  assert.match(ui.values.nativeHudRequestNonce,/^\d+-[a-z0-9]+$/);
-  assert.equal(ui.navigations.length,0,'Never hide DSH before native HUD is READY');
-  const snapshot=JSON.parse(ui.values.nativeHudSnapshot);
+  assert.equal(ui.rpcCalls.length,1);
+  assert.equal(ui.rpcCalls[0].channel,'/hud-native');
+  assert.equal(ui.rpcCalls[0].endpoint,'open');
+  assert.equal(ui.updates.length,0,'Launch is not a config update or a Loader nonce');
+  assert.equal(ui.navigations.length,0,'Never switch the DSH panel before native READY');
+  const snapshot=JSON.parse(ui.rpcCalls[0].payload.snapshot);
   assert.equal(snapshot.sessions[0].title,'A real task');
   assert.equal(snapshot.sessions[0].running,true);
-  assert.equal(JSON.stringify(snapshot).includes('secret-1'),false,
-    'The snapshot must not leak session IDs');
+  assert.equal(JSON.stringify(snapshot).includes('secret-1'),false);
   assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true)[0].props.disabled,true);
+  complete({ok:true,value:{state:'open'}});
+  await flushMode();
+  assert.equal(ui.navigations.at(-1),null);
+  assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true)[0].props.disabled,false);
 });
 
+test('Native startup failure gives actual diagnostic and allows another try',async()=>{
+  const ui=setup({},{
+    nativeRpc:async()=>({ok:false,error:{
+      code:'hud/native-start-failed',message:'Unable to identify DSH Desktop window',
+    }}),
+  });
+  find(ui.render('main'),x=>x.props?.['data-hud-enter-mode']===true)[0].props.onClick();
+  await flushMode();
+  const tree=ui.render('main');
+  assert.equal(ui.updates.length,0);
+  assert.equal(ui.navigations.length,0);
+  assert.match(JSON.stringify(find(tree,x=>x.props?.['data-hud-native-error']===true)),
+    /Unable to identify DSH Desktop window/);
+  assert.equal(find(tree,x=>x.props?.['data-hud-enter-mode']===true)[0].props.disabled,false);
+});
 test('HUD exits safely to native DSH conversation without resetting Session',async()=>{
   const ui=setup({hudMode:true});
   const screen=renderWorkspace(ui);
@@ -297,14 +329,14 @@ test('HUD Escape and manager entry both keep DSH navigation usable',async()=>{
   button.props.onClick();
   await flushMode();
   assert.equal(ui.values.hudMode,false);
-  assert.equal(ui.values.nativeHudState,'launching');
+  assert.equal(ui.rpcCalls.length,1);
 });
 
 
 test('cockpit UI uses fixed-pixel nested panels with no distorted SVG rails',()=>{
   const ui=setup({hudMode:true});
   const overlay=renderWorkspace(ui);
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.7');
+  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.8');
   assert.equal(overlay.props.style.pointerEvents,'auto');
   const panels=find(overlay,x=>x.props?.['data-hud-cockpit-panel']===true);
   assert.ok(panels.length>=4,'hero, metrics and Session modules stay separate');
@@ -357,8 +389,8 @@ const publicIndex={schema:1,components:[{
 const stableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
   channel:'released',latest:null,releases:[]};
 const unstableIndex={schema:1,component:'hud',package:'@local/dsh-hud',
-  channel:'unstable',latest:'0.5.7',releases:[{
-    version:'0.5.7',file:'v0.5.7/local-dsh-hud-0.5.7.tgz',
+  channel:'unstable',latest:'0.5.8',releases:[{
+    version:'0.5.8',file:'v0.5.7/local-dsh-hud-0.5.7.tgz',
     sha256:'f'.repeat(64),sourceCommit:'a'.repeat(40),
     test:{result:'success',ciRun:'123456'},
   }]};

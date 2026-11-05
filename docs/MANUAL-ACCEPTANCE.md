@@ -77,3 +77,7 @@
 ## V0.5.7 独立 Windows WPF 窗口 U057
 
 独立窗口专项验收（无边框、仅返回 DSH 按钮、隐藏/恢复原主窗、异常退出、自更新回归、DPI/多屏）见 [HUD-NATIVE-WINDOW-V057.md](HUD-NATIVE-WINDOW-V057.md)。截至源码提交时**未取得目标用户的 Windows Desktop U057 验收**；CI 的 WPF XAML 自检不是人工验收。
+
+## V0.5.7 用户反馈与 V0.5.8 复验
+
+用户报告在 V0.5.7 点击 HUD 组件中心进入独立窗口后，**没有弹出窗口，最终启动超时**。据此 V0.5.7 的 **U057-1 实际启动验收未通过**；应明确区别于 GitHub Actions 的 WPF 静态自检通过。V0.5.8 修复原 ConfigForms nonce 可能被 Host 重建吞掉的问题，改用正式 RPC；请按 [U058](HUD-NATIVE-WINDOW-V058.md) 验证，不自动标记成功。

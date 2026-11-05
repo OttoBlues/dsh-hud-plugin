@@ -449,10 +449,12 @@ export function apply(ctx, config) {
           runtime.autoError='';
           ctx.logger?.info?.('HUD auto-update accepted for %s %s', component.name, approved.version);
           const accepted = await installComponent(component, approved, 'automatic',verifiedTarget);
-          if (!disposed) {
-            runtime.autoState = accepted ? 'submitted' : 'failed';
-            if (!accepted) runtime.autoError='Install operation did not confirm success; check DSH Plugin Manager.';
+          if (!disposed && !accepted && runtime.autoState === 'submitted') {
+            runtime.autoState='failed';
+            runtime.autoError='Install operation did not confirm success; check DSH Plugin Manager.';
           }
+          // Do not overwrite an authoritative failed/restart-required result
+          // reported by the detached Plugin Manager callback.
           break; // One package change per periodic update check.
         }
       }

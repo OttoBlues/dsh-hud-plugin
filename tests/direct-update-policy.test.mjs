@@ -48,10 +48,10 @@ test('auto updates default off and experimental auto needs 3 explicit opt-ins',(
   assert.match(host,/autoUpdateUnstable: Schema\.boolean\(\)\.default\(false\)\.volatile\(\)/);
   assert.match(host,/config\.allowUnstable\.get\(\) === true &&\s*config\.autoUpdateUnstable\.get\(\) === true/);
   assert.match(host,/if \(!row\) continue; \/\/ Never silently install a new component/);
-  assert.match(host,/autoLedgerPath/);
+  assert.match(host,/autoLedgerFor/);
   assert.match(host,/verifiedPackagePath\(component,approved,signal\)/);
   assert.match(host,/await writeFile\(temporaryLedger/);
-  assert.match(host,/await rename\(temporaryLedger,autoLedgerPath\)/);
+  assert.match(host,/await rename\(temporaryLedger,ledgerPath\)/);
 });
 test('retired Windows Runner deployment workflows cannot be triggered',()=>{
   for(const file of [

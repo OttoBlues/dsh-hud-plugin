@@ -7,7 +7,7 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.15 修复候选源码**；策略保存限时、自动更新失败退避重试及旧版 CI 发布步骤修复待完整验收。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.16 修复候选源码**；修复真实 DSH Desktop 中 Host 与窗口所属进程不同导致的独立 HUD 启动失败，完整桌面验收待执行。
 - `plugins/hud/unstable/`：只存储已登记的不可变试验安装包；可安装版本以通道索引为准。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。

@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.15: bound automatic update attempts and recover confirmed failures.
+ * DSH HUD v0.5.16: verify the Desktop shell process for the native window.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -25,7 +25,7 @@ const ROOTS = [
   'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins',
 ];
 const CURRENT_NAME = '@local/dsh-hud';
-const HOST_VERSION = '0.5.15';
+const HOST_VERSION = '0.5.16';
 const CATALOG_EMPTY = '{"schema":3,"source":"checking","components":[]}';
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const HEX40 = /^[a-f0-9]{40}$/i;

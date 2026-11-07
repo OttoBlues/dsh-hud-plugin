@@ -1,14 +1,17 @@
 ﻿<#
-DSH HUD v0.5.8 Windows native window, direct RPC startup diagnostics.
+DSH HUD v0.5.16 Windows native window, verified Desktop shell resolution.
 This file is bundled with @local/dsh-hud. It executes no remote code.
 Its only window controls are "Return to DSH", Escape and Alt+F4.
 #>
 param(
   [int]$ShellPid = 0,
   [int]$HostPid = 0,
+  [int]$ParentPid = 0,
   [ValidateSet('zh','en')][string]$Language = 'zh',
   [switch]$SelfTest,
   [switch]$SelfTestWindow,
+  [switch]$SelfTestParentValidation,
+  [switch]$SelfTestShellResolution,
   [switch]$RestoreOnly
 )
 
@@ -55,12 +58,72 @@ public static class DshHudWin32 {
 }
 '@
 
+function Test-DesktopParent($hostProcessInfo, $parentProcessInfo, [int]$expectedHost, [int]$expectedParent) {
+  if ($null -eq $hostProcessInfo -or $null -eq $parentProcessInfo -or
+      $hostProcessInfo.ProcessId -ne $expectedHost -or
+      $parentProcessInfo.ProcessId -ne $expectedParent -or
+      $hostProcessInfo.ParentProcessId -ne $expectedParent -or
+      [string]::IsNullOrWhiteSpace($hostProcessInfo.ExecutablePath) -or
+      [string]::IsNullOrWhiteSpace($parentProcessInfo.ExecutablePath) -or
+      $null -eq $hostProcessInfo.CreationDate -or $null -eq $parentProcessInfo.CreationDate) { return $false }
+  if ($parentProcessInfo.CreationDate -gt $hostProcessInfo.CreationDate) { return $false }
+  if (-not [string]::Equals($hostProcessInfo.ExecutablePath, $parentProcessInfo.ExecutablePath,
+      [StringComparison]::OrdinalIgnoreCase)) { return $false }
+  return [string]::Equals([IO.Path]::GetFileName($parentProcessInfo.ExecutablePath),
+    'DeepSeek Harness.exe', [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Find-DshShell([bool]$includeHidden) {
+  $direct = [DshHudWin32]::FindShell($ShellPid, $includeHidden)
+  if ($direct -ne [IntPtr]::Zero) { return $direct }
+  # Desktop runs the Host as a child of the Electron shell. Only follow the
+  # actual parent when the caller did not specify a distinct shell, and when
+  # both processes are the same DSH executable with a consistent lifetime.
+  if ($ShellPid -ne $HostPid -or $HostPid -lt 1 -or $ParentPid -lt 1 -or $ParentPid -eq $HostPid) {
+    return [IntPtr]::Zero
+  }
+  try {
+    $hostProcessInfo = Get-CimInstance Win32_Process -Filter ("ProcessId = " + $HostPid)
+    $parentProcessInfo = Get-CimInstance Win32_Process -Filter ("ProcessId = " + $ParentPid)
+    if (Test-DesktopParent $hostProcessInfo $parentProcessInfo $HostPid $ParentPid) {
+      return [DshHudWin32]::FindShell($ParentPid, $includeHidden)
+    }
+  } catch { }
+  return [IntPtr]::Zero
+}
+
+if ($SelfTestParentValidation) {
+  $created = [datetime]::UtcNow
+  $parent = [pscustomobject]@{ ProcessId=12; ParentProcessId=1; ExecutablePath='C:\DSH\DeepSeek Harness.exe'; CreationDate=$created }
+  $hostInfo = [pscustomobject]@{ ProcessId=34; ParentProcessId=12; ExecutablePath='C:\DSH\DeepSeek Harness.exe'; CreationDate=$created.AddSeconds(1) }
+  if (-not (Test-DesktopParent $hostInfo $parent 34 12)) { throw 'Valid Desktop parent was rejected.' }
+  $hostInfo.ParentProcessId = 99
+  if (Test-DesktopParent $hostInfo $parent 34 12) { throw 'Unrelated parent was accepted.' }
+  $hostInfo.ParentProcessId = 12
+  $parent.ExecutablePath = 'C:\Windows\explorer.exe'
+  if (Test-DesktopParent $hostInfo $parent 34 12) { throw 'Different executable was accepted.' }
+  $parent.ExecutablePath = $hostInfo.ExecutablePath
+  $parent.CreationDate = $hostInfo.CreationDate.AddSeconds(1)
+  if (Test-DesktopParent $hostInfo $parent 34 12) { throw 'Reused parent PID was accepted.' }
+  [Console]::Out.WriteLine('HUD_PARENT_VALIDATION_OK')
+  exit 0
+}
+
+if ($SelfTestShellResolution) {
+  if ($ShellPid -lt 1 -or $HostPid -lt 1 -or (Find-DshShell $false) -eq [IntPtr]::Zero) {
+    [Console]::Out.WriteLine('ERROR: No verified visible DSH shell could be resolved.')
+    exit 3
+  }
+  [Console]::Out.WriteLine('HUD_SHELL_RESOLVED')
+  exit 0
+}
+
 if ($RestoreOnly) {
   if ($ShellPid -lt 1) {
     [Console]::Out.WriteLine('ERROR: Invalid DSH Shell PID for restore.')
     exit 4
   }
-  $target = [DshHudWin32]::FindShell($ShellPid, $true)
+  $target = Find-DshShell $true
   if ($target -eq [IntPtr]::Zero) {
     [Console]::Out.WriteLine('ERROR: No unique DSH main window could be restored.')
     exit 4
@@ -114,7 +177,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
                 BorderThickness="1" FontSize="14" FontWeight="SemiBold"
                 Width="140" Height="42" Cursor="Hand" Margin="20,0,0,0"/>
         <StackPanel x:Name="TitleDragArea" Cursor="SizeAll">
-          <TextBlock Text="DSH // HUD 0.5.8" Foreground="#6DCBD2" FontSize="12" FontFamily="Consolas"/>
+          <TextBlock Text="DSH // HUD 0.5.16" Foreground="#6DCBD2" FontSize="12" FontFamily="Consolas"/>
           <TextBlock x:Name="WindowHeading" Text="HUD 独立工作台" FontSize="30" FontWeight="SemiBold" Margin="0,7,0,0"/>
         </StackPanel>
       </DockPanel>
@@ -194,9 +257,9 @@ if ($ShellPid -lt 1 -or $HostPid -lt 1) { throw 'Invalid DSH Desktop / Host PID.
 if ($null -eq (Get-Process -Id $ShellPid -ErrorAction SilentlyContinue)) {
   throw 'DSH Desktop shell process is unavailable.'
 }
-$target = [DshHudWin32]::FindShell($ShellPid, $false)
+$target = Find-DshShell $false
 if ($target -eq [IntPtr]::Zero) {
-  [Console]::Out.WriteLine('ERROR: No unique visible large Chromium DSH window belongs to Electron Shell PID ' + $ShellPid + '. Verify the DSH Desktop shell/Host process relationship and main window visibility.')
+  [Console]::Out.WriteLine('ERROR: No unique visible DSH window belongs to the verified Shell or Host parent. Verify the Desktop process relationship and main window visibility.')
   exit 3
 }
 

@@ -28,18 +28,21 @@ export function safeNativeSnapshot(raw) {
 export function launchWindowsHud({
   snapshot = '', language = 'zh', onReady = () => {}, onExit = () => {},
   platform = process.platform, shellPid = process.pid, hostPid = process.pid,
+  parentPid = process.ppid,
   spawnProcess = spawn, startupTimeoutMs = HUD_STARTUP_TIMEOUT_MS, shutdownGraceMs = 2_000,
 } = {}) {
   if (platform !== 'win32') throw new Error('Independent HUD requires DSH Desktop on Windows.');
   if (!Number.isSafeInteger(shellPid) || shellPid <= 0 ||
-      !Number.isSafeInteger(hostPid) || hostPid <= 0) {
+      !Number.isSafeInteger(hostPid) || hostPid <= 0 ||
+      !Number.isSafeInteger(parentPid) || parentPid < 0) {
     throw new Error('Cannot identify the DSH Desktop and Host processes.');
   }
   // Data is delivered via stdin, NEVER as a command-line argument or URL.
   const args = [
     '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-STA',
     '-File', HUD_SCRIPT, '-ShellPid', String(shellPid),
-    '-HostPid', String(hostPid), '-Language', language === 'en' ? 'en' : 'zh',
+    '-HostPid', String(hostPid), '-ParentPid', String(parentPid),
+    '-Language', language === 'en' ? 'en' : 'zh',
   ];
   const child = spawnProcess('powershell.exe', args, {
     windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
@@ -58,7 +61,8 @@ export function launchWindowsHud({
       try {
         const restore = spawnProcess('powershell.exe', [
           '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-STA',
-          '-File', HUD_SCRIPT, '-ShellPid', String(shellPid), '-RestoreOnly',
+          '-File', HUD_SCRIPT, '-ShellPid', String(shellPid),
+          '-HostPid', String(hostPid), '-ParentPid', String(parentPid), '-RestoreOnly',
         ], { windowsHide: true, stdio: 'ignore' });
         restore.unref?.();
       } catch { /* DSH remains recoverable via its regular application entry. */ }

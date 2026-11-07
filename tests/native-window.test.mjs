@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { HUD_STARTUP_TIMEOUT_MS, launchWindowsHud, safeNativeSnapshot } from '../plugins/hud/native-window.js';
 
 const windowsHudScript=readFileSync(new URL('../plugins/hud/native/windows-hud.ps1',import.meta.url),'utf8');
@@ -19,7 +21,18 @@ test('WPF window recovery targets only the DSH main BrowserWindow and reports fa
   assert.doesNotMatch(script,/StartsWith\("Chrome_WidgetWin_"/);
   assert.match(script,/ERROR: No unique DSH main window could be restored/);
   assert.match(script,/ERROR: DSH main window remains hidden after restore/);
+  assert.match(script,/\$target = Find-DshShell \$true/);
+  assert.match(script,/\$target = Find-DshShell \$false/);
 });
+
+test('Windows verifies Desktop parent, executable and process lifetime',
+  {skip:process.platform!=='win32'},()=>{
+    const script=fileURLToPath(new URL('../plugins/hud/native/windows-hud.ps1',import.meta.url));
+    const output=execFileSync('powershell.exe',[
+      '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script,'-SelfTestParentValidation',
+    ],{encoding:'utf8',timeout:20_000});
+    assert.match(output,/HUD_PARENT_VALIDATION_OK/);
+  });
 
 test('Client RPC wait leaves time for the Host WPF startup deadline',()=>{
   const clientTimeoutMs=55_000;
@@ -71,7 +84,7 @@ test('Windows launch uses fixed script and stdin, never session data in shell ar
   const {spawnProcess,launched}=mockSpawner();
   let ready=0,exit=null;
   const native=launchWindowsHud({
-    platform:'win32',shellPid:222,hostPid:333,language:'en',
+    platform:'win32',shellPid:222,hostPid:333,parentPid:444,language:'en',
     snapshot:JSON.stringify({sessions:[{title:'PRIVATE_SESSION_TITLE',running:true}]}),
     onReady:()=>{ready++;},onExit:info=>{exit=info;},spawnProcess,
   });
@@ -82,6 +95,7 @@ test('Windows launch uses fixed script and stdin, never session data in shell ar
   assert(proc.args.includes('-File'));
   assert(proc.args.includes('222'));
   assert(proc.args.includes('333'));
+  assert.equal(proc.args[proc.args.indexOf('-ParentPid')+1],'444');
   assert(proc.args.includes('en'));
   assert(proc.args.some(x=>x.endsWith('native/windows-hud.ps1') || x.endsWith('native\\windows-hud.ps1')));
   assert.doesNotMatch(proc.args.join(' '),/PRIVATE_SESSION_TITLE/);
@@ -98,14 +112,21 @@ test('Windows launch uses fixed script and stdin, never session data in shell ar
   assert.equal(launched.length,1,'A normal return must not spawn a recovery process');
 });
 
-test('default shell PID is the DSH process that owns its BrowserWindow',()=>{
+test('default Host and its parent are passed to the verified shell resolver',()=>{
   const {spawnProcess,launched}=mockSpawner();
   const native=launchWindowsHud({platform:'win32',spawnProcess});
   const args=launched[0].args;
   assert.equal(args[args.indexOf('-ShellPid')+1],String(process.pid));
   assert.equal(args[args.indexOf('-HostPid')+1],String(process.pid));
+  assert.equal(args[args.indexOf('-ParentPid')+1],String(process.ppid));
   native.close();
   launched[0].child.emit('exit',0,null);
+});
+
+test('invalid parent PID is rejected before spawning a helper',()=>{
+  const {spawnProcess,launched}=mockSpawner();
+  assert.throws(()=>launchWindowsHud({platform:'win32',parentPid:-1,spawnProcess}),/Cannot identify/);
+  assert.equal(launched.length,0);
 });
 
 test('cold WPF startup may report READY after the former 16-second limit',async()=>{
@@ -139,7 +160,7 @@ test('a READY received after startup timeout is rejected and DSH recovery runs',
 test('abnormal exit after ready invokes dedicated recovery helper',()=>{
   const {spawnProcess,launched}=mockSpawner();
   let exited;
-  launchWindowsHud({platform:'win32',shellPid:222,hostPid:333,
+  launchWindowsHud({platform:'win32',shellPid:222,hostPid:333,parentPid:444,
     spawnProcess,onExit:data=>{exited=data;}});
   launched[0].child.stdout.write('READY\n');
   launched[0].child.emit('exit',7,null);
@@ -148,7 +169,8 @@ test('abnormal exit after ready invokes dedicated recovery helper',()=>{
   assert.equal(launched.length,2);
   assert.equal(launched[1].binary,'powershell.exe');
   assert(launched[1].args.includes('-RestoreOnly'));
-  assert(!launched[1].args.includes('-HostPid'));
+  assert.equal(launched[1].args[launched[1].args.indexOf('-HostPid')+1],'333');
+  assert.equal(launched[1].args[launched[1].args.indexOf('-ParentPid')+1],'444');
 });
 
 test('startup errors are reported without leaving the DSH shell hidden',()=>{

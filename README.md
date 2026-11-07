@@ -7,7 +7,7 @@
 ## 结构和职责
 
 - `plugins/index.json`：HUD 组件总目录。
-- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.17 修复候选源码**；修复 Windows PowerShell 输入读取阻塞独立 HUD 启动，桌面安装与按钮回归待验收。
+- `plugins/hud/index.js` 与 `client.js`：Host 及独立 UI，当前 **V0.5.17 修复候选源码**；修复 Windows PowerShell 输入读取阻塞独立 HUD 启动，本机已验证打开和返回，其他桌面回归仍待完成。
 - `plugins/hud/unstable/`：只存储已登记的不可变试验安装包；可安装版本以通道索引为准。
 - `plugins/hud/released/`：用户批准后的正式发布通道，目前为空。
 - `.github/workflows/ci.yml`：仅使用 GitHub 托管 Linux、Windows 运行器执行检查与候选包结构验证。

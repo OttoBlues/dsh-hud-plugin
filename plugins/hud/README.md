@@ -92,4 +92,4 @@ DSH 0.2.2-rc.1 的 Connection 提供 owner-only 精确 Fetch 路由，并将路�
 
 ## V0.5.17 标准输入阻塞修复候选
 
-Windows PowerShell 5.1 的 `Console.In` 是同步包装的读取器，其 `ReadLineAsync()` 会在窗口显示前阻塞。改用标准输入流上的 `StreamReader` 真正异步等待读取退出指令；新增输入管道保持打开时 WPF 必须完成渲染的 Windows 测试。Desktop 用户 Profile 尚未安装本版，完整打开、点击返回与回归待验收。详见 `docs/HUD-WPF-INPUT-V0517.md`。
+Windows PowerShell 5.1 的 `Console.In` 是同步包装的读取器，其 `ReadLineAsync()` 会在窗口显示前阻塞。改用标准输入流上的 `StreamReader` 真正异步等待读取退出指令；新增输入管道保持打开时 WPF 必须完成渲染的 Windows 测试。本机 Desktop 用户已安装本版并确认打开独立 HUD 和返回 DSH；重启、连续升级和失败重试等其他桌面回归仍待完成。详见 `docs/HUD-WPF-INPUT-V0517.md`。

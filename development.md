@@ -43,7 +43,7 @@
 开发-打包命令=npm run pack:hud；npm run verify:pack
 开发-通道校验=npm run verify:channels；组件目录校验=npm run verify:components
 CI-工作流=.github/workflows/ci.yml；GitHub 托管 Ubuntu 24.04 与 Windows 2025；Windows 任务含 WPF 自检，不会安装或操控用户 Desktop
-CI-最新结果=2026-11-07 V0.5.17 源码提交 34e4717c03dbfe50a6eb2cb9a54751c03bea9efe 的 GitHub Actions run 42369744534 全部成功，含 Linux、Windows 打包及 WPF 自检、两个历史发布任务
+CI-最新结果=2026-11-07 V0.5.17 桌面验收文档提交 307933a06bac4a79699ba6266e7f0fc74f2313d7 的 GitHub Actions run 42372500013 全部成功，含 Linux、Windows 打包及 WPF 自检、两个历史发布任务
 CI-本机候选提交=V0.5.17 源码提交 34e4717c03dbfe50a6eb2cb9a54751c03bea9efe 的 CI 通过；该工作流未上传 Artifact，候选包在本机 dist，已安装于隔离 Profile 和用户 desktop Profile
 验收-本机自动检查=2026-11-07 V0.5.17 的 npm run check 通过，112/112 测试通过；npm run pack:hud 与 npm run verify:pack 通过，安装包 10 个文件
 验收-WindowsWPF自检=2026-11-07 V0.5.17 的 WPF -SelfTest 通过，输入管道保持打开时到达 ContentRendered 的回归测试通过；用户在 Desktop 确认返回按钮成功
@@ -88,6 +88,7 @@ CI-V0516状态=源码提交 4c3c8669457384ea65236a01a61b8378e40d15a4 的 GitHub 
 验收-V0517-隔离热更新=隔离 DSH Web Host 同一进程内通过官方 Plugin Manager 将 V0.5.16 更新至 V0.5.17，结果 applied，已安装版本与运行 Host 版本均为 0.5.17；此验证独立于用户 Desktop 操作
 回退-V0517桌面准备=已单独备份并校验 V0.5.16 desktop Profile 的五个插件配置和锁文件，保留 SHA-256 已核验的 V0.5.16 安装包；用户已安装 V0.5.17，实际回退未执行
 CI-V0517状态=源码提交 34e4717c03dbfe50a6eb2cb9a54751c03bea9efe 的 GitHub Actions run 42369744534 各任务均成功；未创建正式 Release 或更新公开通道
+CI-V0517-桌面验收记录=文档提交 307933a06bac4a79699ba6266e7f0fc74f2313d7 的 GitHub Actions run 42372500013 各任务均成功；未创建正式 Release 或更新公开通道
 验收-V0517-Desktop启动=用户安装 V0.5.17 后看到独立 HUD，真实 DSH Host 启动的窗口标题为 DSH HUD 且进程响应中；Computer Use 未列出该 WPF 窗口
 验收-V0517-Desktop返回=用户点击独立 HUD 的返回 DSH 并报告正常恢复；Computer Use 随后观察到 DSH 主界面恢复且 HUD 组件中心可打开
 验收-V0517-Desktop版本检查=返回后组件中心显示当前 0.5.17、公开仓库已连接；连续两次手动检查完成且按钮恢复可用

@@ -8,9 +8,9 @@
 仓库-正式Release与Tag=截至 2026-11-05 GitHub 无正式 Release，仓库无 Git Tag；可安装版本由插件目录中的通道索引登记
 插件-HUD包名=@local/dsh-hud；不要因 GitHub 仓库更名修改该 DSH 插件包名
 插件-HUD源码版本=0.5.14（界面/发布标记为 V0.5.14；Connection API 路由修复候选，待本机 DSH 验收）
-插件-HUD当前通道=公开 Unstable 最新 0.5.10；Released 索引为空；desktop Profile 已通过 DSH CLI 安装 0.5.14 本地候选包；公开通道与 CI 未更新
+插件-HUD当前通道=公开 Unstable 最新 0.5.10；Released 索引为空；desktop Profile 已通过 DSH CLI 安装 0.5.14 本地候选包；候选版未进入公开通道且其源码提交 CI 失败
 插件-HUD安装包=plugins/hud/unstable/v0.5.10/local-dsh-hud-0.5.10.tgz；SHA-256 0679a112fc18d545cc3ee5376a9644ed29277661d3ed870800c554c56fa55e4c
-插件-HUD本机候选包=D:\DeepSeekHarness\install-sources\hud-v0.5.12\local-dsh-hud-0.5.12.tgz；SHA-256 993e16452458c61eba97d3bb3e8349878dee3df6464847d553c914f1677958e9；通过 DSH CLI 安装到 desktop Profile
+插件-HUD本机候选包=dist/local-dsh-hud-0.5.14.tgz；SHA-256 ca4059f0beff5eef04dd26011cf50d12b64dec716ea40e0f1bd812b58a673dd8；desktop Profile 磁盘安装版本为 0.5.14
 插件-HUD来源与CI=Unstable 0.5.10 来源提交 2d892773d77029289ea889b13b98e69c63d55b37；CI run 42016577025 成功
 架构-HUD=DSH Cordis Host 位于 plugins/hud/index.js，Client 位于 plugins/hud/client.js；侧栏插件入口和组件中心独立于 DSH 原生 Plugins 管理页
 架构-安装更新=从公开组件目录读取固定通道索引；Host 校验安装包 SHA-256 后调用 DSH Plugin Manager；不需要 GitHub Token 或 self-hosted Runner
@@ -19,8 +19,8 @@
 需求-更新回归=更新检查应可超时、诊断和重试；同一 DSH 进程连续安装、重启后版本保持、更新失败恢复和策略保存均需按适用场景验证
 验收-本机HUD安装=2026-11-05 在 desktop Profile 通过 DSH 插件管理器安装并启用 @local/dsh-hud 0.5.10；安装结果显示成功，左侧 HUD 入口出现，组件中心可打开
 验收-本机HUD公开通道=2026-11-05 HUD 组件中心匿名连接公开仓库并完成版本检查；当前版本 0.5.10、Released 为空、无可安装的新版本
-问题-本机HUD重启后待验收=2026-11-05 用户确认完成登录；computer-use 可读取 HUD 组件中心，但 Windows UI 点击接口失败后重新观察未改变状态，DSH CLI 仍拒绝直接读取 Electron 独占管理的 desktop Profile
-问题-本机HUDHost未加载=用户截图客户端标记 V0.5.12，/hud-native/status 与 /hud-native/open 返回 HTTP 405；当前 Profile 磁盘是 V0.5.13，但截图不能证明运行 UI 已加载该版；V0.5.14 改走 DSH Connection owner-only /api 精确路由，安装后待实测
+问题-本机HUD重启后待验收=2026-11-07 启动 DSH 后观察到 HUD 侧栏入口；computer-use 元素点击报坐标不可用，坐标点击与键盘输入后界面无变化，未能操作组件中心或确认故障是否仍存在
+问题-本机HUDHost未加载=历史用户截图客户端标记 V0.5.12，/hud-native/status 与 /hud-native/open 返回 HTTP 405；截图时 Profile 磁盘为 V0.5.13，截图不能证明 UI 已加载该版；V0.5.14 改走 DSH Connection owner-only /api 精确路由，效果待实测
 问题-本机HUD策略写入=用户截图中 DSH 设置显示 writable=true、status=unavailable，但 mutate 被 Host 拒绝；Host fiber/设置命名空间可能随独立 WebServer 路由注册失败而不可用；V0.5.14 迁移到官方 Connection Fetch 路由，策略持久化待实测
 问题-本机HUD独立窗口=V0.5.10 的 PID、PowerShell BOM、主窗口匹配问题已在 V0.5.11/V0.5.12 修正；用户截图 HTTP 405 表明请求未到 WPF 启动逻辑，故截图不证明 WPF 故障；V0.5.14 安装后仍需实测打开、返回和 DSH 恢复
 需求-更新策略写入许可=仅以 DSH settings.describe.writable=true 作为设置可写许可；status=unavailable 但 writable=true 时仍提交，Host 拒绝时显示错误
@@ -31,7 +31,7 @@
 审计-退役Runner工具-历史分支=本机已有 origin 跟踪引用中的 feat/deploy-hud-to-desktop、feat/windows-self-hosted-smoke、fix/smoke-dsh-readiness-guard 和 feat/ci-gated-auto-upgrade 含旧 self-hosted smoke、Desktop 部署或 auto-upgrade 工作流及 scripts/windows 脚本；本轮未删除
 审计-候选闲置发布脚本=main 中 publish-unstable-v057.mjs、publish-unstable-v058.mjs、publish-unstable-v059.mjs 未被当前 package.json 或 CI 调用；CI 发布脚本按候选版本分文件维护。旧脚本仅列为清理候选，本轮未删除
 审计-退役工具处理=本轮仅审计；未删除远端分支、文件或历史记录
-仓库-同步状态=2026-11-06 本地 main 含 V0.5.12/V0.5.13 修复提交及 V0.5.14 工作改动；上次可达时 origin/main 为 993f6d8d7c3c4b1cc16426c6f9b3fed6bda5c72c，push 状态待本轮网络检查
+仓库-同步状态=2026-11-07 本次审计开始时本地 main 与远端 main 均为 813357796dc37186034479f410bb001f51035d49；后续状态以 git 和远端实际结果为准
 问题-历史更新故障=V0.5.8 曾报告同进程更新卡住且重启后才生效、独立 HUD 返回 HTTP 405；V0.5.9 曾报告冷启动 Host RPC 405、公开仓库误报 Private、更新策略控件不能保存；V0.5.10 包含相应修改，但 2026-11-05 本机仍观察到 Host RPC HTTP 405 和策略配置不可写，尚不能标记为已修复
 限制-HUD系统能力=Windows 全局透明、置顶、点击穿透、全局热键等系统层能力尚未实现，不得把 HUD 页面或 WPF 测试视为已实现
 版本规则=HUD 版本显示与 Tag/Release 采用大写 Vx.y.z；x 递增需用户明确确认，普通需求递增 y，BUG 修复轮次递增 z，已用版本不可复用
@@ -42,9 +42,9 @@
 开发-打包命令=npm run pack:hud；npm run verify:pack
 开发-通道校验=npm run verify:channels；组件目录校验=npm run verify:components
 CI-工作流=.github/workflows/ci.yml；GitHub 托管 Ubuntu 24.04 与 Windows 2025；Windows 任务含 WPF 自检，不会安装或操控用户 Desktop
-CI-最新结果=2026-11-05 GitHub Actions DSH HUD CI 对 main 提交 993f6d8d7c3c4b1cc16426c6f9b3fed6bda5c72c 完成且成功
-CI-本机候选提交=V0.5.14 工作改动与前序修复已在本地待提交；本轮 push 尚未执行；GitHub Actions 未触发，公开 Unstable 仍为 0.5.10
-验收-本机自动检查=2026-11-06 npm run check 通过；源码、组件与通道验证通过，100 项测试通过
+CI-最新结果=2026-11-07 核实提交 813357796dc37186034479f410bb001f51035d49 的 GitHub Actions run 42085325533 失败；Linux 检查及 Windows 检查、打包与 WPF 自检通过，V0.5.12 旧发布任务失败
+CI-本机候选提交=V0.5.14 源码已提交并推送至 813357796dc37186034479f410bb001f51035d49；该提交 CI 总体失败；公开 Unstable 最新仍为 0.5.10
+验收-本机自动检查=2026-11-07 npm run check 通过，100/100 测试通过；npm run verify:pack 校验已有 V0.5.14 安装包通过
 验收-WindowsWPF自检=2026-11-06 Windows PowerShell WPF -SelfTest 与 -SelfTestWindow 均通过；独立 HUD 实际窗口/返回未自动操作，待用户在 DSH 验收
 验收-本机CLI安装=2026-11-06 使用 dsh plugin --profile desktop add 安装 0.5.14；CLI list、Profile package.json、pnpm-lock.yaml 与 node_modules/package.json 均确认 0.5.14；D 盘包 SHA-256 CA4059F0BEFF5EEF04DD26011CF50D12B64DEC716EA40E0F1BD812B58A673DD8
 环境-操作系统=Microsoft Windows 11 家庭中文版 10.0.26200（Build 26200）
@@ -54,11 +54,14 @@ CI-本机候选提交=V0.5.14 工作改动与前序修复已在本地待提交�
 环境-DSH其他目录=D:\DeepSeekHarness\desktop-data 与 D:\DeepSeekHarness\update-cache 当前存在；它们与 DSH 进程的具体配置/链接关系待核实
 环境-DSH命令行=%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd 可运行，dsh --version 为 0.2.2-rc.1；执行 Profile 命令时需将当前进程 DSH_HOME 显式设为用户级 D:\DeepSeekHarness\home
 环境-DSH旧默认目录=%USERPROFILE%\.dsh\profiles\desktop 在 2026-11-06 存在；来源与用途待核实，本轮未修改或清理
-环境-DSH进程=2026-11-06 当前 GUI Host 使用 desktop Profile；CLI 已将磁盘包更新为 @local/dsh-hud 0.5.14，但 GUI/Host 进程在安装前启动，当前加载版本需重启后验证
-环境-DSH重装建议=用户曾建议卸载并清空所有 DSH 内容后从官网重装到 D 盘并将数据放在 D 盘；当前已核实安装目录和 DSH_HOME 均在 D 盘，本轮未执行卸载、清理或重装；安装包官方来源待核实
-验收-DSH桌面=2026-11-05 已实测 V0.5.10 安装、启用、HUD 侧栏入口、组件中心加载及匿名公开版本检查；2026-11-06 通过 dsh CLI 更新 Profile 磁盘到 V0.5.14；需用户完整重启后验收策略保存、Host RPC、独立窗口打开/返回和会话回归
+环境-DSH进程=2026-11-07 审计启动前 DSH 未运行；启动后 HUD 侧栏入口可见，desktop Profile 磁盘插件文件与 V0.5.14 源码一致，但界面和 Host 显示的运行版本未能交互验证
+环境-DSH重装建议=用户曾建议卸载并清空所有 DSH 内容后从官网重装到 D 盘并将数据放在 D 盘；2026-11-07 当前程序运行于 %LOCALAPPDATA%/Programs/DeepSeek Harness，DSH_HOME 用户级目录登记为 D 盘；本轮未执行卸载、清理或重装
+验收-DSH桌面=2026-11-05 曾实测 V0.5.10 安装、启用、组件中心和匿名检查；2026-11-07 已启动 DSH 并看到 HUD 侧栏，因自动化输入无效，V0.5.14 策略保存、Host RPC、独立窗口和更新回归仍未实测
 需求-HUD-RPC传输=Host 的 open/status/prepare-install 使用 DSH Connection 的 owner-only 精确 Fetch 路由 /api/hud-native.*；Client 使用同一路径的 Connection unary RPC
 验收-HUD-RPC路由=Host 路由精确注册到 /api/hud-native.open、/api/hud-native.status、/api/hud-native.prepare-install；拒绝无效 RPC envelope；DSH 路由层拒绝非 owner Peer；插件卸载后清除三路路由
-问题-HUD截图与Profile版本差异=用户截图 HUD 客户端显示 0.5.12；CLI 安装前 desktop Profile 磁盘为 0.5.13；CLI 安装后磁盘为 0.5.14；GUI 必须重启以加载新模块
+问题-HUD截图与Profile版本差异=历史截图 HUD 客户端显示 0.5.12；CLI 安装前 desktop Profile 磁盘为 0.5.13，安装后为 0.5.14；2026-11-07 已重新启动 DSH，但未能操作界面验证运行版本
 验收-HUD-V0514自动化=2026-11-06 npm run check 100/100 通过；npm run pack:hud 与 npm run verify:pack 通过，归档 10 个文件；D 盘候选包与本地归档 SHA-256 一致
-CI-V0514状态=远端 git ls-remote 于 2026-11-06 连接 github.com 时被重置；尚未推送、未触发 GitHub Actions
+CI-V0514状态=GitHub Actions run 42085325533 对应提交 813357796dc37186034479f410bb001f51035d49 并以 failure 结束；V0.5.12 发布脚本因源码为 0.5.14 而跳过，后续 git add 不存在的 v0.5.12 目录导致退出码 128
+审计-V0514-策略写入超时=隔离内存模拟中让 form.mutate 永不返回后，策略保存指示持续显示且策略开关禁用；源码未为该等待设置超时，真实 DSH Host 挂起场景未实测
+审计-V0514-自动更新重试=隔离内存模拟中自动安装被 Plugin Manager 拒绝后，重复后台检查未对相同包再次安装；尝试账本在安装结果前写入并持续阻止同一包自动重试，真实 DSH 场景未实测
+审计-版本文档陈旧=根 README 将当前源码写为 V0.5.12，unstable/README 将 latest 写为 V0.5.6；实际源码为 V0.5.14、公开 unstable latest 为 V0.5.10

@@ -32,7 +32,7 @@
 审计-退役Runner工具-历史分支=本机已有 origin 跟踪引用中的 feat/deploy-hud-to-desktop、feat/windows-self-hosted-smoke、fix/smoke-dsh-readiness-guard 和 feat/ci-gated-auto-upgrade 含旧 self-hosted smoke、Desktop 部署或 auto-upgrade 工作流及 scripts/windows 脚本；本轮未删除
 审计-候选闲置发布脚本=main 中 publish-unstable-v057.mjs、publish-unstable-v058.mjs、publish-unstable-v059.mjs 未被当前 package.json 或 CI 调用；CI 发布脚本按候选版本分文件维护。旧脚本仅列为清理候选，本轮未删除
 审计-退役工具处理=本轮仅审计；未删除远端分支、文件或历史记录
-仓库-同步状态=2026-11-07 V0.5.15 修复源码提交 4270b3593db7317d3967d8a3dbd4de6ea8412a4d 已推送至 main；后续状态以 git 和远端实际结果为准
+仓库-同步状态=2026-11-07 V0.5.16 修复源码提交 4c3c8669457384ea65236a01a61b8378e40d15a4 已推送至 main；后续状态以 git 和远端实际结果为准
 问题-历史更新故障=V0.5.8 曾报告同进程更新卡住且重启后才生效、独立 HUD 返回 HTTP 405；V0.5.9 曾报告冷启动 Host RPC 405、公开仓库误报 Private、更新策略控件不能保存；V0.5.10 包含相应修改，但 2026-11-05 本机仍观察到 Host RPC HTTP 405 和策略配置不可写，尚不能标记为已修复
 限制-HUD系统能力=Windows 全局透明、置顶、点击穿透、全局热键等系统层能力尚未实现，不得把 HUD 页面或 WPF 测试视为已实现
 版本规则=HUD 版本显示与 Tag/Release 采用大写 Vx.y.z；x 递增需用户明确确认，普通需求递增 y，BUG 修复轮次递增 z，已用版本不可复用
@@ -43,8 +43,8 @@
 开发-打包命令=npm run pack:hud；npm run verify:pack
 开发-通道校验=npm run verify:channels；组件目录校验=npm run verify:components
 CI-工作流=.github/workflows/ci.yml；GitHub 托管 Ubuntu 24.04 与 Windows 2025；Windows 任务含 WPF 自检，不会安装或操控用户 Desktop
-CI-最新结果=2026-11-07 V0.5.15 源码提交 4270b3593db7317d3967d8a3dbd4de6ea8412a4d 的 GitHub Actions run 42366729874 全部成功，含 Linux、Windows 打包及 WPF 自检、两个历史发布任务
-CI-本机候选提交=V0.5.15 源码提交 4270b3593db7317d3967d8a3dbd4de6ea8412a4d 的 CI 通过；该工作流未上传 Artifact，候选包仅在本机 dist 和隔离 Profile
+CI-最新结果=2026-11-07 V0.5.16 源码提交 4c3c8669457384ea65236a01a61b8378e40d15a4 的 GitHub Actions run 42368640217 全部成功，含 Linux、Windows 打包及 WPF 自检、两个历史发布任务
+CI-本机候选提交=V0.5.16 源码提交 4c3c8669457384ea65236a01a61b8378e40d15a4 的 CI 通过；该工作流未上传 Artifact，候选包仅在本机 dist 和隔离 Profile
 验收-本机自动检查=2026-11-07 V0.5.16 的 npm run check 通过，111/111 测试通过；npm run pack:hud 与 npm run verify:pack 通过，安装包 10 个文件
 验收-WindowsWPF自检=2026-11-07 V0.5.16 的 Windows PowerShell WPF -SelfTest 与 -SelfTestWindow 均通过；独立 HUD 实际窗口/返回尚未在 Desktop 测试
 验收-本机CLI安装=2026-11-06 使用 dsh plugin --profile desktop add 安装 0.5.14；CLI list、Profile package.json、pnpm-lock.yaml 与 node_modules/package.json 均确认 0.5.14；D 盘包 SHA-256 CA4059F0BEFF5EEF04DD26011CF50D12B64DEC716EA40E0F1BD812B58A673DD8
@@ -79,3 +79,5 @@ CI-V0515状态=源码提交 4270b3593db7317d3967d8a3dbd4de6ea8412a4d 的 GitHub 
 修复-V0516-进程识别=启动和异常恢复共同校验 Host 父进程关系、可执行文件完整路径及创建时间，再定位唯一 DSH 主窗口；不满足条件时拒绝操作窗口
 验收-V0516-只读窗口定位=2026-11-07 在运行中的 DSH Desktop 进程上定位到主窗口；给出无关父进程时拒绝；该只读验证不等于实际打开与返回验收
 验收-V0516-隔离热更新=隔离 DSH Web Host 同一进程内通过官方 Plugin Manager 将 V0.5.15 更新至 V0.5.16，结果 applied，已安装版本与运行 Host 版本均为 0.5.16；不代表 Desktop 窗口功能已验收
+回退-V0516桌面准备=已单独备份并校验 desktop Profile 的五个插件配置和锁文件，保留 SHA-256 已核验的 V0.5.14 安装包；实际桌面升级与回退尚未执行
+CI-V0516状态=源码提交 4c3c8669457384ea65236a01a61b8378e40d15a4 的 GitHub Actions run 42368640217 各任务均成功；未创建正式 Release 或更新公开通道

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { setImmediate as tick } from 'node:timers/promises';
 import vm from 'node:vm';
@@ -10,6 +10,7 @@ const source = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'
   .replace(/^import .+;\r?\n/gm,'')
   .replace(/^export const /gm,'const ')
   .replace(/^export function /gm,'function ');
+const HUD_VERSION=JSON.parse(readFileSync(new URL('../plugins/hud/package.json',import.meta.url),'utf8')).version;
 const NAME='@local/dsh-hud';
 const archive=Buffer.from('approved DSH plugin fixture - nonexecutable test data');
 const sha=createHash('sha256').update(archive).digest('hex');
@@ -66,14 +67,15 @@ function setup(overrides={}) {
     ...overrides.values,
   };
   const calls={http:[],installed:[],list:0,writes:[],logs:[],cached:[],native:[],fetchRoutes:[]};
-  const storedFiles=new Map();
+  const storedFiles=overrides.storedFiles || new Map();
   const inventory=overrides.inventory || [{name:NAME,installed:true,version:'0.4.0'}];
   const callbacks=[], startTimers=[], events=new Map(),rpcRoutes=new Map(),effectDisposers=[];
   const dispose=()=>{for(const fn of effectDisposers.splice(0).reverse())fn();};
   const editableEntry={options:{id:'dsh-hud'}};
   let editorReady=overrides.editorInitiallyAvailable!==false;
   let failCheckClaimOnce=overrides.rejectCheckClaimOnce===true;
-  let clock=Date.now();
+  let clock=overrides.now ?? Date.now();
+  const applications=[...(overrides.applications || [])];
   const field=()=>({default(){return this;},volatile(){return this;}});
   const Schema={string:field,boolean:field,object:f=>f};
   const fetch=async(url,opts)=>{
@@ -125,7 +127,9 @@ function setup(overrides={}) {
       async installBundle(path,opts){
         calls.installed.push({path,opts});
         if(overrides.disposeDuringInstall)dispose();
-        const application=overrides.application||'restart-required';
+        if(overrides.installNeverResolves)return new Promise(()=>{});
+        if(overrides.installThrows)throw new Error('Transport lost after submission');
+        const application=applications.shift() || overrides.application || 'restart-required';
         const version=/\/(0\.4\.\d+)\/[0-9a-f]+\.tgz/.exec(path)?.[1] || '0.4.1';
         if(application==='applied'||application==='restart-required'){
           if(!overrides.wrongInstalledVersion){
@@ -144,7 +148,7 @@ function setup(overrides={}) {
     static now(){return clock;}
   }
   const sandbox={
-    Schema,createHash,Buffer,AbortController,AbortSignal,Request,Response,fetch,join,Date:TestDate,
+    Schema,createHash,randomUUID,Buffer,AbortController,AbortSignal,Request,Response,fetch,join,Date:TestDate,
     launchWindowsHud(options) {
       calls.native.push(options);
       if (overrides.nativeThrows) throw new Error('Window spawn forbidden by OS');
@@ -152,15 +156,15 @@ function setup(overrides={}) {
     },
     homedir:()=>'/home',process:{env:{},pid:999},
     mkdir:async()=>{},readFile:async path=>{
-      if(!storedFiles.has(path))throw new Error('ENOENT');
+      if(!storedFiles.has(path))throw Object.assign(new Error('ENOENT'),{code:'ENOENT'});
       return storedFiles.get(path);
     },
     writeFile:async(path,data)=>{calls.cached.push({path,data});storedFiles.set(path,String(data));},
     rename:async(from,to)=>{storedFiles.set(to,storedFiles.get(from));storedFiles.delete(from);},
     setInterval:fn=>{callbacks.push(fn);return callbacks.length;},
     clearInterval(){},
-    setTimeout:fn=>{startTimers.push(fn);return startTimers.length;},
-    clearTimeout(){},
+    setTimeout:(fn,ms)=>{const timer={fn,ms,active:true};startTimers.push(timer);return timer;},
+    clearTimeout(timer){if(timer && typeof timer==='object')timer.active=false;},
   };
   vm.runInNewContext(source+'\n;globalThis.__host={apply};',sandbox);
   const config=Object.fromEntries(Object.keys(values).map(k=>[k,{get:()=>values[k]}]));
@@ -197,7 +201,7 @@ function setup(overrides={}) {
     assert.equal(envelope.rpcId,'fixture-rpc-id');
     return envelope.result;
   }
-  return {values,calls,inventory,click,
+  return {values,calls,inventory,click,storedFiles,
     fetchRoute:path=>rpcRoutes.get(path),
     native:(data={snapshot:'{"sessions":[]}',language:'zh'},signal=new AbortController().signal,peer={principal:{kind:'owner'}})=>
       invoke('open',data,signal,peer),
@@ -209,7 +213,8 @@ function setup(overrides={}) {
     check:async()=>{values.checkNonce='check-'+(++id);values.checkState='checking';
       callbacks[1]();await flush();},
     refresh:async()=>{callbacks[0]();await flush();},
-    reconcile:async()=>{startTimers[0]?.();await flush();},
+    reconcile:async()=>{startTimers.find(timer=>timer.ms===1500 && timer.active)?.fn();await flush();},
+    fireTimer:async ms=>{const timer=startTimers.find(item=>item.ms===ms && item.active);assert(timer);timer.active=false;timer.fn();await flush();},
     checkCallback:async()=>{callbacks[1]();await flush();},
     sendVolatile:async()=>{events.get('loader/volatile-update')?.([['checkNonce']]);await flush();},
     enableEditor:()=>{editorReady=true;},
@@ -224,7 +229,7 @@ test('native RPC registers exact authenticated Connection API routes',async()=>{
     assert.deepEqual(s.calls.fetchRoutes,[
       '/api/hud-native.open','/api/hud-native.prepare-install','/api/hud-native.status',
     ]);
-    assert.equal((await s.status()).value.hostVersion,'0.5.14');
+    assert.equal((await s.status()).value.hostVersion,HUD_VERSION);
   }finally{
     s.stop();
     assert.equal(s.hasNativeRoute(),false);
@@ -249,7 +254,7 @@ test('public repository index exposes components with released and unstable chan
     await flush();
     const status=await s.status();
     assert.equal(status.value.scanState,'success');
-    assert.equal(status.value.hostVersion,'0.5.14');
+    assert.equal(status.value.hostVersion,HUD_VERSION);
     assert.equal(s.calls.writes.length,0,'Background scanning must not recompose its own Host');
     assert(s.calls.http.some(x=>x.url.endsWith('/hud/released/index.json')));
     assert(s.calls.http.some(x=>x.url.endsWith('/hud/unstable/index.json')));
@@ -672,7 +677,7 @@ test('legacy pending nonce is not replayed on reloaded Host and does not disturb
     await flush();
     await s.checkCallback();
     assert.equal(s.calls.installed.length,0,'Recomposed Host must not replay old confirmation');
-    assert.equal((await s.status()).value.hostVersion,'0.5.14');
+    assert.equal((await s.status()).value.hostVersion,HUD_VERSION);
   } finally{s.stop();}
 });
 
@@ -688,13 +693,95 @@ test('background automatic update uses no pre-install ConfigEditor and does not 
   } finally{s.stop();}
 });
 
+test('confirmed automatic install failures retry after backoff and stop after three attempts',async()=>{
+  const s=setup({values:{autoUpdateEnabled:true},applications:['failed','failed','failed','applied']});
+  try {
+    await flush();
+    assert.equal(s.calls.installed.length,1);
+    assert.equal((await s.status()).value.autoState,'failed');
+    await s.refresh();
+    assert.equal(s.calls.installed.length,1,'The same failure must not spin immediately');
+    s.advance(5*60_000);
+    await s.refresh();
+    assert.equal(s.calls.installed.length,2);
+    s.advance(5*60_000);
+    await s.refresh();
+    assert.equal(s.calls.installed.length,3);
+    s.advance(5*60_000);
+    await s.refresh();
+    assert.equal(s.calls.installed.length,3,'Permanent failures have a bounded retry count');
+    assert.equal(s.calls.writes.length,0,'Automatic attempts do not recompose the Host');
+  } finally{s.stop();}
+});
+
+test('confirmed automatic failure remains eligible for retry after Host restart',async()=>{
+  const storedFiles=new Map(),now=1_800_000_000_000;
+  const first=setup({storedFiles,now,values:{autoUpdateEnabled:true},application:'failed'});
+  try {
+    await flush();
+    assert.equal((await first.status()).value.autoState,'failed');
+  } finally{first.stop();}
+  const second=setup({storedFiles,now:now+5*60_000,values:{autoUpdateEnabled:true},application:'applied'});
+  try {
+    await flush();
+    assert.equal(second.calls.installed.length,1,'A confirmed failure is not lost at restart');
+    assert.equal(second.inventory[0].version,'0.4.1');
+  } finally{second.stop();}
+});
+
+test('an unconfirmed automatic install is reported and never submitted again while pending',async()=>{
+  const s=setup({values:{autoUpdateEnabled:true},installNeverResolves:true});
+  try {
+    await flush();
+    assert.equal((await s.status()).value.autoState,'submitted');
+    await s.fireTimer(90_000);
+    assert.equal((await s.status()).value.autoState,'unconfirmed');
+    s.advance(10*60_000);
+    await s.refresh();
+    assert.equal(s.calls.installed.length,1);
+  } finally{s.stop();}
+});
+
+test('a rejected automatic install promise remains unconfirmed rather than being replayed',async()=>{
+  const s=setup({values:{autoUpdateEnabled:true},installThrows:true});
+  try {
+    await flush();
+    assert.equal((await s.status()).value.autoState,'unconfirmed');
+    s.advance(10*60_000);
+    await s.refresh();
+    assert.equal(s.calls.installed.length,1);
+  } finally{s.stop();}
+});
+
+test('a cancelled automatic installation is not retried',async()=>{
+  const s=setup({values:{autoUpdateEnabled:true},application:'cancelled'});
+  try {
+    await flush();
+    assert.equal((await s.status()).value.autoState,'cancelled');
+    s.advance(10*60_000);
+    await s.refresh();
+    assert.equal(s.calls.installed.length,1);
+  } finally{s.stop();}
+});
+
+test('an unreadable automatic attempt ledger cannot cause a duplicate install',async()=>{
+  const storedFiles=new Map([[join('/home','.dsh','approved-component-packages','hud','.auto-attempt.json'),'{broken']]);
+  const s=setup({storedFiles,values:{autoUpdateEnabled:true}});
+  try {
+    await flush();
+    assert.equal(s.calls.installed.length,0);
+    assert.equal((await s.status()).value.autoState,'unconfirmed');
+    assert.match((await s.status()).value.autoError,/record is unreadable/);
+  } finally{s.stop();}
+});
+
 
 test('Host exposes native status RPC when optional Plugin Manager has not started',async()=>{
   const s=setup({managerUnavailable:true});
   try {
     const status=await s.status();
     assert.equal(status.ok,true);
-    assert.equal(status.value.hostVersion,'0.5.14');
+    assert.equal(status.value.hostVersion,HUD_VERSION);
     assert.equal(s.calls.installed.length,0);
     const pending=s.native();
     await flush();

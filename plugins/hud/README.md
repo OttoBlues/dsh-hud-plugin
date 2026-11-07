@@ -8,7 +8,7 @@
 - 自动更新默认关闭，试验版订阅与自动试验版需要独立授权；窗口内 HUD 预览默认关闭。
 - 历史 V0.4.0 曾出现自更新宿主异常，V0.4.1 引入 Host 生命周期保护。
 
-**源码候选：** V0.5.14 将 HUD Host RPC 注册到 DSH Connection 的 owner-only `/api` Fetch 路由；Unstable 可安装版本以 `unstable/index.json` 为准，Released 仍为空。
+**源码候选：** V0.5.15 在 V0.5.14 的 Connection 路由基础上修复策略保存等待、自动更新失败恢复及旧版 CI 发布步骤；Unstable 可安装版本以 `unstable/index.json` 为准，Released 仍为空。
 
 **历史发布：** V0.4.2 完成仓库更名与本地 Runner 退役。后续 v0.5.x 已增加 DSH 组件中心、只读公开更新检查与独立 HUD 候选。安装仍须人工确认，不能将 CI 视为 Desktop 无崩溃验收。
 
@@ -79,3 +79,7 @@ v0.5.7 的独立 HUD 启动仍通过 ConfigForms nonce 排队给 Host，Host 重
 ## V0.5.14 Connection API 路由修复候选
 
 DSH 0.2.2-rc.1 的 Connection 提供 owner-only 精确 Fetch 路由，并将路由挂到共享 `/api` 桥接。HUD 的 `open`、`status` 和 `prepare-install` 改为 `/api/hud-native.*`，不再要求 HUD fiber 注册独立 WebServer 前缀。若此前 Host fiber 因前缀路由注册失败，设置命名空间也无法进入 Settings 镜像，导致策略显示可写却被 Host 拒绝；新路由应同时恢复 Host 状态和设置保存。需在本机 DSH 验证开关保存、独立窗口打开与返回。
+
+## V0.5.15 更新恢复修复候选
+
+策略保存等待限时 12 秒；超时显示结果未确认，在原 DSH 请求结束前不重复排队。自动安装仅对明确失败的结果按五分钟间隔重试，最多三次；取消或结果未知的安装不自动重放。旧版一次性发布任务只处理匹配其源码版本的构建。真实 DSH 内的历史 Host、独立窗口及连续更新仍需实测；该候选未进入正式或公开试验通道。详见 `docs/HUD-RECOVERY-V0515.md`。

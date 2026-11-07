@@ -4,13 +4,16 @@ import { test } from 'node:test';
 import vm from 'node:vm';
 
 const client = readFileSync(new URL('../client.js', import.meta.url), 'utf8');
+const HUD_VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+const NEXT_HUD_VERSION = HUD_VERSION.replace(/\d+$/, value=>String(Number(value)+1));
 
 function setup(valuesOverride={}, runtime={}) {
   let module;
   vm.runInNewContext(client, {
     window:{__ModuleLoader__:{load(x){module=x;}},sessionStorage:runtime.sessionStorage},
     fetch:runtime.fetch || (async()=>{throw new Error('Browser fetch unavailable');}),
-    AbortSignal,AbortController,setTimeout,clearTimeout,
+    AbortSignal,AbortController,setTimeout:runtime.setTimeout||setTimeout,
+    clearTimeout:runtime.clearTimeout||clearTimeout,
   });
   assert.equal(module?.id,'@local/dsh-hud');
   const hookSets=new Map(),effects=[]; let cursor=0; let currentScope='root';
@@ -69,7 +72,7 @@ function setup(valuesOverride={}, runtime={}) {
     connection:{rpc:{async call(channel,endpoint,payload,signal){
       rpcCalls.push({channel,endpoint,payload,signal});
       if(runtime.nativeRpc)return runtime.nativeRpc({channel,endpoint,payload,signal});
-      if(endpoint==='hud-native.status')return {ok:true,value:{hostVersion:'0.5.14'}};
+      if(endpoint==='hud-native.status')return {ok:true,value:{hostVersion:HUD_VERSION}};
       if(endpoint==='hud-native.prepare-install')return {ok:true,value:{
         name:payload.name,version:payload.version,channel:payload.channel,
         sha256:'f'.repeat(64),path:'/fixture/cache/'+payload.version+'/verified.tgz',
@@ -88,7 +91,7 @@ function setup(valuesOverride={}, runtime={}) {
       async listBundles(){return {ok:true,value:[]};},
       async installBundle(path,options){
         installCalls.push({path,options});
-        const version=/\/(\d+\.\d+\.\d+)\//.exec(path)?.[1]||'0.5.14';
+        const version=/\/(\d+\.\d+\.\d+)\//.exec(path)?.[1]||HUD_VERSION;
         return runtime.installResult||{ok:true,value:{application:'applied',version}};
       },
     }},
@@ -145,7 +148,7 @@ test('HUD uses its own sidebar icon and keyed main panel, never DSH Plugins tabs
 });
 
 test('components page distinguishes the repository component from DSH Plugins',()=>{
-  const ui=setup({catalog:catalog([own('0.5.15')])});
+  const ui=setup({catalog:catalog([own(NEXT_HUD_VERSION)])});
   const tree=ui.render();
   assert.match(JSON.stringify(tree),/仓库组件/);
   assert.match(JSON.stringify(tree),/DSH HUD/);
@@ -229,7 +232,7 @@ test('overlay preview remains off and does not intercept mouse events',()=>{
   const preview=find(overlay,x=>x.props?.['data-dsh-hud-preview']==='true')[0];
   assert.ok(preview);
   assert.equal(preview.props.style.pointerEvents,'none');
-  assert.equal(preview.props['data-dsh-hud-version'],'0.5.14');
+  assert.equal(preview.props['data-dsh-hud-version'],HUD_VERSION);
 });
 
 test('component center shows the renamed repository rather than legacy UI copy',()=>{
@@ -352,7 +355,7 @@ test('HUD Escape and manager entry both keep DSH navigation usable',async()=>{
 test('cockpit UI uses fixed-pixel nested panels with no distorted SVG rails',()=>{
   const ui=setup({hudMode:true});
   const overlay=renderWorkspace(ui);
-  assert.equal(overlay.props['data-dsh-hud-version'],'0.5.14');
+  assert.equal(overlay.props['data-dsh-hud-version'],HUD_VERSION);
   assert.equal(overlay.props.style.pointerEvents,'auto');
   const panels=find(overlay,x=>x.props?.['data-hud-cockpit-panel']===true);
   assert.ok(panels.length>=4,'hero, metrics and Session modules stay separate');
@@ -638,4 +641,40 @@ test('a rejected Host mutation reports error rather than silently resetting all 
   assert.equal(errors.length,1);
   assert.match(JSON.stringify(errors[0]),/mutate was not accepted/);
   assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-setting']==='auto')[0].props.checked,false);
+});
+
+test('a stalled policy write times out without queuing duplicates and permits retry after settlement',async()=>{
+  const timers=[];
+  const ui=setup({}, {
+    setTimeout(fn,ms){const timer={fn,ms,active:true};timers.push(timer);return timer;},
+    clearTimeout(timer){if(timer)timer.active=false;},
+  });
+  let calls=0, settleFirst;
+  ui.form.mutate=ops=>{
+    calls++;
+    if(calls===1)return new Promise(resolve=>{settleFirst=resolve;});
+    for(const op of ops)ui.values[op.path[0]]=op.value;
+    return Promise.resolve(true);
+  };
+  const setting=key=>find(ui.render('main'),x=>x.props?.['data-hud-setting']===key)[0];
+  setting('unstable').props.onChange({target:{checked:true}});
+  await flushMode();
+  const timer=timers.find(item=>item.ms===12_000 && item.active);
+  assert(timer,'Policy mutation has a bounded wait');
+  timer.fn();
+  await flushMode();
+  assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-policy-saving']===true).length,0);
+  assert.match(JSON.stringify(find(ui.render('main'),x=>x.props?.['data-hud-policy-error']===true)),/超时.*未确认/);
+  assert.equal(setting('auto').props.disabled,false);
+  setting('auto').props.onChange({target:{checked:true}});
+  await flushMode();
+  assert.equal(calls,1,'An unresolved DSH form must not accumulate duplicate mutations');
+  assert.match(JSON.stringify(find(ui.render('main'),x=>x.props?.['data-hud-policy-error']===true)),/未重复提交/);
+  settleFirst(false);
+  await flushMode();
+  setting('auto').props.onChange({target:{checked:true}});
+  await flushMode();
+  assert.equal(calls,2);
+  assert.equal(ui.values.autoUpdateEnabled,true);
+  assert.equal(find(ui.render('main'),x=>x.props?.['data-hud-policy-saved']===true).length,1);
 });

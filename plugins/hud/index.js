@@ -1,5 +1,5 @@
 /**
- * DSH HUD v0.5.14: register Host RPCs through Connection's authenticated API.
+ * DSH HUD v0.5.15: bound automatic update attempts and recover confirmed failures.
  *  - repository catalog and release channels are read anonymously from HTTPS
  *  - only channel-listed, integrity-checked .tgz packages are installable
  *  - manual installs require a one-time UI confirmation
@@ -10,7 +10,7 @@
  */
 import Schema from '@deepseek-ai/schemastery';
 import { launchWindowsHud } from './native-window.js';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -25,7 +25,7 @@ const ROOTS = [
   'https://raw.githubusercontent.com/OttoBlues/dsh-plugins/main/plugins',
 ];
 const CURRENT_NAME = '@local/dsh-hud';
-const HOST_VERSION = '0.5.14';
+const HOST_VERSION = '0.5.15';
 const CATALOG_EMPTY = '{"schema":3,"source":"checking","components":[]}';
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const HEX40 = /^[a-f0-9]{40}$/i;
@@ -34,6 +34,9 @@ const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PACKAGE = /^@local\/[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_ARCHIVE_BYTES = 25_000_000;
 const CHECK_MS = 5 * 60_000;
+const AUTO_RETRY_MS = 5 * 60_000;
+const AUTO_MAX_ATTEMPTS = 3;
+const AUTO_INSTALL_WAIT_MS = 90_000;
 const REQUEST_MS = 850;
 const SCAN_MS = 28_000; // Bound the entire network scan, not only each file.
 const EDIT_MS = 6_000; // A stuck DSH ConfigEditor must not lock checks indefinitely.
@@ -195,6 +198,44 @@ export function apply(ctx, config) {
   const cacheRoot = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'approved-component-packages');
   const autoLedgerFor = id => join(cacheRoot,id,'.auto-attempt.json');
   const runtime = {scanAt:'',scanState:'idle',scanError:'',autoAt:'',autoState:'idle',autoError:''};
+  const autoWatchdogs = new Set();
+  let autoOutcomeQueue = Promise.resolve();
+
+  async function writeAutoLedger(id, record) {
+    const directory = join(cacheRoot,id);
+    await mkdir(directory,{recursive:true,mode:0o700});
+    if (disposed) return false;
+    const ledgerPath = autoLedgerFor(id);
+    const temporaryLedger = ledgerPath + '.' + process.pid + '.' + randomUUID() + '.tmp';
+    await writeFile(temporaryLedger,JSON.stringify(record),{mode:0o600});
+    if (disposed) return false;
+    await rename(temporaryLedger,ledgerPath);
+    return true;
+  }
+
+  function recordAutoOutcome(component, attempt, state, error = '') {
+    if (!attempt || disposed) return;
+    const task = autoOutcomeQueue.then(async () => {
+      if (disposed) return;
+      const previous = JSON.parse(await readFile(autoLedgerFor(component.id),'utf8'));
+      if (disposed || previous.key !== attempt.key || previous.attemptId !== attempt.attemptId) return;
+      await writeAutoLedger(component.id,{
+        ...previous, state, error:String(error).slice(0,240),
+        retryAfter:state === 'failed' ? Date.now() + AUTO_RETRY_MS : null,
+      });
+    });
+    autoOutcomeQueue = task.catch(error => {
+      if (!disposed) ctx.logger?.warn?.('HUD automatic update outcome could not be recorded: %s',
+        String(error?.message || error));
+    });
+  }
+
+  function setAutoOutcome(component, attempt, state, error = '') {
+    if (disposed) return;
+    runtime.autoState = state;
+    runtime.autoError = String(error).slice(0,240);
+    recordAutoOutcome(component,attempt,state,runtime.autoError);
+  }
 
   async function writeSettings(patch) {
     if (disposed) return false;
@@ -278,18 +319,18 @@ export function apply(ctx, config) {
     const directory = join(cacheRoot, component.id, approved.version);
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const target = join(directory, approved.sha256 + '.tgz');
-    const temporary = target + '.' + process.pid + '.tmp';
+    const temporary = target + '.' + process.pid + '.' + randomUUID() + '.tmp';
     await writeFile(temporary, bytes, { mode: 0o600 });
     await rename(temporary, target);
 
     return target;
   }
 
-  async function installComponent(component, approved, origin, preparedTarget = null) {
+  async function installComponent(component, approved, origin, preparedTarget = null, attempt = null) {
     if (updating || disposed || !approved) return false;
     updating = true;
     let wasApplied = false;
-    let detachedSelfUpdate = false;
+    let detachedSelfUpdate = false, failureOutcome = 'unconfirmed';
     try {
       const current = (await installedRows()).find(row => row.name === component.name && row.installed);
       if (!newer(approved.version, current?.version)) throw new Error('No newer reviewed version.');
@@ -306,25 +347,48 @@ export function apply(ctx, config) {
         const task = pluginManager().installBundle(target, {
           enabled: true, saveExact: true,
         });
+        let watchdog = null;
+        if (origin === 'automatic') {
+          watchdog = setTimeout(() => {
+            autoWatchdogs.delete(watchdog);
+            if (!disposed) setAutoOutcome(component,attempt,'unconfirmed',
+              'Plugin Manager has not confirmed the installation; check DSH Plugins before retrying.');
+          },AUTO_INSTALL_WAIT_MS);
+          watchdog.unref?.();
+          autoWatchdogs.add(watchdog);
+        }
+        const clearWatchdog = () => {
+          if (watchdog !== null) { clearTimeout(watchdog); autoWatchdogs.delete(watchdog); }
+        };
         Promise.resolve(task).then(
           result => {
+            clearWatchdog();
             if (disposed) return;
             updating = false;
-            if (!result || !['applied', 'restart-required'].includes(result.application)) {
-              runtime.autoState = 'failed';
-              runtime.autoError=String(result?.error?.diagnostic||result?.error?.code||
-                'Plugin Manager rejected the update').slice(0,240);
+            if (result && ((result.bundle !== undefined && result.bundle !== component.name) ||
+                (result.version !== undefined && result.version !== approved.version))) {
+              setAutoOutcome(component,attempt,'unconfirmed',
+                'Plugin Manager returned facts for a different component or version.');
+            } else if (result?.application === 'failed' ||
+                (origin !== 'automatic' && result?.application === 'overridden')) {
+              setAutoOutcome(component,attempt,'failed',result.error?.diagnostic||result.error?.code||
+                'Plugin Manager rejected the update');
               ctx.logger?.warn?.('HUD self-update result: %s',runtime.autoError);
+            } else if (result?.application === 'cancelled') {
+              setAutoOutcome(component,attempt,'cancelled','Plugin Manager cancelled the update.');
+            } else if (!result || !['applied','restart-required'].includes(result.application)) {
+              setAutoOutcome(component,attempt,'unconfirmed',
+                'Plugin Manager did not confirm the requested component and version.');
             } else {
-              runtime.autoState=result.application==='restart-required'?'restart-required':'submitted';
-              runtime.autoError='';
+              setAutoOutcome(component,attempt,
+                result.application==='restart-required'?'restart-required':'submitted');
             }
           },
           error => {
+            clearWatchdog();
             if (disposed) return;
             updating = false;
-            runtime.autoState='failed';
-            runtime.autoError=String(error?.message||error).slice(0,240);
+            setAutoOutcome(component,attempt,'unconfirmed',error?.message||error);
             ctx.logger?.warn?.('HUD self-update promise rejected: %s',runtime.autoError);
           },
         );
@@ -336,6 +400,8 @@ export function apply(ctx, config) {
         enabled: true, saveExact: true,
       });
       if (disposed) return false;
+      failureOutcome = result?.application === 'failed' ? 'failed' :
+        result?.application === 'cancelled' ? 'cancelled' : 'unconfirmed';
       if (!result || !['applied', 'restart-required'].includes(result.application) ||
           (result.bundle !== undefined && result.bundle !== component.name) ||
           (result.version !== undefined && result.version !== approved.version)) {
@@ -347,12 +413,15 @@ export function apply(ctx, config) {
         throw new Error('Installed DSH version does not match the update manifest.');
       }
       wasApplied = true;
-      await writeSettings({ updateStatus: result.application === 'restart-required' ?
+      if (origin === 'automatic') setAutoOutcome(component,attempt,
+        result.application === 'restart-required' ? 'restart-required' : 'installed');
+      if (origin !== 'automatic') await writeSettings({ updateStatus: result.application === 'restart-required' ?
         'restart-required' : 'installed' });
       return true;
     } catch (error) {
       if (!disposed) {
-        await writeSettings({ updateStatus: 'failed' }).catch(() => {});
+        if (origin === 'automatic') setAutoOutcome(component,attempt,failureOutcome,error?.message||error);
+        else await writeSettings({ updateStatus: 'failed' }).catch(() => {});
         ctx.logger?.warn?.('Component %s update from %s failed: %s',
           component.name, origin, String(error?.message || 'unavailable'));
       }
@@ -436,32 +505,38 @@ export function apply(ctx, config) {
           const approved = selectRelease(component, includeExperimental);
           if (!approved || !newer(approved.version, row.version)) continue;
           const key = component.name + ':' + approved.channel + ':' + approved.version + ':' + approved.sha256;
-          // One automatic attempt per exact package/hash. The ledger is local
-          // to the DSH profile, not a volatile ConfigEditor write that can
-          // dispose the Host BEFORE installBundle is even called.
-          let previous = '';
+          // Retry only confirmed failures, with backoff and a fixed limit.
+          // A pending, cancelled or unknown outcome must never be replayed.
+          let previous = null;
           try {
-            const record = JSON.parse(await readFile(autoLedgerFor(component.id),'utf8'));
-            previous = typeof record.key === 'string' ? record.key : '';
-          } catch { /* First attempt or a truncated old ledger. */ }
-          if (previous === key || config.autoAttemptKey.get() === key) continue;
+            previous = JSON.parse(await readFile(autoLedgerFor(component.id),'utf8'));
+          } catch (error) {
+            if (error?.code !== 'ENOENT') {
+              runtime.autoState='unconfirmed';
+              runtime.autoError='Automatic update record is unreadable; check DSH Plugins before retrying.';
+              ctx.logger?.warn?.('HUD automatic update record is unreadable: %s',String(error?.message||error));
+              continue;
+            }
+          }
+          const sameAttempt = previous?.key === key;
+          if (sameAttempt && (previous.state !== 'failed' ||
+              !Number.isSafeInteger(previous.attempts) || previous.attempts >= AUTO_MAX_ATTEMPTS ||
+              !Number.isFinite(previous.retryAfter) || Date.now() < previous.retryAfter)) continue;
+          if (!sameAttempt && config.autoAttemptKey.get() === key) continue;
           // A failed network/manifest read must not burn the auto-update attempt.
           const verifiedTarget=await verifiedPackagePath(component,approved,signal);
           if (disposed) break;
-          await mkdir(join(cacheRoot,component.id),{recursive:true,mode:0o700});
-          const ledgerPath=autoLedgerFor(component.id);
-          const temporaryLedger=ledgerPath+'.'+process.pid+'.tmp';
-          await writeFile(temporaryLedger,JSON.stringify({key,at:new Date().toISOString()}),
-            {mode:0o600});
-          await rename(temporaryLedger,ledgerPath);
+          const attempt={key,attemptId:randomUUID(),state:'submitted',
+            attempts:sameAttempt ? previous.attempts + 1 : 1,at:new Date().toISOString()};
+          if (!(await writeAutoLedger(component.id,attempt))) break;
           runtime.autoAt=new Date().toISOString();
           runtime.autoState='submitted'; // pending, not proof of success
           runtime.autoError='';
           ctx.logger?.info?.('HUD auto-update accepted for %s %s', component.name, approved.version);
-          const accepted = await installComponent(component, approved, 'automatic',verifiedTarget);
+          const accepted = await installComponent(component, approved, 'automatic',verifiedTarget,attempt);
           if (!disposed && !accepted && runtime.autoState === 'submitted') {
-            runtime.autoState='failed';
-            runtime.autoError='Install operation did not confirm success; check DSH Plugin Manager.';
+            setAutoOutcome(component,attempt,'unconfirmed',
+              'Install operation did not confirm success; check DSH Plugin Manager.');
           }
           // Do not overwrite an authoritative failed/restart-required result
           // reported by the detached Plugin Manager callback.
@@ -760,8 +835,12 @@ export function apply(ctx, config) {
         const parts=String(record.key||'').split(':');
         if(parts[0]===CURRENT_NAME && SEMVER.test(parts[2]||'')){
           const row=(await installedRows()).find(item=>item.name===CURRENT_NAME && item.installed);
+          if (disposed || runtime.autoState !== 'idle') return;
           runtime.autoAt=typeof record.at==='string'?record.at:'';
-          runtime.autoState=row?.version===parts[2]?'installed':'unconfirmed';
+          runtime.autoState=row?.version===parts[2]?'installed':
+            record.state==='failed'?'failed':record.state==='cancelled'?'cancelled':
+              record.state==='restart-required'?'restart-required':'unconfirmed';
+          runtime.autoError=typeof record.error==='string'?record.error.slice(0,240):'';
         }
       }catch { /* Fresh profile has no previous automatic attempt. */ }
     })());
@@ -785,6 +864,8 @@ export function apply(ctx, config) {
       nativeHudWindow?.close();
       nativeHudWindow = null;
       controller.abort();
+      for (const watchdog of autoWatchdogs) clearTimeout(watchdog);
+      autoWatchdogs.clear();
       clearTimeout(reconcile);
       clearInterval(poll);
       clearInterval(requests);

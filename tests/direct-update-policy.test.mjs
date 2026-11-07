@@ -2,15 +2,46 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
 
 const host = readFileSync(new URL('../plugins/hud/index.js',import.meta.url),'utf8');
 const client = readFileSync(new URL('../plugins/hud/client.js',import.meta.url),'utf8');
 const catalog = JSON.parse(readFileSync(new URL('../plugins/index.json',import.meta.url),'utf8'));
 
-test('Host and Client v0.5.14 development source parse successfully',()=>{
+test('Host and Client development source parse successfully',()=>{
   for(const file of ['plugins/hud/index.js','plugins/hud/client.js']){
     const out=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});
     assert.equal(out.status,0,out.stderr);
+  }
+});
+test('Host and Client report the plugin package version',()=>{
+  const version=JSON.parse(readFileSync(new URL('../plugins/hud/package.json',import.meta.url),'utf8')).version;
+  assert(host.includes(`const HOST_VERSION = '${version}'`));
+  assert(client.includes(`const VERSION = '${version}'`));
+});
+
+test('obsolete CI publisher steps cannot stage missing archives for a different source version',()=>{
+  const ci=readFileSync(new URL('../.github/workflows/ci.yml',import.meta.url),'utf8');
+  const sections=ci.split('name: Record validated Unstable package without changing Released');
+  assert.equal(sections.length,3);
+  const gitExec=spawnSync('git',['--exec-path'],{encoding:'utf8'});
+  assert.equal(gitExec.status,0,gitExec.stderr);
+  const bash=process.platform==='win32'
+    ? resolve(gitExec.stdout.trim(),'../../..','bin','bash.exe') : 'bash';
+  for(const [index,version] of ['0.5.10','0.5.12'].entries()){
+    const block=sections[index+1].split('run: |')[1].split(/\r?\n\r?\n/)[0]
+      .replace(/^ {10}/gm,'');
+    const fake='node() { printf "%s\\n" "$HUD_TEST_VERSION"; }\n'+
+      'git() { if [ "$1" = "ls-files" ]; then return 1; fi; printf "git %s\\n" "$*"; }\n';
+    const run=source=>spawnSync(bash,['-e','-c',fake+block],{
+      encoding:'utf8',env:{...process.env,HUD_TEST_VERSION:source},
+    });
+    const inactive=run('0.5.15');
+    assert.equal(inactive.status,0,inactive.stderr);
+    assert.equal(inactive.stdout.trim(),'','A mismatched publisher must not invoke git');
+    const active=run(version);
+    assert.equal(active.status,0,active.stderr);
+    assert(active.stdout.includes('git add plugins/hud/unstable/index.json plugins/hud/unstable/v'+version+'/'));
   }
 });
 test('Host RPC uses exact authenticated routes on the shared Connection API',()=>{

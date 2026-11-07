@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-hud",
-  "version": "0.5.14",
+  "version": "0.5.15",
   "private": true,
   "type": "module",
-  "description": "HUD authenticated API routes and settings bootstrap fix",
+  "description": "HUD bounded policy saves and recoverable automatic updates",
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=3.18.0 <4"
   },

@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.14: authenticated Connection API routes.
+ * DSH HUD V0.5.15: bounded policy writes and recoverable update failures.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,13 +10,18 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.14';
+    const VERSION = '0.5.15';
     let nativeSessionSnapshot = { capturedAt:'', sessions:[] };
     // User-triggered checks do not use Host settings as a command queue.
     const REFRESH_MS = 5 * 60_000;
     const INSTALL_PENDING_KEY = 'dsh-hud-install-pending';
     const INSTALL_WAIT_MS = 90_000;
     const INSTALL_STALE_MS = 120_000;
+    const POLICY_WAIT_MS = 12_000;
+    const POLICY_TIMED_OUT = Symbol('policy-timeout');
+    // DSH serializes mutations per form and does not expose cancellation.
+    // Keep a timed-out wire call single-flight even if this page remounts.
+    const policyWrites = new WeakMap();
     function readPending() {
       try {
         const raw=window.sessionStorage?.getItem(INSTALL_PENDING_KEY);
@@ -78,7 +83,9 @@ window.__ModuleLoader__.load({
         prepareFailed:'安装包验证或提交失败：',
         legacyStale:'旧版遗留的安装队列状态已经失效；以实际安装清单为准。',
         autoAttempt:'后台自动安装已提交；请核对安装版本与 Host 状态。',
-        autoFailed:'后台自动安装结果未确认，请查看 DSH Host 日志。',
+        autoFailed:'后台自动安装失败，请查看 DSH Host 日志；符合重试条件时会再次尝试。',
+        autoUnconfirmed:'后台自动安装结果未确认，请先检查 DSH 插件状态，避免重复安装。',
+        autoCancelled:'后台自动安装已取消，不会自动重新提交。',
         resetPending:'清除未确认记录（请先核对 DSH 插件状态）',
         confirm: '确认', cancel: '取消',
         confirmText: '只安装仓库对应通道中经过校验的 .tgz。更新期间 DSH 可能要求重启。',
@@ -89,7 +96,9 @@ window.__ModuleLoader__.load({
         noToken: '无需 GitHub Token · 仅下载公开通道中登记的安装包',
         policySaved:'更新策略已保存到 DSH 配置。',policySaving:'正在保存更新策略…',
         policyReady:'DSH 设置可写',policyNotReady:'DSH HUD 配置暂不可写，设置不会生效。',
-        policyFailed:'保存更新策略失败（原设置保持不变）：',
+        policyFailed:'保存更新策略失败或结果未确认：',
+        policyTimeout:'更新策略保存超时，结果尚未确认。请先检查 DSH 配置；原请求结束后可重试。',
+        policyPending:'上一次更新策略保存仍未结束，未重复提交；请检查 DSH 配置或重新启动 DSH。',
         policyHelp:'请检查 HUD Host 和 DSH 原生插件配置。若仍无法保存，可通过官方离线安装方式升级。',
       },
       en: {
@@ -131,7 +140,9 @@ window.__ModuleLoader__.load({
         prepareFailed:'Archive verification or install submission failed:',
         legacyStale:'Ignoring an obsolete queued install from an older HUD; installed inventory is authoritative.',
         autoAttempt:'An automatic install was submitted; verify the installed and running Host versions.',
-        autoFailed:'Automatic install outcome was not confirmed; inspect Host logs.',
+        autoFailed:'Automatic install failed. Check Host logs; eligible failures will be retried.',
+        autoUnconfirmed:'Automatic install outcome is unconfirmed. Check DSH Plugins before retrying.',
+        autoCancelled:'Automatic installation was cancelled and will not be resubmitted.',
         resetPending:'Clear unconfirmed record (check DSH Plugins first)',
         confirm: 'Confirm', cancel: 'Cancel',
         confirmText: 'Only SHA-256-verified channel packages are installed. A DSH restart may be required.',
@@ -142,7 +153,9 @@ window.__ModuleLoader__.load({
         noToken: 'No GitHub Token · Only indexed public installable archives',
         policySaved:'Update preferences saved by DSH.',policySaving:'Saving update preferences…',
         policyReady:'DSH settings writable',policyNotReady:'HUD configuration is not writable; changes cannot take effect.',
-        policyFailed:'Failed to save update preferences (original settings unchanged):',
+        policyFailed:'Update preference save failed or its outcome is unconfirmed:',
+        policyTimeout:'Saving update preferences timed out; the outcome is unconfirmed. Check DSH settings and retry after the original request settles.',
+        policyPending:'The previous update preference save is still pending; no duplicate was submitted. Check DSH settings or restart DSH.',
         policyHelp:'Check that the HUD Host and native DSH plugin configuration are available; use the official offline installation path if needed.',
       },
     };
@@ -642,6 +655,10 @@ window.__ModuleLoader__.load({
           ? policyDraft[field]===true : values[field]===true;
         const writePolicy=async ops=>{
           if(policyAttempt.current)return;
+          if(policyWrites.has(form)){
+            setPolicyError(t('policyPending'));setPolicyNotice('');
+            return;
+          }
           const current=form.getSnapshot();
           if(current.writable!==true){
             setPolicyError(t('policyNotReady')+' ('+String(current.status)+
@@ -654,8 +671,16 @@ window.__ModuleLoader__.load({
           const optimistic={};
           for(const op of ops)if(op.op==='set'&&op.path.length===1)optimistic[op.path[0]]=op.value;
           setPolicyDraft(previous=>({...previous,...optimistic}));
+          let timer;
           try{
-            const accepted=await form.mutate(ops);
+            const mutation=Promise.resolve().then(()=>form.mutate(ops));
+            policyWrites.set(form,mutation);
+            mutation.then(()=>policyWrites.delete(form),()=>policyWrites.delete(form));
+            const accepted=await Promise.race([
+              mutation,
+              new Promise(resolve=>{timer=setTimeout(()=>resolve(POLICY_TIMED_OUT),POLICY_WAIT_MS);}),
+            ]);
+            if(accepted===POLICY_TIMED_OUT){setPolicyError(t('policyTimeout'));return;}
             if(accepted!==true)throw new Error('Settings mutate was not accepted by DSH Host.');
             setPolicyNotice(t('policySaved'));
           }catch(cause){
@@ -663,6 +688,7 @@ window.__ModuleLoader__.load({
             setPolicyError(t('policyFailed')+' '+String(cause?.message||cause).slice(0,180)+
               ' (status='+String(state.status)+', writable='+String(state.writable)+')');
           }finally{
+            clearTimeout(timer);
             setPolicyDraft({});setPolicySaving(false);policyAttempt.current=false;
           }
         };
@@ -867,9 +893,11 @@ window.__ModuleLoader__.load({
             ?h('p',{role:'status','data-hud-auto-state':true,style:subtle},t('autoAttempt'))
             :hostHealth.autoState==='restart-required'
               ?h('p',{role:'status','data-hud-auto-state':true,style:subtle},t('restart'))
+              :hostHealth.autoState==='cancelled'
+                ?h('p',{role:'status','data-hud-auto-state':true,style:subtle},t('autoCancelled'))
               :hostHealth.autoState==='failed'||hostHealth.autoState==='unconfirmed'
-                ?h('p',{role:'alert','data-hud-auto-state':true,style:subtle},
-                    t('autoFailed')+' '+String(hostHealth.autoError||''))
+              ?h('p',{role:'alert','data-hud-auto-state':true,style:subtle},
+                    t(hostHealth.autoState==='failed'?'autoFailed':'autoUnconfirmed')+' '+String(hostHealth.autoError||''))
                 :null,
           h('section',{'data-hud-check-panel':true,
             style:{...surface,padding:'20px 24px',marginTop:24}},

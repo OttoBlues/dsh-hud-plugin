@@ -95,7 +95,8 @@ jobs:
       - name: Record validated Unstable package without changing Released
         shell: bash
         run: |
-          if ! git ls-files --error-unmatch plugins/hud/unstable/v0.5.10/manifest.json >/dev/null 2>&1; then
+          if [ "$(node -p "require('./plugins/hud/package.json').version")" = "0.5.10" ] && \
+             ! git ls-files --error-unmatch plugins/hud/unstable/v0.5.10/manifest.json >/dev/null 2>&1; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add plugins/hud/unstable/index.json plugins/hud/unstable/v0.5.10/
@@ -128,7 +129,8 @@ jobs:
       - name: Record validated Unstable package without changing Released
         shell: bash
         run: |
-          if ! git ls-files --error-unmatch plugins/hud/unstable/v0.5.12/manifest.json >/dev/null 2>&1; then
+          if [ "$(node -p "require('./plugins/hud/package.json').version")" = "0.5.12" ] && \
+             ! git ls-files --error-unmatch plugins/hud/unstable/v0.5.12/manifest.json >/dev/null 2>&1; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add plugins/hud/unstable/index.json plugins/hud/unstable/v0.5.12/

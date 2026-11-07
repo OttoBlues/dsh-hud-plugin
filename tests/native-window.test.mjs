@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
@@ -32,6 +32,33 @@ test('Windows verifies Desktop parent, executable and process lifetime',
       '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',script,'-SelfTestParentValidation',
     ],{encoding:'utf8',timeout:20_000});
     assert.match(output,/HUD_PARENT_VALIDATION_OK/);
+  });
+
+test('Windows WPF renders while the Host input pipe stays open',
+  {skip:process.platform!=='win32',timeout:25_000},async()=>{
+    const script=fileURLToPath(new URL('../plugins/hud/native/windows-hud.ps1',import.meta.url));
+    await new Promise((resolve,reject)=>{
+      const child=spawn('powershell.exe',[
+        '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-STA',
+        '-File',script,'-SelfTestWindowInput',
+      ],{stdio:['pipe','pipe','pipe'],windowsHide:true});
+      let output='',errors='';
+      const timer=setTimeout(()=>{
+        child.kill();
+        reject(new Error('WPF failed to render while the input pipe remained open.'));
+      },20_000);
+      child.stdout.on('data',chunk=>{output+=chunk.toString();});
+      child.stderr.on('data',chunk=>{errors+=chunk.toString();});
+      child.once('error',error=>{clearTimeout(timer);reject(error);});
+      child.once('exit',code=>{
+        clearTimeout(timer);
+        if(code!==0 || !output.includes('HUD_WPF_INPUT_RENDERED_OK')) {
+          reject(new Error('WPF input test failed: '+String(errors||output).slice(-600)));
+        } else resolve();
+      });
+      // Deliberately do not close stdin or send a second line before render.
+      child.stdin.write('HUD_TEST_SNAPSHOT\n');
+    });
   });
 
 test('Client RPC wait leaves time for the Host WPF startup deadline',()=>{

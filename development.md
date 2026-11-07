@@ -7,10 +7,10 @@
 仓库-结构=plugins/index.json 是组件目录；plugins/hud 是 HUD 插件源码及独立 released/unstable 通道；scripts/ 与 tests/ 存放验证、打包和测试；docs/ 存放架构、安装、发布和验收说明
 仓库-正式Release与Tag=截至 2026-11-05 GitHub 无正式 Release，仓库无 Git Tag；可安装版本由插件目录中的通道索引登记
 插件-HUD包名=@local/dsh-hud；不要因 GitHub 仓库更名修改该 DSH 插件包名
-插件-HUD源码版本=0.5.16（界面标记为 V0.5.16；修复 Desktop 中 Host 与窗口分属父子进程导致独立 HUD 启动失败）
-插件-HUD当前通道=公开 Unstable 最新 0.5.10；Released 索引为空；2026-11-07 desktop 实际运行 0.5.14；V0.5.16 候选尚未进入公开通道
+插件-HUD源码版本=0.5.17（界面标记为 V0.5.17；修复 Windows PowerShell 标准输入阻塞导致独立 HUD 启动超时）
+插件-HUD当前通道=公开 Unstable 最新 0.5.10；Released 索引为空；2026-11-07 desktop 安装并运行 0.5.16；V0.5.17 候选尚未进入公开通道
 插件-HUD安装包=plugins/hud/unstable/v0.5.10/local-dsh-hud-0.5.10.tgz；SHA-256 0679a112fc18d545cc3ee5376a9644ed29277661d3ed870800c554c56fa55e4c
-插件-HUD本机候选包=dist/local-dsh-hud-0.5.16.tgz；SHA-256 c4a2eef63daba9638ef3e342e8e62c8a0d1f2fb27af61e7988380e8a9df0d8a8；已在隔离 Profile 热更新验证，desktop Profile 仍为 0.5.14
+插件-HUD本机候选包=dist/local-dsh-hud-0.5.17.tgz；SHA-256 63ea1199a10fd10bfa8a7669af8e066466d8e2a399912fbd8f05fcfc68f09963；已在隔离 Profile 热更新验证，desktop Profile 为 0.5.16
 回退-HUD本机候选包=dist/local-dsh-hud-0.5.14.tgz；SHA-256 ca4059f0beff5eef04dd26011cf50d12b64dec716ea40e0f1bd812b58a673dd8；隔离 Profile 已验证从 0.5.15 回退后可再次升级
 插件-HUD来源与CI=Unstable 0.5.10 来源提交 2d892773d77029289ea889b13b98e69c63d55b37；CI run 42016577025 成功
 架构-HUD=DSH Cordis Host 位于 plugins/hud/index.js，Client 位于 plugins/hud/client.js；侧栏插件入口和组件中心独立于 DSH 原生 Plugins 管理页
@@ -23,7 +23,7 @@
 问题-本机HUD重启后待验收=2026-11-07 用户重新打开 DSH 后可通过截图坐标操作，元素索引点击仍报坐标不可用；组件中心的手动检查时间更新，独立窗口启动报错已复现
 问题-本机HUDHost未加载=历史用户截图客户端标记 V0.5.12，/hud-native/status 与 /hud-native/open 返回 HTTP 405；截图时 Profile 磁盘为 V0.5.13，截图不能证明 UI 已加载该版；V0.5.14 改走 DSH Connection owner-only /api 精确路由，效果待实测
 问题-本机HUD策略写入=用户截图中 DSH 设置显示 writable=true、status=unavailable，但 mutate 被 Host 拒绝；Host fiber/设置命名空间可能随独立 WebServer 路由注册失败而不可用；V0.5.14 迁移到官方 Connection Fetch 路由，策略持久化待实测
-问题-本机HUD独立窗口=2026-11-07 实际 V0.5.14 报错找不到 Host PID 所属的可见 DSH 主窗口；真实主窗口属于其 Electron 父进程；V0.5.16 修复候选已识别经验证的父进程，桌面打开与返回待验收
+问题-本机HUD独立窗口=2026-11-07 V0.5.14 报错找不到主窗口；V0.5.16 修复进程识别后桌面实测仍在 45 秒超时；V0.5.17 修复标准输入阻塞，尚未安装到用户 Desktop Profile
 需求-更新策略写入许可=仅以 DSH settings.describe.writable=true 作为设置可写许可；status=unavailable 但 writable=true 时仍提交，Host 拒绝时显示错误
 需求-独立HUD窗口定位=Windows WPF 窗口先查 Shell PID；若 Host 为独立子进程，仅在父子关系、DSH 可执行文件路径及进程创建时间核验通过时查父进程的唯一主窗口，不使用 Explorer 等无关进程
 需求-WPF脚本编码兼容=中文 WPF PowerShell 脚本需能被 Windows PowerShell 5.1 正确解码，使用 UTF-8 BOM 避免按系统代码页损坏语法
@@ -45,8 +45,8 @@
 CI-工作流=.github/workflows/ci.yml；GitHub 托管 Ubuntu 24.04 与 Windows 2025；Windows 任务含 WPF 自检，不会安装或操控用户 Desktop
 CI-最新结果=2026-11-07 V0.5.16 源码提交 4c3c8669457384ea65236a01a61b8378e40d15a4 的 GitHub Actions run 42368640217 全部成功，含 Linux、Windows 打包及 WPF 自检、两个历史发布任务
 CI-本机候选提交=V0.5.16 源码提交 4c3c8669457384ea65236a01a61b8378e40d15a4 的 CI 通过；该工作流未上传 Artifact，候选包仅在本机 dist 和隔离 Profile
-验收-本机自动检查=2026-11-07 V0.5.16 的 npm run check 通过，111/111 测试通过；npm run pack:hud 与 npm run verify:pack 通过，安装包 10 个文件
-验收-WindowsWPF自检=2026-11-07 V0.5.16 的 Windows PowerShell WPF -SelfTest 与 -SelfTestWindow 均通过；独立 HUD 实际窗口/返回尚未在 Desktop 测试
+验收-本机自动检查=2026-11-07 V0.5.17 的 npm run check 通过，112/112 测试通过；npm run pack:hud 与 npm run verify:pack 通过，安装包 10 个文件
+验收-WindowsWPF自检=2026-11-07 V0.5.17 的 WPF -SelfTest 通过，输入管道保持打开时到达 ContentRendered 的回归测试通过；独立 HUD 实际按钮返回尚未验收
 验收-本机CLI安装=2026-11-06 使用 dsh plugin --profile desktop add 安装 0.5.14；CLI list、Profile package.json、pnpm-lock.yaml 与 node_modules/package.json 均确认 0.5.14；D 盘包 SHA-256 CA4059F0BEFF5EEF04DD26011CF50D12B64DEC716EA40E0F1BD812B58A673DD8
 环境-操作系统=Microsoft Windows 11 家庭中文版 10.0.26200（Build 26200）
 环境-DSH版本=当前运行安装与 dsh CLI 为 0.2.2-rc.1；D:\DeepSeekHarness\app 仍有旧版 0.2.1-rc.5 副本，非当前运行进程
@@ -57,10 +57,10 @@ CI-本机候选提交=V0.5.16 源码提交 4c3c8669457384ea65236a01a61b8378e40d1
 环境-DSH旧默认目录=%USERPROFILE%\.dsh\profiles\desktop 在 2026-11-06 存在；来源与用途待核实，本轮未修改或清理
 环境-DSH进程=2026-11-07 运行中的 Desktop GUI 为 Electron 主进程，Host 是由同一 DeepSeek Harness.exe 启动的子进程；进程 PID 每次启动可变，不应写死
 环境-DSH重装建议=用户曾建议卸载并清空所有 DSH 内容后从官网重装到 D 盘并将数据放在 D 盘；2026-11-07 当前程序运行于 %LOCALAPPDATA%/Programs/DeepSeek Harness，DSH_HOME 用户级目录登记为 D 盘；本轮未执行卸载、清理或重装
-验收-DSH桌面=2026-11-07 界面与 Host 显示 V0.5.14，组件中心手动检查可响应，独立 HUD 启动报找不到主窗口；V0.5.16 尚未在 desktop Profile 安装或实测打开与返回
+验收-DSH桌面=2026-11-07 用户安装 V0.5.16 后组件中心显示当前版本 0.5.16、公开版本检查完成及设置已保存；独立 HUD 启动 45 秒超时，DSH 窗口保持可用；V0.5.17 尚未安装桌面 Profile
 需求-HUD-RPC传输=Host 的 open/status/prepare-install 使用 DSH Connection 的 owner-only 精确 Fetch 路由 /api/hud-native.*；Client 使用同一路径的 Connection unary RPC
 验收-HUD-RPC路由=Host 路由精确注册到 /api/hud-native.open、/api/hud-native.status、/api/hud-native.prepare-install；拒绝无效 RPC envelope；DSH 路由层拒绝非 owner Peer；插件卸载后清除三路路由
-问题-HUD截图与Profile版本差异=历史截图 HUD 客户端显示 0.5.12；2026-11-07 重启后 desktop Profile 的客户端与 Host 均显示 V0.5.14，和当前磁盘安装一致
+问题-HUD截图与Profile版本差异=历史截图 HUD 客户端显示 0.5.12；2026-11-07 用户安装 V0.5.16 后组件中心与 Profile 中安装的 package.json 均显示 0.5.16
 验收-HUD-V0514自动化=2026-11-06 npm run check 100/100 通过；npm run pack:hud 与 npm run verify:pack 通过，归档 10 个文件；D 盘候选包与本地归档 SHA-256 一致
 CI-V0514状态=GitHub Actions run 42085325533 对应提交 813357796dc37186034479f410bb001f51035d49 并以 failure 结束；V0.5.12 发布脚本因源码为 0.5.14 而跳过，后续 git add 不存在的 v0.5.12 目录导致退出码 128
 审计-V0514-策略写入超时=隔离内存模拟中让 form.mutate 永不返回后，策略保存指示持续显示且策略开关禁用；源码未为该等待设置超时，真实 DSH Host 挂起场景未实测
@@ -81,3 +81,8 @@ CI-V0515状态=源码提交 4270b3593db7317d3967d8a3dbd4de6ea8412a4d 的 GitHub 
 验收-V0516-隔离热更新=隔离 DSH Web Host 同一进程内通过官方 Plugin Manager 将 V0.5.15 更新至 V0.5.16，结果 applied，已安装版本与运行 Host 版本均为 0.5.16；不代表 Desktop 窗口功能已验收
 回退-V0516桌面准备=已单独备份并校验 desktop Profile 的五个插件配置和锁文件，保留 SHA-256 已核验的 V0.5.14 安装包；实际桌面升级与回退尚未执行
 CI-V0516状态=源码提交 4c3c8669457384ea65236a01a61b8378e40d15a4 的 GitHub Actions run 42368640217 各任务均成功；未创建正式 Release 或更新公开通道
+问题-V0516-桌面超时=用户安装 V0.5.16 后独立 HUD 启动 45 秒超时，DSH 保持可用；本次桌面验收失败，不应标记为完全修复
+问题-V0517-标准输入根因=Windows PowerShell 5.1 中 Console.In 的同步包装使 ReadLineAsync 在 WPF ShowDialog 前等待第二行输入；本机管道实验复现，改用标准输入 StreamReader 后异步调用立即返回
+修复-V0517-输入阻塞=同一 StreamReader 顺序读取快照并异步等待退出指令，WPF 启动不再被打开的标准输入管道阻塞
+验收-V0517-WPF管道=Windows 回归测试保持输入管道打开且不发送第二行，WPF 到达 ContentRendered；受控程序测试调用实际 DSH 进程并收到 READY，60 秒保护退出后 DSH 主窗口恢复；Computer Use 未列出 WPF 窗口，未验证点击返回
+验收-V0517-隔离热更新=隔离 DSH Web Host 同一进程内通过官方 Plugin Manager 将 V0.5.16 更新至 V0.5.17，结果 applied，已安装版本与运行 Host 版本均为 0.5.17；用户 Desktop Profile 尚未更新

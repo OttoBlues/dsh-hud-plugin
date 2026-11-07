@@ -1,5 +1,5 @@
 ﻿<#
-DSH HUD v0.5.16 Windows native window, verified Desktop shell resolution.
+DSH HUD v0.5.17 Windows native window, non-blocking input and verified Desktop shell resolution.
 This file is bundled with @local/dsh-hud. It executes no remote code.
 Its only window controls are "Return to DSH", Escape and Alt+F4.
 #>
@@ -10,6 +10,7 @@ param(
   [ValidateSet('zh','en')][string]$Language = 'zh',
   [switch]$SelfTest,
   [switch]$SelfTestWindow,
+  [switch]$SelfTestWindowInput,
   [switch]$SelfTestParentValidation,
   [switch]$SelfTestShellResolution,
   [switch]$RestoreOnly
@@ -118,6 +119,16 @@ if ($SelfTestShellResolution) {
   exit 0
 }
 
+function Start-HudInput {
+  # Console.In is a synchronized TextReader in Windows PowerShell 5.1: its
+  # ReadLineAsync blocks the calling thread until another line arrives. Use the
+  # underlying stream reader so the WPF dispatcher can start while stdin stays open.
+  $reader = [IO.StreamReader]::new([Console]::OpenStandardInput(), [Text.Encoding]::UTF8)
+  $snapshot = $reader.ReadLine()
+  $exitTask = $reader.ReadLineAsync()
+  return [pscustomobject]@{ Reader=$reader; Snapshot=$snapshot; ExitTask=$exitTask }
+}
+
 if ($RestoreOnly) {
   if ($ShellPid -lt 1) {
     [Console]::Out.WriteLine('ERROR: Invalid DSH Shell PID for restore.')
@@ -177,7 +188,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
                 BorderThickness="1" FontSize="14" FontWeight="SemiBold"
                 Width="140" Height="42" Cursor="Hand" Margin="20,0,0,0"/>
         <StackPanel x:Name="TitleDragArea" Cursor="SizeAll">
-          <TextBlock Text="DSH // HUD 0.5.16" Foreground="#6DCBD2" FontSize="12" FontFamily="Consolas"/>
+          <TextBlock Text="DSH // HUD 0.5.17" Foreground="#6DCBD2" FontSize="12" FontFamily="Consolas"/>
           <TextBlock x:Name="WindowHeading" Text="HUD 独立工作台" FontSize="30" FontWeight="SemiBold" Margin="0,7,0,0"/>
         </StackPanel>
       </DockPanel>
@@ -253,6 +264,28 @@ if ($SelfTestWindow) {
   if (-not $script:rendered) { throw 'WPF never reached ContentRendered in CI.' }
   exit 0
 }
+
+# Exercise WPF startup with the Host's input pipe still open. The window must
+# render before a second line arrives, otherwise the UI thread is blocked.
+if ($SelfTestWindowInput) {
+  $hudInput = Start-HudInput
+  if ($hudInput.Snapshot -ne 'HUD_TEST_SNAPSHOT') { throw 'Self-test snapshot was not received.' }
+  $script:renderedWithInput = $false
+  $guard = New-Object System.Windows.Threading.DispatcherTimer
+  $guard.Interval = [TimeSpan]::FromSeconds(6)
+  $guard.Add_Tick({ $guard.Stop(); $window.Close() })
+  $window.Add_ContentRendered({
+    $script:renderedWithInput = $true
+    [Console]::Out.WriteLine('HUD_WPF_INPUT_RENDERED_OK')
+    $window.Close()
+  })
+  $guard.Start()
+  [void]$window.ShowDialog()
+  $guard.Stop()
+  if (-not $script:renderedWithInput) { throw 'WPF never rendered with an open input pipe.' }
+  exit 0
+}
+
 if ($ShellPid -lt 1 -or $HostPid -lt 1) { throw 'Invalid DSH Desktop / Host PID.' }
 if ($null -eq (Get-Process -Id $ShellPid -ErrorAction SilentlyContinue)) {
   throw 'DSH Desktop shell process is unavailable.'
@@ -265,7 +298,8 @@ if ($target -eq [IntPtr]::Zero) {
 
 # Native window receives ONLY an initial read-only snapshot on its private stdin.
 # This avoids leaking session titles through command lines, URLs or temporary files.
-$base64 = [Console]::In.ReadLine()
+$hudInput = Start-HudInput
+$base64 = $hudInput.Snapshot
 $rows = @()
 $capturedAt = ''
 try {
@@ -319,7 +353,7 @@ $window.FindName('TitleDragArea').Add_MouseLeftButtonDown({
 $window.Add_PreviewKeyDown({
   if ($_.Key -eq [Windows.Input.Key]::Escape) { $window.Close() }
 })
-$exitTask = [Console]::In.ReadLineAsync()
+$exitTask = $hudInput.ExitTask
 $watch = New-Object System.Windows.Threading.DispatcherTimer
 $watch.Interval = [TimeSpan]::FromMilliseconds(750)
 $watch.Add_Tick({

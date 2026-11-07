@@ -1,5 +1,5 @@
 /**
- * DSH HUD V0.5.16: verify the Desktop shell process for the native window.
+ * DSH HUD V0.5.17: keep Windows HUD input from blocking window startup.
  * HUD is a DSH plugin with its own left sidebar panel; repo components are
  * managed inside that panel, not inside DSH's native Plugins management tab.
  */
@@ -10,7 +10,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const NS = 'dsh.hud';
     const PANEL = 'dsh-hud';
-    const VERSION = '0.5.16';
+    const VERSION = '0.5.17';
     let nativeSessionSnapshot = { capturedAt:'', sessions:[] };
     // User-triggered checks do not use Host settings as a command queue.
     const REFRESH_MS = 5 * 60_000;

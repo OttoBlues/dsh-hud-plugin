@@ -8,7 +8,7 @@
 - 自动更新默认关闭，试验版订阅与自动试验版需要独立授权；窗口内 HUD 预览默认关闭。
 - 历史 V0.4.0 曾出现自更新宿主异常，V0.4.1 引入 Host 生命周期保护。
 
-**源码候选：** V0.5.16 修复 DSH Desktop Host 与窗口分属子、父进程时独立 HUD 找不到主窗口的问题，保留 V0.5.15 的更新恢复修复；Unstable 可安装版本以 `unstable/index.json` 为准，Released 仍为空。
+**源码候选：** V0.5.17 修复 Windows PowerShell 标准输入同步阻塞导致独立 HUD 启动超时，保留 V0.5.16 的进程识别修复；Unstable 可安装版本以 `unstable/index.json` 为准，Released 仍为空。
 
 **历史发布：** V0.4.2 完成仓库更名与本地 Runner 退役。后续 v0.5.x 已增加 DSH 组件中心、只读公开更新检查与独立 HUD 候选。安装仍须人工确认，不能将 CI 视为 Desktop 无崩溃验收。
 
@@ -87,3 +87,9 @@ DSH 0.2.2-rc.1 的 Connection 提供 owner-only 精确 Fetch 路由，并将路�
 ## V0.5.16 Desktop 进程识别修复候选
 
 实际 Desktop 中 Host 是 Electron 主进程的子进程，主窗口由父进程持有。启动和异常恢复先查明确的 Shell PID，再仅在进程父子关系、可执行文件及创建时间一致时查找唯一 DSH 主窗口，失败时不隐藏任何窗口。详见 `docs/HUD-DESKTOP-PROCESS-V0516.md`。
+
+实机安装 V0.5.16 后确认主窗口识别不再报错，但启动仍在 45 秒后超时；该版未通过独立窗口验收。
+
+## V0.5.17 标准输入阻塞修复候选
+
+Windows PowerShell 5.1 的 `Console.In` 是同步包装的读取器，其 `ReadLineAsync()` 会在窗口显示前阻塞。改用标准输入流上的 `StreamReader` 真正异步等待读取退出指令；新增输入管道保持打开时 WPF 必须完成渲染的 Windows 测试。Desktop 用户 Profile 尚未安装本版，完整打开、点击返回与回归待验收。详见 `docs/HUD-WPF-INPUT-V0517.md`。
